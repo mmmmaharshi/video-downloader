@@ -44,7 +44,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center px-6 py-10 md:justify-start md:px-8 md:py-20">
+      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center gap-8 px-6 py-10 md:justify-start md:px-8 md:py-20">
         <div className="flex flex-col gap-6">
           <h1 className="text-[28px] font-medium leading-[1.1] tracking-[-0.02em] md:text-[32px]">Insta downloader</h1>
 
@@ -64,19 +64,17 @@ export default function Home() {
         </div>
 
         {error ? (
-          <div className="mt-8">
-            <Alert status="danger">
-              <Alert.Indicator />
-              <Alert.Content>
-                <Alert.Title>Could not fetch</Alert.Title>
-                <Alert.Description>{error}</Alert.Description>
-              </Alert.Content>
-            </Alert>
-          </div>
+          <Alert status="danger">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>Could not fetch</Alert.Title>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Content>
+          </Alert>
         ) : null}
 
-        <Separator className="mt-12" />
-        <p className="mt-6 max-w-[60ch] text-xs leading-5 text-muted">
+        <Separator />
+        <p className="max-w-[60ch] text-xs leading-5 text-muted">
           Only download content you have rights to. No storage — direct CDN proxy. Respect Instagram&apos;s terms.
         </p>
       </main>

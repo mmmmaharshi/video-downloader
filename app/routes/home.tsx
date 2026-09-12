@@ -95,7 +95,6 @@ export default function Home() {
                 <video
                   src={videoUrl}
                   controls
-                  autoPlay
                   poster={data && "thumbnail" in data ? data.thumbnail : undefined}
                   className="w-full bg-surface-secondary object-cover"
                 />

@@ -43,8 +43,8 @@ export default function Home() {
   }, [videoUrl]);
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <main className="mx-auto max-w-[720px] px-6 py-16 md:px-8 md:py-20">
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center px-6 py-10 md:justify-start md:px-8 md:py-20">
         <div className="flex flex-col gap-6">
           <h1 className="text-[28px] font-medium leading-[1.1] tracking-[-0.02em] md:text-[32px]">Insta downloader</h1>
 

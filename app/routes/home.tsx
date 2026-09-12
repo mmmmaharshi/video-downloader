@@ -1,6 +1,7 @@
 import type { Route } from "./+types/home";
+import * as React from "react";
 import { useFetcher } from "react-router";
-import { Alert, Button, Card, Input, Separator } from "@heroui/react";
+import { Alert, Button, Input, Modal, Separator } from "@heroui/react";
 import { extractVideoUrl } from "../lib/instagram.server";
 
 export function meta({}: Route.MetaArgs) {
@@ -35,10 +36,15 @@ export default function Home() {
 
   const downloadHref = videoUrl ? `/api/download?url=${encodeURIComponent(videoUrl)}&code=${encodeURIComponent(shortcode ?? "video")}` : undefined;
 
+  const [isOpen, setIsOpen] = React.useState(false);
+
+  React.useEffect(() => {
+    if (videoUrl) setIsOpen(true);
+  }, [videoUrl]);
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <main className="mx-auto max-w-[720px] px-6 py-16 md:px-8 md:py-20">
-        {/* Primary task — minimal */}
         <div className="flex flex-col gap-6">
           <h1 className="text-[28px] font-medium leading-[1.1] tracking-[-0.02em] md:text-[32px]">Insta downloader</h1>
 
@@ -69,36 +75,45 @@ export default function Home() {
           </div>
         ) : null}
 
-        {videoUrl ? (
-          <>
-            <Separator className="mt-10" />
-            <div className="mt-10">
-              <Card className="overflow-hidden">
-                <Card.Content className="p-0">
-                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                  <video
-                    src={videoUrl}
-                    controls
-                    poster={data && "thumbnail" in data ? data.thumbnail : undefined}
-                    className="w-full bg-surface-secondary object-cover"
-                  />
-                </Card.Content>
-                <Card.Footer className="flex items-center justify-between gap-4 border-t border-separator p-3">
-                  <span className="text-xs text-muted">{shortcode}</span>
-                  <a href={downloadHref}>
-                    <Button size="sm">Download .mp4</Button>
-                  </a>
-                </Card.Footer>
-              </Card>
-            </div>
-          </>
-        ) : null}
-
         <Separator className="mt-12" />
         <p className="mt-6 max-w-[60ch] text-xs leading-5 text-muted">
           Only download content you have rights to. No storage — direct CDN proxy. Respect Instagram&apos;s terms.
         </p>
       </main>
+
+      <Modal.Backdrop isOpen={isOpen} onOpenChange={setIsOpen}>
+        <Modal.Container size="lg">
+          <Modal.Dialog>
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Heading>Preview</Modal.Heading>
+              {shortcode ? <p className="text-xs text-muted">{shortcode}</p> : null}
+            </Modal.Header>
+            <Modal.Body className="p-0">
+              {videoUrl ? (
+                // eslint-disable-next-line jsx-a11y/media-has-caption
+                <video
+                  src={videoUrl}
+                  controls
+                  autoPlay
+                  poster={data && "thumbnail" in data ? data.thumbnail : undefined}
+                  className="w-full bg-surface-secondary object-cover"
+                />
+              ) : null}
+            </Modal.Body>
+            <Modal.Footer>
+              <Button variant="secondary" slot="close">
+                Close
+              </Button>
+              {downloadHref ? (
+                <a href={downloadHref}>
+                  <Button>Download .mp4</Button>
+                </a>
+              ) : null}
+            </Modal.Footer>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </div>
   );
 }

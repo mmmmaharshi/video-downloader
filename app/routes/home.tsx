@@ -1,6 +1,6 @@
 import type { Route } from "./+types/home";
 import { useFetcher } from "react-router";
-import { Alert, Button, Card, Input } from "@heroui/react";
+import { Alert, Button, Card, Input, Separator } from "@heroui/react";
 import { extractVideoUrl } from "../lib/instagram.server";
 
 export function meta({}: Route.MetaArgs) {
@@ -36,71 +36,69 @@ export default function Home() {
   const downloadHref = videoUrl ? `/api/download?url=${encodeURIComponent(videoUrl)}&code=${encodeURIComponent(shortcode ?? "video")}` : undefined;
 
   return (
-    <main className="min-h-screen flex flex-col items-center p-6">
-      <div className="w-full max-w-2xl flex flex-col gap-6">
-        <div className="text-center flex flex-col gap-2 py-4">
-          <h1 className="text-3xl font-bold">Insta Video Downloader</h1>
-          <p className="text-sm text-muted">Paste a public Reel or Post URL — preview & save. No login.</p>
+    <div className="min-h-screen bg-background text-foreground">
+      <main className="mx-auto max-w-[720px] px-6 py-16 md:px-8 md:py-20">
+        {/* Primary task — minimal */}
+        <div className="flex flex-col gap-6">
+          <h1 className="text-[28px] font-medium leading-[1.1] tracking-[-0.02em] md:text-[32px]">Insta downloader</h1>
+
+          <fetcher.Form method="post" className="flex flex-col gap-3 sm:flex-row">
+            <Input
+              name="url"
+              aria-label="Instagram URL"
+              placeholder="https://www.instagram.com/reel/.../"
+              defaultValue={data?.inputUrl ?? ""}
+              fullWidth
+              required
+            />
+            <Button type="submit" isPending={isLoading} isDisabled={isLoading} className="sm:min-w-[140px] sm:shrink-0">
+              {isLoading ? "Fetching…" : "Fetch"}
+            </Button>
+          </fetcher.Form>
         </div>
 
-        <Card>
-          <Card.Header>
-            <Card.Title>Paste Instagram URL</Card.Title>
-            <Card.Description>Supports /reel/, /p/, /tv/ — public videos only.</Card.Description>
-          </Card.Header>
-          <Card.Content>
-            <fetcher.Form method="post" className="flex flex-col gap-3">
-              <Input
-                name="url"
-                aria-label="Instagram URL"
-                placeholder="https://www.instagram.com/reel/..../"
-                defaultValue={data?.inputUrl ?? ""}
-                fullWidth
-                required
-              />
-              <Button type="submit" isDisabled={isLoading} className="w-full">
-                {isLoading ? "Fetching..." : "Fetch Video"}
-              </Button>
-            </fetcher.Form>
-          </Card.Content>
-        </Card>
-
         {error ? (
-          <Alert status="danger">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>Could not fetch video</Alert.Title>
-              <Alert.Description>{error}</Alert.Description>
-            </Alert.Content>
-          </Alert>
+          <div className="mt-8">
+            <Alert status="danger">
+              <Alert.Indicator />
+              <Alert.Content>
+                <Alert.Title>Could not fetch</Alert.Title>
+                <Alert.Description>{error}</Alert.Description>
+              </Alert.Content>
+            </Alert>
+          </div>
         ) : null}
 
         {videoUrl ? (
-          <Card>
-            <Card.Header>
-              <Card.Title>Preview</Card.Title>
-              <Card.Description>Shortcode: {shortcode}</Card.Description>
-            </Card.Header>
-            <Card.Content>
-              {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-              <video src={videoUrl} controls poster={data && "thumbnail" in data ? data.thumbnail : undefined} className="w-full rounded-2xl" />
-            </Card.Content>
-            <Card.Footer>
-              <a href={downloadHref} className="w-full">
-                <Button className="w-full">Download .mp4</Button>
-              </a>
-            </Card.Footer>
-          </Card>
+          <>
+            <Separator className="mt-10" />
+            <div className="mt-10">
+              <Card className="overflow-hidden">
+                <Card.Content className="p-0">
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                  <video
+                    src={videoUrl}
+                    controls
+                    poster={data && "thumbnail" in data ? data.thumbnail : undefined}
+                    className="w-full bg-surface-secondary object-cover"
+                  />
+                </Card.Content>
+                <Card.Footer className="flex items-center justify-between gap-4 border-t border-separator p-3">
+                  <span className="text-xs text-muted">{shortcode}</span>
+                  <a href={downloadHref}>
+                    <Button size="sm">Download .mp4</Button>
+                  </a>
+                </Card.Footer>
+              </Card>
+            </div>
+          </>
         ) : null}
 
-        <Card variant="secondary">
-          <Card.Content>
-            <p className="text-xs text-muted leading-5">
-              Disclaimer: Only download public content you have rights to. This tool does not store videos — it proxies the direct CDN URL for your browser to save. Respect Instagram’s Terms and creator copyright.
-            </p>
-          </Card.Content>
-        </Card>
-      </div>
-    </main>
+        <Separator className="mt-12" />
+        <p className="mt-6 max-w-[60ch] text-xs leading-5 text-muted">
+          Only download content you have rights to. No storage — direct CDN proxy. Respect Instagram&apos;s terms.
+        </p>
+      </main>
+    </div>
   );
 }

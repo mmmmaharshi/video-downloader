@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="Download">
+  <title>Insta downloader</title>
+  <rect class="bg" width="32" height="32" rx="6" fill="#FFFFFF"/>
+  <rect class="border" x="0.5" y="0.5" width="31" height="31" rx="5.5" fill="none" stroke="rgba(0,0,0,0.10)"/>
+  <!-- Minimal download — single stroke, 1.5px, rounded -->
+  <g class="icon" stroke="#000000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M16 9 L16 20"/>
+    <path d="M12 16 L16 20 L20 16"/>
+    <path d="M11 24 L21 24"/>
+  </g>
+  <style>
+    @media (prefers-color-scheme: dark) {
+      .bg { fill: #0A0A0A; }
+      .border { stroke: rgba(255,255,255,0.11); }
+      .icon { stroke: #FFFFFF; }
+    }
+  </style>
+</svg>

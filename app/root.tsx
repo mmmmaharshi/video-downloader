@@ -11,7 +11,10 @@ import type { Route } from "./+types/root";
 import "./app.css";
 import "@fontsource-variable/geist-pixel/elsh.css";
 
-export const links: Route.LinksFunction = () => [];
+export const links: Route.LinksFunction = () => [
+  { rel: "icon", href: "/favicon.svg", type: "image/svg+xml" },
+  { rel: "alternate icon", href: "/favicon.ico", type: "image/x-icon" },
+];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

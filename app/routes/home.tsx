@@ -2,7 +2,7 @@ import type { Route } from "./+types/home";
 import * as React from "react";
 import { useFetcher } from "react-router";
 import { Alert, Button, Input, Modal, Separator } from "@heroui/react";
-import { extractVideoUrl } from "../lib/instagram.server";
+import { resolve } from "../lib/media-resolver";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -16,7 +16,7 @@ export async function action({ request }: Route.ActionArgs) {
   const url = String(formData.get("url") ?? "").trim();
   if (!url) return { error: "Paste an Instagram URL" } as const;
   try {
-    const data = await extractVideoUrl(url);
+    const data = await resolve(url);
     return { videoUrl: data.videoUrl, thumbnail: data.thumbnail, shortcode: data.shortcode, inputUrl: url } as const;
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to extract video";

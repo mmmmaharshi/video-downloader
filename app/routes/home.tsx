@@ -44,7 +44,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center gap-8 px-6 py-10 md:justify-start md:px-8 md:py-20">
+      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center gap-8 px-6 py-10 md:px-8 md:py-20">
         <div className="flex flex-col gap-6">
           <h1 className="text-[28px] font-medium leading-[1.1] tracking-[-0.02em] md:text-[32px]">Insta downloader</h1>
 

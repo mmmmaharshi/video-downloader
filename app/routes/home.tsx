@@ -105,9 +105,7 @@ export default function Home() {
                 Close
               </Button>
               {downloadHref ? (
-                <a href={downloadHref}>
-                  <Button>Download .mp4</Button>
-                </a>
+                <Button onPress={() => downloadHref && (window.location.href = downloadHref)}>Download .mp4</Button>
               ) : null}
             </Modal.Footer>
           </Modal.Dialog>

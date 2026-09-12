@@ -57,7 +57,7 @@ export default function Home() {
               fullWidth
               required
             />
-            <Button type="submit" isPending={isLoading} isDisabled={isLoading} className="sm:min-w-[140px] sm:shrink-0">
+            <Button type="submit" isPending={isLoading} isDisabled={isLoading} className="w-full sm:w-auto sm:min-w-[140px] sm:shrink-0">
               {isLoading ? "Fetching…" : "Fetch"}
             </Button>
           </fetcher.Form>

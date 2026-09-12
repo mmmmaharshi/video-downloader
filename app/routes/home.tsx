@@ -6,7 +6,7 @@ import { extractVideoUrl } from "../lib/instagram.server";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Video Downloader — Save public Reels & Posts" },
+    { title: "Video Downloader — Save Online Videos" },
     { name: "description", content: "Paste a public Instagram reel or post URL to preview and download. No login, no storage." },
   ];
 }

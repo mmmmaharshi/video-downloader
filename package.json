@@ -9,6 +9,8 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
+    "@heroui/react": "^3.2.5",
+    "@heroui/styles": "3.2.5",
     "@react-router/node": "^8",
     "@react-router/serve": "^8",
     "isbot": "^5.1.36",

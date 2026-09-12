@@ -56,7 +56,6 @@ export default function Home() {
               defaultValue={data?.inputUrl ?? ""}
               fullWidth
               required
-              className="h-12 text-base md:h-10 md:text-sm"
             />
             <Button type="submit" isPending={isLoading} isDisabled={isLoading} className="w-full sm:w-auto sm:min-w-[140px] sm:shrink-0">
               {isLoading ? "Fetching…" : "Fetch"}

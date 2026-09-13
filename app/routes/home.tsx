@@ -83,7 +83,7 @@ export default function Home() {
               defaultValue={data?.inputUrl ?? ""}
               autoComplete="off"
               required
-              className="h-[44px] flex-1 rounded-md border border-[color:var(--border)] bg-[color:var(--sc-surface)] px-4 text-[15px] leading-[1.45] text-[color:var(--foreground)] placeholder:[color:var(--sc-tertiary)] outline-none transition-all duration-[150ms] ease-out focus-visible:border-[color:var(--foreground)] focus-visible:ring-2 focus-visible:ring-[color:var(--foreground)]/20 hover:bg-[color:rgba(255,255,255,0.06)] sm:w-auto sm:min-w-[280px]"
+              className="h-[44px] w-full rounded-md border-[2px] border-white/[24%] bg-white/[6%] px-4 text-[15px] leading-[1.45] text-white placeholder:text-white/[44%] outline-none transition-all duration-[150ms] ease-out focus:border-white/56 focus:ring-2 focus:ring-white/[16%] sm:h-[44px] sm:flex-1 sm:rounded-md sm:border sm:border-[color:var(--border)] sm:bg-[color:var(--sc-surface)] sm:text-[color:var(--foreground)] sm:placeholder:[color:var(--sc-tertiary)] sm:hover:bg-[color:rgba(255,255,255,0.06)] sm:w-auto sm:min-w-[280px]"
             />
             <button
               type="submit"

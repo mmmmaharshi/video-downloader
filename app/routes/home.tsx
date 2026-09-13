@@ -83,7 +83,7 @@ export default function Home() {
               defaultValue={data?.inputUrl ?? ""}
               autoComplete="off"
               required
-              className="h-[44px] w-full rounded-md border-[2px] border-white/[24%] bg-white/[6%] px-4 text-[15px] leading-[1.45] text-white placeholder:text-white/[44%] outline-none transition-all duration-[150ms] ease-out focus:border-white/56 focus:ring-2 focus:ring-white/[16%] sm:h-[44px] sm:flex-1 sm:rounded-md sm:border sm:border-[color:var(--border)] sm:bg-[color:var(--sc-surface)] sm:text-[color:var(--foreground)] sm:placeholder:[color:var(--sc-tertiary)] sm:hover:bg-[color:rgba(255,255,255,0.06)] sm:w-auto sm:min-w-[280px]"
+              className="h-[44px] w-full rounded-lg border-[2px] border-white/20 bg-white/[10%] px-4 py-3 text-base leading-relaxed text-white placeholder:text-white/40 outline-none transition-all duration-[150ms] ease-out focus:border-white/50 focus:ring-2 focus:ring-white/20 sm:flex-1 sm:rounded-md sm:border sm:border-[color:var(--border)] sm:bg-[color:var(--sc-surface)] sm:text-[color:var(--foreground)] sm:placeholder:[color:var(--sc-tertiary)] sm:hover:bg-[color:rgba(255,255,255,0.06)] sm:min-w-[280px]"
             />
             <button
               type="submit"
@@ -119,8 +119,7 @@ export default function Home() {
           </div>
         ) : null}
 
-        <hr className="border-0 border-t border-[color:var(--border)]" />
-        <p className="max-w-[68ch] text-[15px] leading-6 text-[color:var(--secondary)]">
+        <p className="max-w-[68ch] text-[15px] leading-6 text-secondary">
           Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect Instagram&apos;s terms.
         </p>
       </main>

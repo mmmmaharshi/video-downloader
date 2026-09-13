@@ -9,9 +9,7 @@
     "typecheck": "react-router typegen && tsc"
   },
   "dependencies": {
-    "@fontsource-variable/geist-pixel": "^5.3.1",
-    "@heroui/react": "^3.2.5",
-    "@heroui/styles": "3.2.5",
+    "@fontsource-variable/geist-pixel": "5.3.1",
     "@react-router/node": "^8",
     "@react-router/serve": "^8",
     "isbot": "^5.1.36",

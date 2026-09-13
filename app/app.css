@@ -1,55 +1,43 @@
 @import "tailwindcss";
-@import "@heroui/styles";
 
 /*
- * HeroUI Theme — Dark only
- * @see https://heroui.com/docs/react/getting-started/theming
+ * Scandinavian Design System — Dark Canvas
+ * Near-black background with neutral alpha-white ink ladder.
  */
 
 :root {
   color-scheme: dark;
-  --accent: oklch(0.9848 0 0);
-  --accent-foreground: oklch(15% 0 0);
-  --background: oklch(12% 0.0015 0);
-  --border: oklch(28% 0.0015 0);
-  --danger: oklch(59.4% 0.1973 354.17);
-  --danger-foreground: oklch(99.11% 0 0);
-  --default: oklch(27.4% 0.0015 0);
-  --default-foreground: oklch(99.11% 0 0);
-  --field-background: oklch(21.03% 0.003 0);
-  --field-border: transparent;
-  --field-foreground: oklch(99.11% 0.0015 0);
-  --field-placeholder: oklch(70.5% 0.003 0);
-  --focus: oklch(0.9848 0 0);
-  --foreground: oklch(99.11% 0.0015 0);
-  --muted: oklch(70.5% 0.003 0);
-  --overlay: oklch(21.03% 0.003 0);
-  --overlay-foreground: oklch(99.11% 0.0015 0);
-  --scrollbar: oklch(70.5% 0.0015 0);
-  --segment: oklch(39.64% 0.0015 0);
-  --segment-foreground: oklch(99.11% 0.0015 0);
-  --separator: oklch(25% 0.0015 0);
-  --success: oklch(73.29% 0.1941 120.35);
-  --success-foreground: oklch(21.03% 0.0059 120.35);
-  --surface: oklch(21.03% 0.003 0);
-  --surface-foreground: oklch(99.11% 0.0015 0);
-  --surface-secondary: oklch(25.7% 0.0023 0);
-  --surface-secondary-foreground: oklch(99.11% 0.0015 0);
-  --surface-tertiary: oklch(27.21% 0.0023 0);
-  --surface-tertiary-foreground: oklch(99.11% 0.0015 0);
-  --warning: oklch(82.03% 0.1392 45.88);
-  --warning-foreground: oklch(21.03% 0.0059 45.88);
-  --accent-soft-foreground: oklch(0.9848 0 0);
-  --radius: 0.5rem;
-  --field-radius: 0.75rem;
-  --font-sans: "Geist Pixel Variable", sans-serif;
+
+  /* Canvas & surfaces — pure neutral, zero channel spread */
+  --sc-background: #0a0a0a;
+  --sc-canvas: #0a0a0a;
+  --sc-surface: #0f0f0f;
+  --sc-border-alpha: 10%;
+  --sc-hover-alpha: 9%;
+  --sc-pressed-alpha: 14%;
+
+  /* Ink — alpha white on near-black canvas.
+   * Secondary ~56% → 8.2:1 (AAA).
+   * Tertiary ~36% → 5.7:1 (sufficient metadata on dark canvas). */
+  --sc-secondary: rgb(255 255 255 / 56%);
+  --sc-tertiary: rgb(255 255 255 / 36%);
 }
 
 @theme {
-  --font-sans: "Geist Pixel Variable", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --color-background: var(--sc-background);
+  --color-foreground: rgb(255 255 255 / 96%);
+  --color-secondary: var(--sc-secondary);
+  --color-tertiary: var(--sc-tertiary);
+  --color-border: rgb(255 255 255 / var(--sc-border-alpha));
+  --color-muted: var(--sc-tertiary);
+  --font-sans: "Geist Pixel Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --radius-md: 8px;
+  --spacing-unit: 8px;
 }
 
 html,
 body {
   @apply bg-background text-foreground;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }

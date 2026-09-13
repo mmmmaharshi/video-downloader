@@ -88,7 +88,7 @@ export default function Home() {
             <button
               type="submit"
               disabled={isLoading}
-              className="group flex h-[44px] items-center justify-center rounded-md bg-[color:var(--foreground)] px-6 text-[15px] font-medium leading-[1.4] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[color:rgb(255_255_255/_90%)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[140px]"
+              className="flex h-[44px] items-center justify-center rounded-md bg-white px-6 text-sm font-medium leading-[1.4] text-black transition-all duration-[150ms] ease-out hover:bg-gray-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[140px]"
             >
               {isLoading ? "Fetching\u2026" : "Fetch"}
             </button>
@@ -149,14 +149,14 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setIsOpen(false)}
-                className="rounded-md border border-[color:var(--border)] bg-[color:rgba(255,255,255,0.05)] px-4 py-2 text-[15px] font-medium leading-[1.45] text-[color:var(--foreground)] transition-all duration-[150ms] ease-out hover:bg-[color:rgba(255,255,255,0.09)] active:scale-[0.98]"
+                className="rounded-md border border-white/[12%] bg-[#fff]/[8%] px-4 py-2 text-[15px] font-medium leading-[1.45] text-white transition-all duration-[150ms] ease-out hover:bg-[#fff]/[16%] active:scale-[0.98]"
               >
                 Close
               </button>
               {downloadHref && (
                 <button
                   onClick={() => (window.location.href = downloadHref)}
-                  className="rounded-md bg-[color:var(--foreground)] px-4 py-2 text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[color:rgb(255_255_255/_90%)] active:scale-[0.98]"
+                  className="rounded-md bg-[#fff] px-4 py-2 text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[#f0f0f0] active:scale-[0.98]"
                 >
                   Download .mp4
                 </button>

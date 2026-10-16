@@ -95,11 +95,13 @@ export default function Home() {
             >
               <Input autoComplete="off" placeholder="Paste an Instagram, Facebook, X, or YouTube video URL" />
             </TextField>
-            <Button isDisabled={isLoading} type="submit" variant="primary" className="w-full sm:w-28">
-              {/* fixed width + constant label: the spinner joins the centered
-                  content without resizing the button or shifting the input */}
-              {isLoading ? <Spinner size="sm" /> : null}
-              Fetch
+            <Button isDisabled={isLoading} isPending={isLoading} type="submit" variant="primary">
+              {({ isPending }) => (
+                <>
+                  {isPending ? <Spinner color="current" size="sm" /> : null}
+                  {isPending ? "Fetching…" : "Fetch"}
+                </>
+              )}
             </Button>
           </fetcher.Form>
         </div>

@@ -17,9 +17,9 @@ export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const url = String(formData.get("url") ?? "").trim();
   try {
-    const asset = await resolve(url);
-    rememberResolved(asset.videoUrl);
-    return { asset, inputUrl: url } as const;
+    const assets = await resolve(url);
+    rememberResolved(assets[0].videoUrl);
+    return { assets, inputUrl: url } as const;
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to extract video";
     return { error: msg, inputUrl: url } as const;
@@ -27,8 +27,8 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 type ActionData =
-  | { asset: VideoAsset; inputUrl: string; error?: never }
-  | { error: string; inputUrl: string; asset?: never };
+  | { assets: VideoAsset[]; inputUrl: string; error?: never }
+  | { error: string; inputUrl: string; assets?: never };
 
 export default function Home() {
   const fetcher = useFetcher<ActionData>();
@@ -47,7 +47,7 @@ export default function Home() {
     if ("error" in data) {
       setPreview((p) => nextPreview(p, { type: "failed" }));
     } else {
-      setPreview((p) => nextPreview(p, { type: "resolved", asset: data.asset }));
+      setPreview((p) => nextPreview(p, { type: "resolved", asset: data.assets[0] }));
     }
     // depends on the response, not the url inside it: re-fetching the same link resolves to an
     // equal url and must still reopen the preview

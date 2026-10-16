@@ -9,7 +9,7 @@ const page = (body: string, init?: ResponseInit) => new Response(`<html><head>${
 
 describe("resolve", () => {
   test("reads video and thumbnail from the post page", async () => {
-    const asset = await resolve(REEL, {
+    const [asset] = await resolve(REEL, {
       fetch: stubFetch(() =>
         page(`<meta property="og:video:secure_url" content="${CDN}"><meta property="og:image" content="https://img.example/x.jpg">`),
       ),
@@ -24,14 +24,14 @@ describe("resolve", () => {
   });
 
   test("unescapes \\u0026 and &amp; in the extracted url", async () => {
-    const asset = await resolve(REEL, {
+    const [asset] = await resolve(REEL, {
       fetch: stubFetch(() => page(`<meta property="og:video" content="${CDN}?e=1\\u0026v=2&amp;t=3">`)),
     });
     expect(asset.videoUrl).toBe(`${CDN}?e=1&v=2&t=3`);
   });
 
   test("falls back to the embed page when the post page has no video tag", async () => {
-    const asset = await resolve(REEL, {
+    const [asset] = await resolve(REEL, {
       fetch: stubFetch((url) =>
         url.includes("/embed/")
           ? page(`"video_url":"https:\\/\\/scontent.cdninstagram.com\\/v\\/embed.mp4"`)
@@ -42,7 +42,7 @@ describe("resolve", () => {
   });
 
   test("trims the pasted url", async () => {
-    const asset = await resolve(`  ${REEL}  `, {
+    const [asset] = await resolve(`  ${REEL}  `, {
       fetch: stubFetch(() => page(`<meta property="og:video" content="${CDN}">`)),
     });
     expect(asset.sourceUrl).toBe(REEL);
@@ -115,7 +115,7 @@ const videoMedia = {
 
 describe("resolve — X/Twitter", () => {
   test("picks the highest-bitrate mp4 and the poster as thumbnail", async () => {
-    const asset = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "2006763209378922836", mediaDetails: [videoMedia] })) });
+    const [asset] = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "2006763209378922836", mediaDetails: [videoMedia] })) });
     expect(asset).toEqual({
       videoUrl: BEST_MP4,
       thumbnail: POSTER,
@@ -125,6 +125,35 @@ describe("resolve — X/Twitter", () => {
     });
   });
 
+  test("resolves every video in a multi-video tweet, best mp4 each, in post order", async () => {
+    const second = {
+      type: "video",
+      media_url_https: "https://pbs.twimg.com/thumb2.jpg",
+      video_info: {
+        variants: [
+          { bitrate: 5000000, content_type: "video/mp4", url: "https://video.twimg.com/second-hi.mp4" },
+          { bitrate: 500000, content_type: "video/mp4", url: "https://video.twimg.com/second-lo.mp4" },
+        ],
+      },
+    };
+    const assets = await resolve(TWEET, {
+      fetch: stubFetch(() => syndication({ id_str: "2006763209378922836", mediaDetails: [videoMedia, second] })),
+    });
+    expect(assets.map((a) => a.videoUrl)).toEqual([BEST_MP4, "https://video.twimg.com/second-hi.mp4"]);
+    expect(assets.map((a) => a.thumbnail)).toEqual([POSTER, "https://pbs.twimg.com/thumb2.jpg"]);
+  });
+
+  test("skips a video entry with no mp4 variant", async () => {
+    const m3u8Only = {
+      type: "video",
+      video_info: { variants: [{ content_type: "application/x-mpegURL", url: "https://video.twimg.com/x.m3u8" }] },
+    };
+    const assets = await resolve(TWEET, {
+      fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [m3u8Only, videoMedia] })),
+    });
+    expect(assets.map((a) => a.videoUrl)).toEqual([BEST_MP4]);
+  });
+
   test("resolves every supported X url shape", async () => {
     for (const url of [
       "https://twitter.com/pressmanc/status/2006763209378922836",
@@ -132,7 +161,7 @@ describe("resolve — X/Twitter", () => {
       "https://www.x.com/pressmanc/status/2006763209378922836?s=20",
       "https://mobile.twitter.com/pressmanc/status/2006763209378922836",
     ]) {
-      const asset = await resolve(url, { fetch: stubFetch(() => syndication({ id_str: "2006763209378922836", mediaDetails: [videoMedia] })) });
+      const [asset] = await resolve(url, { fetch: stubFetch(() => syndication({ id_str: "2006763209378922836", mediaDetails: [videoMedia] })) });
       expect(asset.shortcode).toBe("2006763209378922836");
       expect(asset.platform).toBe("twitter");
     }
@@ -183,13 +212,13 @@ describe("resolve — X/Twitter", () => {
 
   test("accepts an animated gif, whose only mp4 carries bitrate 0", async () => {
     const gif = { type: "animated_gif", video_info: { variants: [{ bitrate: 0, content_type: "video/mp4", url: GIF_MP4 }] } };
-    const asset = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [gif] })) });
+    const [asset] = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [gif] })) });
     expect(asset.videoUrl).toBe(GIF_MP4);
   });
 
   test("accepts the sole mp4 when the variant omits bitrate", async () => {
     const video = { type: "video", video_info: { variants: [{ content_type: "video/mp4", url: GIF_MP4 }] } };
-    const asset = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [video] })) });
+    const [asset] = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [video] })) });
     expect(asset.videoUrl).toBe(GIF_MP4);
   });
 

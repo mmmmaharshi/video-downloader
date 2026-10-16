@@ -1,5 +1,7 @@
 // Module: MediaResolver — deep module per CONTEXT.md
-// Interface: resolve(sourceUrl, deps?) → VideoAsset
+// Interface: resolve(sourceUrl, deps?) → VideoAsset[]
+// A post can hold several videos (X lists them all in mediaDetails); Instagram's page
+// exposes at most one, so IG resolves to a one-element list.
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
 import { CHROME_UA, UA } from "./user-agent";
@@ -22,7 +24,7 @@ const INSTA_RE = /^https?:\/\/(?:www\.)?instagram\.com\/(p|reel|tv)\/([A-Za-z0-9
 const TWEET_RE = /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/(?:[^/?#]+\/)*status(?:es)?\/(\d+)(?:[/?#]|$)/i;
 const FETCH_TIMEOUT_MS = 15_000;
 
-export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): Promise<VideoAsset> {
+export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): Promise<VideoAsset[]> {
   const trimmed = sourceUrl.trim();
   if (!trimmed) throw new Error("Paste an Instagram or X link");
 
@@ -60,7 +62,7 @@ function assertOk(res: Response, upstream: string): void {
   if (!res.ok) throw new Error(`${upstream} returned ${res.status}. Try again later.`);
 }
 
-async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: typeof fetch): Promise<VideoAsset> {
+async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: typeof fetch): Promise<VideoAsset[]> {
   const res = await doFetch(sourceUrl, {
     headers: {
       "User-Agent": CHROME_UA,
@@ -107,7 +109,7 @@ async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: t
 
   if (!videoUrl) throw new Error("No video found. Only video/reel posts are downloadable, or IG changed its page.");
 
-  return { videoUrl, thumbnail: extractThumbnail(html), shortcode, sourceUrl, platform: "instagram" };
+  return [{ videoUrl, thumbnail: extractThumbnail(html), shortcode, sourceUrl, platform: "instagram" }];
 }
 
 type SyndicationMedia = {
@@ -121,7 +123,7 @@ type SyndicationTweet = {
   mediaDetails?: SyndicationMedia[];
 };
 
-async function resolveTwitter(sourceUrl: string, id: string, doFetch: typeof fetch): Promise<VideoAsset> {
+async function resolveTwitter(sourceUrl: string, id: string, doFetch: typeof fetch): Promise<VideoAsset[]> {
   // the token is the web client's derivation from the tweet id; an absent token returns an empty payload
   // shortcut: X does not validate this token today and the derivation divides an id above 2^53 as a float — derive it exactly if X ever starts rejecting tokens
   const token = ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
@@ -144,13 +146,18 @@ async function resolveTwitter(sourceUrl: string, id: string, doFetch: typeof fet
   if (!tweet.id_str) throw new Error("X returned an unexpected response. Try again later.");
 
   // an animated_gif is an mp4 on X too; it carries a single variant with bitrate 0
-  const video = tweet.mediaDetails?.find((m) => m.type === "video" || m.type === "animated_gif");
-  if (!video) throw new Error("No video found. Only video posts are downloadable.");
+  const videos = (tweet.mediaDetails ?? []).filter((m) => m.type === "video" || m.type === "animated_gif");
+  if (!videos.length) throw new Error("No video found. Only video posts are downloadable.");
 
-  const mp4 = (video.video_info?.variants ?? [])
-    .filter((v) => v.content_type === "video/mp4")
-    .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0];
-  if (!mp4) throw new Error("No downloadable video found for this post.");
+  // a tweet can hold several videos: keep the best mp4 of each, in post order
+  const assets: VideoAsset[] = [];
+  for (const video of videos) {
+    const mp4 = (video.video_info?.variants ?? [])
+      .filter((v) => v.content_type === "video/mp4")
+      .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0];
+    if (mp4) assets.push({ videoUrl: mp4.url, thumbnail: video.media_url_https, shortcode: id, sourceUrl, platform: "twitter" });
+  }
+  if (!assets.length) throw new Error("No downloadable video found for this post.");
 
-  return { videoUrl: mp4.url, thumbnail: video.media_url_https, shortcode: id, sourceUrl, platform: "twitter" };
+  return assets;
 }

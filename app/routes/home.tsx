@@ -5,7 +5,6 @@ import {
   Alert,
   Button,
   Input,
-  Label,
   ListBox,
   Modal,
   Select,
@@ -174,7 +173,6 @@ export default function Home() {
                       selectedKey={String(preview.active)}
                       onSelectionChange={(key) => select(Number(key))}
                     >
-                      <Label>Quality</Label>
                       <Select.Trigger>
                         <Select.Value />
                         <Select.Indicator />

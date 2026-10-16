@@ -2,6 +2,8 @@
 
 How the engineering skills should consume this repo's domain documentation when exploring the codebase.
 
+> In this repo the domain doc is `CONTEXT.md` at the root — glossary and seams live there, and there is no `GLOSSARY.md` (see `docs/adr/0002-context-md-is-the-domain-doc.md`).
+
 ## Before exploring, read these
 
 - **`GLOSSARY.md`** at the repo root, or

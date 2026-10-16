@@ -81,7 +81,7 @@ describe("resolve", () => {
   });
 
   test("rejects an empty url", async () => {
-    await expect(resolve("   ", { fetch: stubFetch(() => page("")) })).rejects.toThrow("Paste an Instagram or X link");
+    await expect(resolve("   ", { fetch: stubFetch(() => page("")) })).rejects.toThrow("Paste an Instagram, Facebook, or X link");
   });
 
   test("rejects a non-instagram url", async () => {
@@ -340,5 +340,99 @@ describe("resolve — YouTube", () => {
     ]) {
       await expect(resolve(url, { youtube: tubeOk() })).rejects.toThrow("Invalid URL");
     }
+  });
+});
+
+// Facebook exposes the file as browser_native_hd/sd_url on the full page
+// variant; og:video and hd_src/sd_src are fallbacks.
+const FB_REEL = "https://www.facebook.com/reel/1234567890123456/";
+const FB_HD = "https://video.fbcdn.net/v/hd.mp4?e=1";
+const FB_SD = "https://video.fbcdn.net/v/sd.mp4?e=1";
+
+describe("resolve — Facebook", () => {
+  test("prefers browser_native_hd_url, then sd, over og:video", async () => {
+    const [asset] = await resolve(FB_REEL, {
+      fetch: stubFetch(() =>
+        page(`<meta property="og:video" content="https://video.fbcdn.net/v/og.mp4">{"browser_native_hd_url":"${FB_HD}","browser_native_sd_url":"${FB_SD}"}`),
+      ),
+    });
+    expect(asset.videoUrl).toBe(FB_HD);
+  });
+
+  test("falls back to browser_native_sd_url without hd", async () => {
+    const [asset] = await resolve(FB_REEL, {
+      fetch: stubFetch(() => page(`{"browser_native_sd_url":"${FB_SD}"}`)),
+    });
+    expect(asset.videoUrl).toBe(FB_SD);
+  });
+
+  test("falls back to hd_src, preferring it over sd_src", async () => {
+    const [asset] = await resolve(FB_REEL, {
+      fetch: stubFetch(() => page(`"hd_src":"${FB_HD}","sd_src":"${FB_SD}"`)),
+    });
+    expect(asset.videoUrl).toBe(FB_HD);
+  });
+
+  test("reads thumbnail and asset identity from the reel page", async () => {
+    const [asset] = await resolve(FB_REEL, {
+      fetch: stubFetch(() =>
+        page(`{"browser_native_hd_url":"${FB_HD}"}<meta property="og:image" content="https://img.example/fb.jpg">`),
+      ),
+    });
+    expect(asset).toEqual({
+      videoUrl: FB_HD,
+      thumbnail: "https://img.example/fb.jpg",
+      shortcode: "1234567890123456",
+      sourceUrl: FB_REEL,
+      platform: "facebook",
+    });
+  });
+
+  test("resolves every supported Facebook url shape", async () => {
+    for (const [url, shortcode] of [
+      ["https://www.facebook.com/watch/?v=1234567890123456", "1234567890123456"],
+      ["https://www.facebook.com/somepage/videos/1234567890123456/", "1234567890123456"],
+      ["https://m.facebook.com/reel/1234567890123456/", "1234567890123456"],
+      ["https://fb.watch/AbCdEfGhIjK/", "AbCdEfGhIjK"],
+    ] as const) {
+      const [asset] = await resolve(url, {
+        fetch: stubFetch(() => page(`{"browser_native_hd_url":"${FB_HD}"}`)),
+      });
+      expect(asset.shortcode).toBe(shortcode);
+      expect(asset.platform).toBe("facebook");
+    }
+  });
+
+  test("ignores login links in page chrome when a video url is present", async () => {
+    const [asset] = await resolve(FB_REEL, {
+      fetch: stubFetch(() => page(`<a href="/login.php">Log in</a>{"browser_native_hd_url":"${FB_HD}"}`)),
+    });
+    expect(asset.videoUrl).toBe(FB_HD);
+  });
+
+  test("rejects a login redirect", async () => {
+    const redirected = {
+      status: 200,
+      ok: true,
+      redirected: true,
+      url: "https://www.facebook.com/login.php",
+      text: async () => "",
+    } as unknown as Response;
+    await expect(resolve(FB_REEL, { fetch: stubFetch(() => redirected) })).rejects.toThrow("Private or login-required post");
+  });
+
+  test("rejects a page with no video", async () => {
+    const noVideo = stubFetch(() => page("<p>just a photo</p>"));
+    await expect(resolve(FB_REEL, { fetch: noVideo })).rejects.toThrow("No downloadable video found");
+  });
+
+  test("reports a missing post", async () => {
+    const notFound = stubFetch(() => new Response("gone", { status: 404 }));
+    await expect(resolve(FB_REEL, { fetch: notFound })).rejects.toThrow("Post not found");
+  });
+
+  test("reports a non-ok upstream status", async () => {
+    const down = stubFetch(() => new Response("boom", { status: 503 }));
+    await expect(resolve(FB_REEL, { fetch: down })).rejects.toThrow("Facebook returned 503");
   });
 });

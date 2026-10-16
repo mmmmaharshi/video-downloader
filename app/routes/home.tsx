@@ -21,7 +21,7 @@ import { rememberResolved } from "../lib/recent-resolves";
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "Video Downloader — Save Online Videos" },
-    { name: "description", content: "Paste a public Instagram, X, or YouTube URL to preview and download. No login, no storage." },
+    { name: "description", content: "Paste a public Instagram, Facebook, X, or YouTube URL to download. No login, no storage." },
   ];
 }
 
@@ -84,7 +84,7 @@ export default function Home() {
 
           <fetcher.Form method="post" className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <TextField
-              aria-label="Instagram, X, or YouTube video URL"
+              aria-label="Instagram, Facebook, X, or YouTube video URL"
               defaultValue={data?.inputUrl ?? ""}
               fullWidth
               isRequired
@@ -93,7 +93,7 @@ export default function Home() {
               // failure surfaces as a toast instead of a native bubble
               validationBehavior="aria"
             >
-              <Input autoComplete="off" placeholder="Paste an Instagram, X, or YouTube video URL" />
+              <Input autoComplete="off" placeholder="Paste an Instagram, Facebook, X, or YouTube video URL" />
             </TextField>
             <Button isDisabled={isLoading} isPending={isLoading} type="submit" variant="primary">
               {({ isPending }) => (
@@ -107,8 +107,8 @@ export default function Home() {
         </div>
 
         <Typography color="muted">
-          Paste any video link and hit Fetch to download it from Instagram, X (Twitter), or
-          YouTube.
+          Paste any video link and hit Fetch to download it from Instagram, Facebook, X
+          (Twitter), or YouTube.
         </Typography>
       </main>
 

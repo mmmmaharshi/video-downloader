@@ -63,6 +63,28 @@ describe("proxy", () => {
     expect(res.headers.get("content-disposition")).toBe('attachment; filename="a_b_c_d.mp4"');
   });
 
+  test("passes the upstream size through for progress display", async () => {
+    const sized = stubFetch(
+      () => new Response("video-bytes", { status: 200, headers: { "content-type": "video/mp4", "content-length": "11" } }),
+    );
+    const res = await proxy(CDN, "ABC123", { fetch: sized });
+    expect(res.headers.get("content-length")).toBe("11");
+  });
+
+  test("leaves content-length absent when the upstream sends none", async () => {
+    const res = await proxy(CDN, "ABC123", { fetch: ok() });
+    expect(res.headers.get("content-length")).toBeNull();
+  });
+
+  test("aborts a stalled upstream past the total bound", async () => {
+    const hanging = ((_input: unknown, init?: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")));
+      })) as unknown as typeof fetch;
+    const res = await thrown(proxy(CDN, "ABC123", { fetch: hanging, maxMs: 50 }));
+    expect(res.status).toBe(502);
+  });
+
   test("falls back to video/mp4 when upstream sends no content type", async () => {
     const res = await proxy(CDN, "ABC123", { fetch: stubFetch(() => new Response("x", { status: 200 })) });
     expect(res.headers.get("content-type")).toBe("video/mp4");

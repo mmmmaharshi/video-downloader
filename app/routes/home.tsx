@@ -2,7 +2,6 @@ import type { Route } from "./+types/home";
 import * as React from "react";
 import { useFetcher } from "react-router";
 import {
-  Alert,
   Button,
   Input,
   ListBox,
@@ -10,7 +9,9 @@ import {
   Select,
   Spinner,
   TextField,
+  Toast,
   Typography,
+  toast,
 } from "@heroui/react";
 import { resolve, type VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview, type PreviewState } from "../lib/preview";
@@ -49,7 +50,6 @@ export default function Home() {
   const fetcher = useFetcher<ActionData>();
   const data = fetcher.data;
   const isLoading = fetcher.state !== "idle";
-  const error = data && "error" in data ? data.error : undefined;
 
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
 
@@ -62,6 +62,7 @@ export default function Home() {
     if (!data) return;
     if ("error" in data) {
       setPreview((p) => nextPreview(p, { type: "failed" }));
+      toast.danger("Could not fetch", { description: data.error });
     } else {
       setPreview((p) => nextPreview(p, { type: "resolved", assets: data.assets }));
     }
@@ -100,22 +101,13 @@ export default function Home() {
           </fetcher.Form>
         </div>
 
-        {error ? (
-          <Alert status="danger">
-            <Alert.Indicator />
-            <Alert.Content>
-              <Alert.Title>Could not fetch</Alert.Title>
-              <Alert.Description>{error}</Alert.Description>
-            </Alert.Content>
-          </Alert>
-        ) : null}
-
         <Typography color="muted">
           Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect
           Instagram&apos;s, X&apos;s, and YouTube&apos;s terms.
         </Typography>
       </main>
 
+      <Toast.Provider />
       <Modal
         isOpen={preview.open && current !== undefined}
         onOpenChange={(open) => {

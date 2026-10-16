@@ -105,8 +105,8 @@ export default function Home() {
         </div>
 
         <Typography color="muted">
-          Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect
-          Instagram&apos;s, X&apos;s, and YouTube&apos;s terms.
+          Paste any video link below and hit Fetch. Supported: Instagram reels and posts &middot; X
+          videos &middot; YouTube videos and Shorts.
         </Typography>
       </main>
 

@@ -11,6 +11,10 @@
 - Layout with standard Tailwind utilities only. No custom CSS beyond the two imports and the font token.
 - Before adding custom styles or component logic, search the HeroUI docs first (MCP `heroui-react` server in `opencode.json`, or `node scripts/*` in the `heroui-react` skill). Only hand-roll what the docs don't cover.
 
+## Workflow
+
+- Don't run the dev server. Verify with `bun run typecheck`, `bun run build`, and `bun test` instead.
+
 ## Agent skills
 
 ### Issue tracker

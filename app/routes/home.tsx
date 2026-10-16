@@ -170,6 +170,7 @@ export default function Home() {
                   <>
                     <Select
                       aria-label="Video quality"
+                      variant="secondary"
                       selectedKey={String(preview.active)}
                       onSelectionChange={(key) => select(Number(key))}
                     >

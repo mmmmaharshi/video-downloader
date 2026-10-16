@@ -10,17 +10,19 @@ const UPSTREAM_TIMEOUT_MS = 15_000;
 // a 500MB file at modest speed finishes inside this; past it the upstream is stalled or abusive
 const UPSTREAM_MAX_MS = 10 * 60_000;
 
-export type TransferDeps = {
+export interface TransferDeps {
   fetch?: typeof fetch;
   maxMs?: number;
-};
+}
 
 export async function proxy(
   videoUrl: string | null,
   stem: string,
-  deps: TransferDeps = {},
+  deps: TransferDeps = {}
 ): Promise<Response> {
-  if (!videoUrl) throw new Response("Missing url", { status: 400 });
+  if (!videoUrl) {
+    throw new Response("Missing url", { status: 400 });
+  }
 
   const doFetch = deps.fetch ?? fetch;
   const maxMs = deps.maxMs ?? UPSTREAM_MAX_MS;
@@ -41,18 +43,22 @@ export async function proxy(
     clearTimeout(timer);
   }
 
-  if (!upstream.ok || !upstream.body) throw new Response(`Upstream ${upstream.status}`, { status: 502 });
+  if (!upstream.ok || !upstream.body) {
+    throw new Response(`Upstream ${upstream.status}`, { status: 502 });
+  }
 
   const contentType = upstream.headers.get("content-type") ?? "video/mp4";
   // the stem arrives from the query string — keep it out of the header grammar
-  const safeName = stem.replace(/[^\w.-]+/g, "_");
+  const safeName = stem.replaceAll(/[^\w.-]+/gu, "_");
   const headers: Record<string, string> = {
-    "Content-Type": contentType,
-    "Content-Disposition": `attachment; filename="${safeName}.mp4"`,
     "Cache-Control": "private, max-age=60",
+    "Content-Disposition": `attachment; filename="${safeName}.mp4"`,
+    "Content-Type": contentType,
   };
   // lets the browser show progress; an absent upstream length stays absent
   const length = upstream.headers.get("content-length");
-  if (length) headers["Content-Length"] = length;
+  if (length) {
+    headers["Content-Length"] = length;
+  }
   return new Response(upstream.body, { headers });
 }

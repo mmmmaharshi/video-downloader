@@ -1,6 +1,3 @@
-import type { Route } from "./+types/home";
-import * as React from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
   Input,
@@ -13,21 +10,30 @@ import {
   Typography,
   toast,
 } from "@heroui/react";
-import { closedPreview, nextPreview, type PreviewState } from "../lib/preview";
-import { toDownloadHref } from "../lib/download-link";
-import { isFresh, resolveKey, type ResolveResult } from "../lib/resolve-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import * as React from "react";
 
-export function meta({}: Route.MetaArgs) {
+import { toDownloadHref } from "../lib/download-link";
+import { closedPreview, nextPreview } from "../lib/preview";
+import type { PreviewState } from "../lib/preview";
+import { isFresh, resolveKey } from "../lib/resolve-query";
+import type { ResolveResult } from "../lib/resolve-query";
+
+export function meta() {
   return [
     { title: "Video Downloader — Save Online Videos" },
-    { name: "description", content: "Paste any public video link to download. No login, no storage." },
+    {
+      content: "Paste any public video link to download. No login, no storage.",
+      name: "description",
+    },
   ];
 }
 
 // The media never overflows the dialog: 70vh keeps landscape videos width-bound
 // on tall screens, while 100dvh minus the header/footer/dialog chrome (~300px)
 // shrinks portrait videos into the visible body instead of scrolling it.
-const MEDIA_CLASS = "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
+const MEDIA_CLASS =
+  "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
 
 export default function Home() {
   const queryClient = useQueryClient();
@@ -36,19 +42,25 @@ export default function Home() {
     mutationFn: async (url: string): Promise<ResolveResult> => {
       const form = new FormData();
       form.set("url", url);
-      const res = await fetch("/api/resolve", { method: "POST", body: form });
-      return (await res.json()) as ResolveResult;
+      const res = await fetch("/api/resolve", { body: form, method: "POST" });
+      const result = (await res.json()) as ResolveResult;
+      return result;
+    },
+    onError: (_e, url) => {
+      setData({
+        error: "Network error. Check your connection and try again.",
+        inputUrl: url,
+      });
     },
     onSuccess: (result, url) => {
       // errors stay uncached so a transient failure never blocks retries;
       // only downloadable results are worth re-serving
-      if ("assets" in result) queryClient.setQueryData(resolveKey(url), result);
+      if ("assets" in result) {
+        queryClient.setQueryData(resolveKey(url), result);
+      }
       // a fresh object per submit so the effect below refires even for
       // repeat submits of the same link
       setData({ ...result });
-    },
-    onError: (_e, url) => {
-      setData({ error: "Network error. Check your connection and try again.", inputUrl: url });
     },
   });
   const isLoading = mutation.isPending;
@@ -58,7 +70,9 @@ export default function Home() {
   // The pending guard stops double submits (Enter plus click, double click)
   // from firing duplicate mutations and toasts.
   const submit = (url: string) => {
-    if (mutation.isPending) return;
+    if (mutation.isPending) {
+      return;
+    }
     const key = resolveKey(url);
     const state = queryClient.getQueryState(key);
     const cached = state?.data as ResolveResult | undefined;
@@ -72,30 +86,36 @@ export default function Home() {
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
 
   // The preview renders the assets that opened it, not whatever the latest result holds.
-  const shown = preview.shown;
+  const { shown } = preview;
   const current = shown[preview.active];
   const isYouTube = current?.platform === "youtube";
 
   React.useEffect(() => {
-    if (!data) return;
+    if (!data) {
+      return;
+    }
     if ("error" in data) {
       setPreview((p) => nextPreview(p, { type: "failed" }));
       toast.danger("Could not fetch", { description: data.error });
     } else {
-      setPreview((p) => nextPreview(p, { type: "resolved", assets: data.assets }));
+      setPreview((p) =>
+        nextPreview(p, { assets: data.assets, type: "resolved" })
+      );
     }
     // depends on the response, not the url inside it: re-fetching the same link resolves to an
     // equal url and must still reopen the preview
   }, [data]);
 
-  const dismiss = () => setPreview((p) => nextPreview(p, { type: "dismissed" }));
-  const select = (index: number) => setPreview((p) => nextPreview(p, { type: "selected", index }));
+  const dismiss = () =>
+    setPreview((p) => nextPreview(p, { type: "dismissed" }));
+  const select = (index: number) =>
+    setPreview((p) => nextPreview(p, { index, type: "selected" }));
   const download = (index: number) => {
     window.location.href = toDownloadHref(shown, index);
   };
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background text-foreground">
+    <div className="bg-background text-foreground flex min-h-dvh flex-col">
       <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center gap-8 px-6 py-10 md:px-10 md:py-20">
         <div className="flex flex-col gap-6">
           <Typography type="h1">Video downloader</Typography>
@@ -104,7 +124,9 @@ export default function Home() {
             className="flex flex-col gap-2 sm:flex-row sm:items-end"
             onSubmit={(e) => {
               e.preventDefault();
-              submit(new FormData(e.currentTarget).get("url")?.toString() ?? "");
+              submit(
+                new FormData(e.currentTarget).get("url")?.toString() ?? ""
+              );
             }}
           >
             <TextField
@@ -119,7 +141,12 @@ export default function Home() {
             >
               <Input autoComplete="off" placeholder="Paste any video link" />
             </TextField>
-            <Button isDisabled={isLoading} isPending={isLoading} type="submit" variant="primary">
+            <Button
+              isDisabled={isLoading}
+              isPending={isLoading}
+              type="submit"
+              variant="primary"
+            >
               {({ isPending }) => (
                 <>
                   {isPending ? <Spinner color="current" size="sm" /> : null}
@@ -131,8 +158,8 @@ export default function Home() {
         </div>
 
         <Typography color="muted">
-          Paste any video link and hit Fetch to download it from Instagram, Facebook, X
-          (Twitter), or YouTube.
+          Paste any video link and hit Fetch to download it from Instagram,
+          Facebook, X (Twitter), or YouTube.
         </Typography>
       </main>
 
@@ -140,7 +167,9 @@ export default function Home() {
       <Modal
         isOpen={preview.open && current !== undefined}
         onOpenChange={(open) => {
-          if (!open) dismiss();
+          if (!open) {
+            dismiss();
+          }
         }}
       >
         <Modal.Backdrop>
@@ -157,13 +186,27 @@ export default function Home() {
               </Modal.Header>
               <Modal.Body>
                 {/* YouTube previews stay a thumbnail: its mp4s are huge and gated, the file is what downloads */}
-                {isYouTube && current ? (
-                  <img src={current.thumbnail} alt="Video thumbnail" className={MEDIA_CLASS} />
-                ) : current ? (
-                  <video src={current.videoUrl} controls poster={current.thumbnail} className={MEDIA_CLASS} />
-                ) : null}
+                {isYouTube && current && (
+                  <img
+                    src={current.thumbnail}
+                    alt="Video thumbnail"
+                    className={MEDIA_CLASS}
+                  />
+                )}
+                {!isYouTube && current && (
+                  <video
+                    src={current.videoUrl}
+                    controls
+                    poster={current.thumbnail}
+                    className={MEDIA_CLASS}
+                  />
+                )}
                 {shown.length > 1 && !isYouTube ? (
-                  <div role="group" aria-label="Videos in this post" className="flex items-center gap-2">
+                  <div
+                    role="group"
+                    aria-label="Videos in this post"
+                    className="flex items-center gap-2"
+                  >
                     {shown.map((a, i) => (
                       <Button
                         key={i}
@@ -183,7 +226,7 @@ export default function Home() {
                 <Button slot="close" variant="tertiary">
                   Close
                 </Button>
-                {isYouTube ? (
+                {isYouTube && (
                   <>
                     <Select
                       aria-label="Video quality"
@@ -198,7 +241,11 @@ export default function Home() {
                       <Select.Popover>
                         <ListBox>
                           {shown.map((a, i) => (
-                            <ListBox.Item key={i} id={String(i)} textValue={a.label ?? `Video ${i + 1}`}>
+                            <ListBox.Item
+                              key={i}
+                              id={String(i)}
+                              textValue={a.label ?? `Video ${i + 1}`}
+                            >
                               {a.label ?? `Video ${i + 1}`}
                               <ListBox.ItemIndicator />
                             </ListBox.Item>
@@ -206,18 +253,27 @@ export default function Home() {
                         </ListBox>
                       </Select.Popover>
                     </Select>
-                    <Button variant="primary" onPress={() => download(preview.active)}>
+                    <Button
+                      variant="primary"
+                      onPress={() => download(preview.active)}
+                    >
                       Download .mp4
                     </Button>
                   </>
-                ) : shown.length === 1 ? (
+                )}
+                {!isYouTube && shown.length === 1 && (
                   <Button variant="primary" onPress={() => download(0)}>
                     Download .mp4
                   </Button>
-                ) : (
+                )}
+                {!isYouTube && shown.length > 1 && (
                   <div className="flex flex-col gap-2">
                     {shown.map((a, i) => (
-                      <Button key={i} variant="primary" onPress={() => download(i)}>
+                      <Button
+                        key={i}
+                        variant="primary"
+                        onPress={() => download(i)}
+                      >
                         Download {a.label ?? `video ${i + 1}`}
                       </Button>
                     ))}

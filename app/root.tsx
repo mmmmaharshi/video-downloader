@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import {
   isRouteErrorResponse,
@@ -7,15 +8,15 @@ import {
   Scripts,
   ScrollRestoration,
 } from "react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import type { Route } from "./+types/root";
+
 import "./app.css";
 import "@fontsource-variable/geist-pixel/elsh.css";
 
 export const links: Route.LinksFunction = () => [
-  { rel: "icon", href: "/favicon.svg?v=2", type: "image/svg+xml" },
-  { rel: "icon", href: "/favicon.ico?v=2", type: "image/x-icon" },
+  { href: "/favicon.svg?v=2", rel: "icon", type: "image/svg+xml" },
+  { href: "/favicon.ico?v=2", rel: "icon", type: "image/x-icon" },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -41,8 +42,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
   // per-component instance: a module singleton would share cached
   // resolutions across server requests
-  const [queryClient] = React.useState(
+  const queryClient = React.useMemo(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+    []
   );
   return (
     <QueryClientProvider client={queryClient}>
@@ -63,16 +65,17 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         ? "The requested page could not be found."
         : error.statusText || details;
   } else if (import.meta.env.DEV && error && error instanceof Error) {
-    details = error.message;
-    stack = error.stack;
+    const { message: errorMessage, stack: errorStack } = error;
+    details = errorMessage;
+    stack = errorStack;
   }
 
   return (
-    <main className="pt-16 p-4 container mx-auto">
+    <main className="container mx-auto p-4 pt-16">
       <h1>{message}</h1>
       <p>{details}</p>
       {stack && (
-        <pre className="w-full p-4 overflow-x-auto">
+        <pre className="w-full overflow-x-auto p-4">
           <code>{stack}</code>
         </pre>
       )}

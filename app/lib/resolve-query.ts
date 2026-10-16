@@ -16,6 +16,9 @@ export function resolveKey(url: string): readonly ["resolve", string] {
   return ["resolve", url.trim()] as const;
 }
 
-export function isFresh(dataUpdatedAt: number, now: number = Date.now()): boolean {
+export function isFresh(
+  dataUpdatedAt: number,
+  now: number = Date.now()
+): boolean {
   return now - dataUpdatedAt < FRESH_MS;
 }

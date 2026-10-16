@@ -12,7 +12,11 @@ const MAX_ENTRIES = 200;
 const seen = new Map<string, number>();
 
 function prune(now: number): void {
-  for (const [url, at] of seen) if (now - at >= FRESH_MS) seen.delete(url);
+  for (const [url, at] of seen) {
+    if (now - at >= FRESH_MS) {
+      seen.delete(url);
+    }
+  }
 }
 
 export function rememberResolved(url: string, now: number = Date.now()): void {
@@ -20,13 +24,20 @@ export function rememberResolved(url: string, now: number = Date.now()): void {
   seen.set(url, now);
   // bound memory even if distinct urls flood in faster than they expire
   for (const oldest of seen.keys()) {
-    if (seen.size <= MAX_ENTRIES) break;
+    if (seen.size <= MAX_ENTRIES) {
+      break;
+    }
     seen.delete(oldest);
   }
 }
 
-export function wasResolved(url: string | null, now: number = Date.now()): boolean {
-  if (!url) return false;
+export function wasResolved(
+  url: string | null,
+  now: number = Date.now()
+): boolean {
+  if (!url) {
+    return false;
+  }
   const at = seen.get(url);
   return at !== undefined && now - at < FRESH_MS;
 }

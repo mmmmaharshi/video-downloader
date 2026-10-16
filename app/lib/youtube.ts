@@ -8,26 +8,45 @@
 
 import { Innertube } from "youtubei.js";
 
-export type TubeAsset = { videoUrl: string; height: number; title?: string };
-export type YouTubeDeps = {
-  getInfo?: (id: string, client: ClientName) => Promise<TubeInfo>;
+export interface TubeAsset {
+  videoUrl: string;
+  height: number;
+  title?: string;
+}
+export interface YouTubeDeps {
+  getInfo?: (id: string, client: ClientName) => Promise<TubeInfo> | TubeInfo;
   fetch?: typeof fetch;
-};
+}
 
 type ClientName = "IOS" | "ANDROID";
 const CLIENTS: ClientName[] = ["IOS", "ANDROID"];
 
-type TubeFormat = { url?: string; mime_type: string; width?: number; height?: number };
-export type TubeInfo = { playability: string; reason?: string; title?: string; formats: TubeFormat[] };
+interface TubeFormat {
+  url?: string;
+  mime_type: string;
+  width?: number;
+  height?: number;
+}
+export interface TubeInfo {
+  playability: string;
+  reason?: string;
+  title?: string;
+  formats: TubeFormat[];
+}
 
 // one anonymous session per process; a failed creation retries on the next call
 let session: Promise<Innertube> | undefined;
 async function getSession(): Promise<Innertube> {
-  if (!session)
-    session = Innertube.create().catch((e) => {
+  if (!session) {
+    // assigned before awaiting so concurrent callers share one creation
+    session = Innertube.create();
+    try {
+      await session;
+    } catch (error) {
       session = undefined;
-      throw e;
-    });
+      throw error;
+    }
+  }
   return session;
 }
 
@@ -36,34 +55,45 @@ async function liveGetInfo(id: string, client: ClientName): Promise<TubeInfo> {
   const info = await tube.getBasicInfo(id, { client });
   const sd = info.streaming_data;
   return {
+    formats: [...(sd?.formats ?? []), ...(sd?.adaptive_formats ?? [])].map(
+      (f) => ({
+        height: f.height,
+        mime_type: f.mime_type,
+        url: f.url,
+        width: f.width,
+      })
+    ),
     playability: info.playability_status?.status ?? "UNKNOWN",
     reason: info.playability_status?.reason ?? undefined,
     title: info.basic_info?.title ?? undefined,
-    formats: [...(sd?.formats ?? []), ...(sd?.adaptive_formats ?? [])].map((f) => ({
-      url: f.url,
-      mime_type: f.mime_type,
-      width: f.width,
-      height: f.height,
-    })),
   };
 }
 
 async function headOk(head: typeof fetch, url: string): Promise<boolean> {
   try {
-    return (await head(url, { method: "HEAD" })).ok;
+    const res = await head(url, { method: "HEAD" });
+    return res.ok;
   } catch {
     return false;
   }
 }
 
 function bestMp4s(info: TubeInfo): TubeAsset[] {
+  // sort runs on the mapped copy, so nothing shared is mutated (toSorted
+  // needs ES2023 lib, which this project does not target)
   return info.formats
-    .filter((f): f is TubeFormat & { url: string } => f.mime_type.startsWith("video/mp4") && f.url !== undefined)
-    .map((f) => ({ videoUrl: f.url, height: f.height ?? 0 }))
+    .filter(
+      (f): f is TubeFormat & { url: string } =>
+        f.mime_type.startsWith("video/mp4") && f.url !== undefined
+    )
+    .map((f) => ({ height: f.height ?? 0, videoUrl: f.url }))
     .sort((a, b) => b.height - a.height);
 }
 
-export async function getYouTubeFormats(id: string, deps: YouTubeDeps = {}): Promise<TubeAsset[]> {
+export async function getYouTubeFormats(
+  id: string,
+  deps: YouTubeDeps = {}
+): Promise<TubeAsset[]> {
   const getInfo = deps.getInfo ?? liveGetInfo;
   const head = deps.fetch ?? fetch;
   let answered = false;
@@ -73,8 +103,8 @@ export async function getYouTubeFormats(id: string, deps: YouTubeDeps = {}): Pro
     let info: TubeInfo;
     try {
       info = await getInfo(id, client);
-    } catch (e) {
-      failure ??= e;
+    } catch (error) {
+      failure ??= error;
       continue;
     }
     answered = true;
@@ -83,13 +113,22 @@ export async function getYouTubeFormats(id: string, deps: YouTubeDeps = {}): Pro
       continue;
     }
     const mp4s = bestMp4s(info);
-    if (!mp4s.length) continue;
-    if (await headOk(head, mp4s[0].videoUrl)) return mp4s.map((m) => ({ ...m, title: info.title }));
+    if (!mp4s.length) {
+      continue;
+    }
+    if (await headOk(head, mp4s[0].videoUrl)) {
+      return mp4s.map((m) => ({ ...m, title: info.title }));
+    }
   }
-  if (!answered) throw new Error("YouTube is unreachable right now. Try again later.", { cause: failure });
-  if (reason)
+  if (!answered) {
+    throw new Error("YouTube is unreachable right now. Try again later.", {
+      cause: failure,
+    });
+  }
+  if (reason) {
     throw new Error(
-      `This video is unavailable${`: ${reason}`}. Private or age-restricted videos need a login, which is not supported.`,
+      `This video is unavailable${`: ${reason}`}. Private or age-restricted videos need a login, which is not supported.`
     );
+  }
   return [];
 }

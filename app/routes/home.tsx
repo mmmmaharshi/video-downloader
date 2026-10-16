@@ -89,6 +89,9 @@ export default function Home() {
               fullWidth
               isRequired
               name="url"
+              // aria validation lets empty submits reach the action, so the
+              // failure surfaces as a toast instead of a native bubble
+              validationBehavior="aria"
             >
               <Input autoComplete="off" placeholder="Paste an Instagram, X, or YouTube video URL" />
             </TextField>

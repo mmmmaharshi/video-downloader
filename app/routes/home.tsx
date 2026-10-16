@@ -47,6 +47,8 @@ export default function Home() {
   const error = data && "error" in data ? data.error : undefined;
 
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
+  const dialogRef = React.useRef<HTMLDivElement>(null);
+  const triggerRef = React.useRef<HTMLElement | null>(null);
 
   // The preview renders the assets that opened it, not whatever the fetcher holds now.
   const shown = preview.shown;
@@ -64,13 +66,36 @@ export default function Home() {
     // equal url and must still reopen the preview
   }, [data]);
 
+  // Focus contract of the dialog pattern: move focus in on open, trap Tab inside,
+  // restore the trigger on close. Escape still dismisses.
   React.useEffect(() => {
     if (!preview.open) return;
+    triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPreview((p) => nextPreview(p, { type: "dismissed" }));
+      if (e.key === "Escape") {
+        setPreview((p) => nextPreview(p, { type: "dismissed" }));
+        return;
+      }
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const items = [...dialogRef.current.querySelectorAll<HTMLElement>("button, select, video[controls]")];
+      const first = items[0];
+      const last = items[items.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || !dialogRef.current.contains(active))) {
+        last.focus();
+        e.preventDefault();
+      } else if (!e.shiftKey && active === last) {
+        first.focus();
+        e.preventDefault();
+      }
     };
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      triggerRef.current?.focus();
+    };
   }, [preview.open]);
 
   // Prevent body scroll when modal is open
@@ -144,6 +169,8 @@ export default function Home() {
           role="dialog"
           aria-modal="true"
           aria-label="Video preview"
+          ref={dialogRef}
+          tabIndex={-1}
           className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[rgb(0_0_0/_56%)] p-6 transition-[background-color] duration-[200ms] ease-out"
         >
           <div className="w-full max-w-lg border border-[color:var(--border)] bg-[color:var(--sc-surface)] transition-[transform,opacity] duration-[200ms] ease-out">

@@ -1,6 +1,18 @@
 import type { Route } from "./+types/home";
 import * as React from "react";
 import { useFetcher } from "react-router";
+import {
+  Alert,
+  Button,
+  Input,
+  Label,
+  ListBox,
+  Modal,
+  Select,
+  Spinner,
+  TextField,
+  Typography,
+} from "@heroui/react";
 import { resolve, type VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview, type PreviewState } from "../lib/preview";
 import { toDownloadHref } from "../lib/download-link";
@@ -30,12 +42,6 @@ type ActionData =
   | { assets: VideoAsset[]; inputUrl: string; error?: never }
   | { error: string; inputUrl: string; assets?: never };
 
-// One owner for the modal's button look: each use composes a style with its padding.
-const GHOST_BUTTON =
-  "rounded-md border border-white/[12%] bg-[#fff]/[8%] text-[15px] font-medium leading-[1.45] text-white transition-all duration-[150ms] ease-out hover:bg-[#fff]/[16%] active:scale-[0.98]";
-const SOLID_BUTTON =
-  "rounded-md bg-[#fff] text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[#f0f0f0] active:scale-[0.98]";
-
 // The media box never grows past the viewport: landscape videos stay width-bound
 // while portrait ones clamp and letterbox instead of pushing the modal off-screen.
 const MEDIA_CLASS = "block w-full max-h-[70vh] object-contain";
@@ -47,8 +53,6 @@ export default function Home() {
   const error = data && "error" in data ? data.error : undefined;
 
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
-  const dialogRef = React.useRef<HTMLDivElement>(null);
-  const triggerRef = React.useRef<HTMLElement | null>(null);
 
   // The preview renders the assets that opened it, not whatever the fetcher holds now.
   const shown = preview.shown;
@@ -66,195 +70,150 @@ export default function Home() {
     // equal url and must still reopen the preview
   }, [data]);
 
-  // Focus contract of the dialog pattern: move focus in on open, trap Tab inside,
-  // restore the trigger on close. Escape still dismisses.
-  React.useEffect(() => {
-    if (!preview.open) return;
-    triggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialogRef.current?.focus();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setPreview((p) => nextPreview(p, { type: "dismissed" }));
-        return;
-      }
-      if (e.key !== "Tab" || !dialogRef.current) return;
-      const items = [...dialogRef.current.querySelectorAll<HTMLElement>("button, select, video[controls]")];
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (!first || !last) return;
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || !dialogRef.current.contains(active))) {
-        last.focus();
-        e.preventDefault();
-      } else if (!e.shiftKey && active === last) {
-        first.focus();
-        e.preventDefault();
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      triggerRef.current?.focus();
-    };
-  }, [preview.open]);
-
-  // Prevent body scroll when modal is open
-  React.useEffect(() => {
-    document.body.style.overflow = preview.open ? "hidden" : "";
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [preview.open]);
+  const dismiss = () => setPreview((p) => nextPreview(p, { type: "dismissed" }));
+  const select = (index: number) => setPreview((p) => nextPreview(p, { type: "selected", index }));
+  const download = (index: number) => {
+    window.location.href = toDownloadHref(shown, index);
+  };
 
   return (
-    <div className="flex min-h-dvh flex-col bg-[color:var(--sc-background)] text-[color:var(--foreground)]">
+    <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center gap-8 px-6 py-10 md:px-8 md:py-20">
         <div className="flex flex-col gap-6">
-          <h1 className="text-[28px] font-medium leading-[1.1] tracking-tight md:text-[32px]" style={{ letterSpacing: "-0.02em" }}>
-            Video downloader
-          </h1>
+          <Typography type="h1">Video downloader</Typography>
 
-          <fetcher.Form method="post" className="flex flex-col gap-3 sm:flex-row">
-            <input
-              name="url"
+          <fetcher.Form method="post" className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <TextField
               aria-label="Instagram, X, or YouTube video URL"
-              placeholder="Paste an Instagram, X, or YouTube video URL"
               defaultValue={data?.inputUrl ?? ""}
-              autoComplete="off"
-              required
-              className="h-[44px] w-full rounded-lg border-[2px] border-white/20 bg-white/[10%] px-4 py-3 text-base leading-relaxed text-white placeholder:text-white/40 outline-none transition-all duration-[150ms] ease-out focus:border-white/50 focus:ring-2 focus:ring-white/20 sm:flex-1 sm:rounded-md sm:border sm:border-[color:var(--border)] sm:bg-[color:var(--sc-surface)] sm:text-[color:var(--foreground)] sm:placeholder:[color:var(--sc-tertiary)] sm:hover:bg-[color:rgba(255,255,255,0.06)] sm:min-w-[280px]"
-            />
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="flex h-[44px] items-center justify-center rounded-md bg-white px-6 text-sm font-medium leading-[1.4] text-black transition-all duration-[150ms] ease-out hover:bg-gray-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 sm:w-auto sm:min-w-[140px]"
+              fullWidth
+              isRequired
+              name="url"
             >
-              {isLoading ? "Fetching\u2026" : "Fetch"}
-            </button>
+              <Input autoComplete="off" placeholder="Paste an Instagram, X, or YouTube video URL" />
+            </TextField>
+            <Button isDisabled={isLoading} type="submit" variant="primary">
+              {isLoading ? (
+                <>
+                  <Spinner size="sm" />
+                  Fetching&hellip;
+                </>
+              ) : (
+                "Fetch"
+              )}
+            </Button>
           </fetcher.Form>
         </div>
 
         {error ? (
-          <div className="rounded-md border border-red-500/[0.2] bg-red-500/[0.08] p-4">
-            <div className="flex items-start gap-3">
-              <svg
-                className="mt-0.5 h-4 w-4 shrink-0 text-red-500"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="12" cy="12" r="10" />
-                <line x1="12" y1="8" x2="12" y2="12" />
-                <line x1="12" y1="16" x2="12.01" y2="16" />
-              </svg>
-              <div>
-                <p className="text-sm font-medium text-[color:var(--foreground)]">Could not fetch</p>
-                <p className="mt-1 text-sm leading-5 text-[color:var(--secondary)]">{error}</p>
-              </div>
-            </div>
-          </div>
+          <Alert status="danger">
+            <Alert.Indicator />
+            <Alert.Content>
+              <Alert.Title>Could not fetch</Alert.Title>
+              <Alert.Description>{error}</Alert.Description>
+            </Alert.Content>
+          </Alert>
         ) : null}
 
-        <p className="max-w-[68ch] text-[15px] leading-6 text-secondary">
-          Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect Instagram&apos;s, X&apos;s, and YouTube&apos;s terms.
-        </p>
+        <Typography color="muted">
+          Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect
+          Instagram&apos;s, X&apos;s, and YouTube&apos;s terms.
+        </Typography>
       </main>
 
-      {/* Modal */}
-      {preview.open && current ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Video preview"
-          ref={dialogRef}
-          tabIndex={-1}
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[rgb(0_0_0/_56%)] p-6 transition-[background-color] duration-[200ms] ease-out"
-        >
-          <div className="w-full max-w-lg border border-[color:var(--border)] bg-[color:var(--sc-surface)] transition-[transform,opacity] duration-[200ms] ease-out">
-            <div className="flex items-center justify-between border-b border-[color:var(--border)] px-6 py-4">
-              <span className="text-[15px] font-medium leading-[1.4]">Preview</span>
-              <span className="text-sm leading-4 text-[color:var(--secondary)]">{current.shortcode}</span>
-            </div>
-            <div className="bg-[color:var(--sc-background)]">
-              {/* YouTube previews stay a thumbnail: its mp4s are huge and gated, the file is what downloads */}
-              {isYouTube ? (
-                <img src={current.thumbnail} alt="Video thumbnail" className={MEDIA_CLASS} />
-              ) : (
-                <video src={current.videoUrl} controls poster={current.thumbnail} className={MEDIA_CLASS} />
-              )}
-            </div>
-            {shown.length > 1 && !isYouTube && (
-              <div role="group" aria-label="Videos in this post" className="flex items-center gap-2 px-6 py-3">
-                {shown.map((a, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setPreview((p) => nextPreview(p, { type: "selected", index: i }))}
-                    aria-label={`Show video ${i + 1}`}
-                    aria-current={i === preview.active}
-                    className={`${i === preview.active ? SOLID_BUTTON : GHOST_BUTTON} px-3 py-1`}
-                  >
-                    {a.label ?? i + 1}
-                  </button>
-                ))}
-              </div>
-            )}
-            <div className="flex items-center justify-end gap-3 px-6 py-4">
-              <button
-                type="button"
-                onClick={() => setPreview((p) => nextPreview(p, { type: "dismissed" }))}
-                className={`${GHOST_BUTTON} px-4 py-2`}
-              >
-                Close
-              </button>
-              {isYouTube ? (
-                <>
-                  <select
-                    value={preview.active}
-                    onChange={(e) => setPreview((p) => nextPreview(p, { type: "selected", index: Number(e.target.value) }))}
-                    aria-label="Video quality"
-                    className={`${GHOST_BUTTON} px-3 py-2`}
-                  >
+      <Modal
+        isOpen={preview.open && current !== undefined}
+        onOpenChange={(open) => {
+          if (!open) dismiss();
+        }}
+      >
+        <Modal.Backdrop>
+          <Modal.Container>
+            <Modal.Dialog aria-label="Video preview">
+              <Modal.CloseTrigger />
+              <Modal.Header>
+                <Modal.Heading>Preview</Modal.Heading>
+                {current ? (
+                  <Typography color="muted" type="body-sm">
+                    {current.shortcode}
+                  </Typography>
+                ) : null}
+              </Modal.Header>
+              <Modal.Body>
+                {/* YouTube previews stay a thumbnail: its mp4s are huge and gated, the file is what downloads */}
+                {isYouTube && current ? (
+                  <img src={current.thumbnail} alt="Video thumbnail" className={MEDIA_CLASS} />
+                ) : current ? (
+                  <video src={current.videoUrl} controls poster={current.thumbnail} className={MEDIA_CLASS} />
+                ) : null}
+                {shown.length > 1 && !isYouTube ? (
+                  <div role="group" aria-label="Videos in this post" className="flex items-center gap-2">
                     {shown.map((a, i) => (
-                      <option key={i} value={i}>
-                        {a.label ?? `Video ${i + 1}`}
-                      </option>
+                      <Button
+                        key={i}
+                        aria-label={`Show video ${i + 1}`}
+                        aria-current={i === preview.active}
+                        size="sm"
+                        variant={i === preview.active ? "primary" : "secondary"}
+                        onPress={() => select(i)}
+                      >
+                        {a.label ?? i + 1}
+                      </Button>
                     ))}
-                  </select>
-                  <button
-                    onClick={() => (window.location.href = toDownloadHref(shown, preview.active))}
-                    className={`${SOLID_BUTTON} px-4 py-2`}
-                  >
-                    Download .mp4
-                  </button>
-                </>
-              ) : shown.length === 1 ? (
-                <button
-                  onClick={() => (window.location.href = toDownloadHref(shown, 0))}
-                  className={`${SOLID_BUTTON} px-4 py-2`}
-                >
-                  Download .mp4
-                </button>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {shown.map((a, i) => (
-                    <button
-                      key={i}
-                      onClick={() => (window.location.href = toDownloadHref(shown, i))}
-                      className={`${SOLID_BUTTON} px-4 py-2`}
+                  </div>
+                ) : null}
+              </Modal.Body>
+              <Modal.Footer>
+                <Button slot="close" variant="tertiary">
+                  Close
+                </Button>
+                {isYouTube ? (
+                  <>
+                    <Select
+                      aria-label="Video quality"
+                      value={String(preview.active)}
+                      onChange={(key) => {
+                        if (key != null) select(Number(key));
+                      }}
                     >
-                      Download {a.label ?? `video ${i + 1}`}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
+                      <Label>Quality</Label>
+                      <Select.Trigger>
+                        <Select.Value />
+                        <Select.Indicator />
+                      </Select.Trigger>
+                      <Select.Popover>
+                        <ListBox>
+                          {shown.map((a, i) => (
+                            <ListBox.Item key={i} id={String(i)} textValue={a.label ?? `Video ${i + 1}`}>
+                              {a.label ?? `Video ${i + 1}`}
+                              <ListBox.ItemIndicator />
+                            </ListBox.Item>
+                          ))}
+                        </ListBox>
+                      </Select.Popover>
+                    </Select>
+                    <Button variant="primary" onPress={() => download(preview.active)}>
+                      Download .mp4
+                    </Button>
+                  </>
+                ) : shown.length === 1 ? (
+                  <Button variant="primary" onPress={() => download(0)}>
+                    Download .mp4
+                  </Button>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {shown.map((a, i) => (
+                      <Button key={i} variant="primary" onPress={() => download(i)}>
+                        Download {a.label ?? `video ${i + 1}`}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
     </div>
   );
 }

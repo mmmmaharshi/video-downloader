@@ -1,87 +1,48 @@
-# Welcome to React Router!
+# Video downloader
 
-A modern, production-ready template for building full-stack React applications using React Router.
+Paste a public Instagram reel or post URL, preview it, and download the MP4. No login, no storage — the file is streamed straight from Instagram's CDN.
 
-[![Open in StackBlitz](https://developer.stackblitz.com/img/open_in_stackblitz.svg)](https://stackblitz.com/github/remix-run/react-router-templates/tree/main/default)
+## Requirements
 
-## Features
+[Bun](https://bun.sh) is the runtime and package manager.
 
-- 🚀 Server-side rendering
-- ⚡️ Hot Module Replacement (HMR)
-- 📦 Asset bundling and optimization
-- 🔄 Data loading and mutations
-- 🔒 TypeScript by default
-- 🎉 TailwindCSS for styling
-- 📖 [React Router docs](https://reactrouter.com/)
-
-## Getting Started
-
-### Installation
-
-Install the dependencies:
+## Development
 
 ```bash
-npm install
+bun install
+bun run dev
 ```
 
-### Development
+The dev server runs at `http://localhost:5173`.
 
-Start the development server with HMR:
+## Scripts
+
+| Command | What it does |
+| --- | --- |
+| `bun run dev` | Dev server with HMR |
+| `bun run build` | Production build into `build/` |
+| `bun run start` | Serve the production build |
+| `bun run typecheck` | Generate route types and run `tsc` |
+| `bun test` | Run the test suite |
+
+## How it works
+
+`CONTEXT.md` holds the domain language. Two deep modules sit behind an injectable `fetch` seam, which is where the tests plug in fixtures:
+
+- `app/lib/media-resolver.ts` — `resolve(sourceUrl, deps) → VideoAsset`. Validates the URL, extracts the shortcode, fetches the post page, reads `og:video`, and falls back to the embed page. Rejects private and login-required posts.
+- `app/lib/transfer.ts` — `proxy(videoUrl, shortcode, deps) → Response` and `isAllowedHost(url)`. Owns the CDN allowlist (https only), streams the upstream body through, and sets the download filename.
+
+Routes: `/` serves the form and preview; `/api/download?url=…&code=…` streams the file.
+
+Only allowlisted CDN hosts can be proxied, so the download route can't be used as an open proxy.
+
+## Deploy
 
 ```bash
-npm run dev
+docker build -t video-downloader .
+docker run -p 3000:3000 video-downloader
 ```
 
-Your application will be available at `http://localhost:5173`.
+## Legal
 
-## Building for Production
-
-Create a production build:
-
-```bash
-npm run build
-```
-
-## Deployment
-
-### Docker Deployment
-
-To build and run using Docker:
-
-```bash
-docker build -t my-app .
-
-# Run the container
-docker run -p 3000:3000 my-app
-```
-
-The containerized application can be deployed to any platform that supports Docker, including:
-
-- AWS ECS
-- Google Cloud Run
-- Azure Container Apps
-- Digital Ocean App Platform
-- Fly.io
-- Railway
-
-### DIY Deployment
-
-If you're familiar with deploying Node applications, the built-in app server is production-ready.
-
-Make sure to deploy the output of `npm run build`
-
-```
-├── package.json
-├── package-lock.json (or pnpm-lock.yaml, or bun.lockb)
-├── build/
-│   ├── client/    # Static assets
-│   └── server/    # Server-side code
-```
-
-## Styling
-
-This template comes with [Tailwind CSS](https://tailwindcss.com/) already configured for a simple default starting experience. You can use whatever CSS framework you prefer.
-
----
-
-Built with ❤️ using React Router.
+Only download content you have rights to. Respect Instagram's terms.

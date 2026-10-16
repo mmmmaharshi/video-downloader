@@ -11,6 +11,7 @@ Domain language for seams. Names here drive module boundaries — grep the term,
 - **Transfer** — deep module. Interface: `proxy(videoUrl, stem, deps?) → Promise<Response>` and `isAllowedHost(url) → boolean`. Owns allowlist policy (`cdninstagram.com`, `fbcdn.net`, `scontent.cdninstagram.com`, `video.twimg.com` — exact or suffix, not `includes()`), upstream fetch, `Content-Disposition` + `Cache-Control`. Both routes call it — one allowlist, N call sites. The second argument is a stem (`<platform>-<shortcode>`), not a filename — `proxy` appends `.mp4`.
 - **Preview** — deep module. Interface: `nextPreview(state, event) → PreviewState`. Owns the preview's open/dismiss rule: `resolved` opens on the asset that opened it (keyed by response identity, so an identical re-fetch reopens), `failed` and `dismissed` close, `backdropClicked` is an explicit no-op. The route keeps rendering and the effects that apply the rule; the rule itself is tested in-process through this seam.
 - **DownloadLink** — deep module. Interface: `toDownloadHref(asset) → string` and `fromDownloadRequest(url) → { videoUrl, stem }`. Owns the VideoAsset → download-file round trip: the `url` + `name` param names, the `<platform>-<shortcode>` stem format, encode and decode. Both routes cross this seam.
+- **RecentResolves** — short-lived memory of video URLs the form resolved. Interface: `rememberResolved(url, now?)`, `wasResolved(url, now?)`. The download loader only serves remembered URLs (ten-minute window, capped at 200 entries), so the proxy answers the app, not the internet.
 
 ## Seams
 

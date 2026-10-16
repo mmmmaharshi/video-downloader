@@ -34,7 +34,7 @@ The dev server runs at `http://localhost:5173`.
 
 Routes: `/` serves the form and preview; `/api/download?url=…&name=…` streams the file.
 
-Only allowlisted CDN hosts can be proxied, so the download route can't be used as an open proxy.
+Only allowlisted CDN hosts can be proxied, and only for links the form resolved in the last ten minutes — the download route answers the app, not the internet.
 
 ## Deploy
 

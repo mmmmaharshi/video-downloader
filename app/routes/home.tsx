@@ -4,6 +4,7 @@ import { useFetcher } from "react-router";
 import { resolve, type VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview, type PreviewState } from "../lib/preview";
 import { toDownloadHref } from "../lib/download-link";
+import { rememberResolved } from "../lib/recent-resolves";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -17,6 +18,7 @@ export async function action({ request }: Route.ActionArgs) {
   const url = String(formData.get("url") ?? "").trim();
   try {
     const asset = await resolve(url);
+    rememberResolved(asset.videoUrl);
     return { asset, inputUrl: url } as const;
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to extract video";

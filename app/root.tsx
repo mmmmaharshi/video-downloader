@@ -22,6 +22,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {/* X's CDN answers 403 to any request carrying a Referer, so cross-origin media must go without one */}
+        <meta name="referrer" content="same-origin" />
         <Meta />
         <Links />
       </head>

@@ -22,7 +22,7 @@ export type MediaResolverDeps = {
   youtube?: typeof getYouTubeFormats;
 };
 
-const INSTA_RE = /^https?:\/\/(?:www\.)?instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)\/?(\?.*)?$/;
+const INSTA_RE = /^https?:\/\/(?:www\.)?instagram\.com\/(p|reels?|tv)\/([A-Za-z0-9_-]+)\/?(\?.*)?$/;
 const TWEET_RE = /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/(?:[^/?#]+\/)*status(?:es)?\/(\d+)(?:[/?#]|$)/i;
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -118,7 +118,7 @@ async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: t
   // embed fallback — double-escaped JSON in embed HTML
   if (!videoUrl) {
     try {
-      const embedKind = sourceUrl.includes("/reel/") ? "reel" : sourceUrl.includes("/tv/") ? "tv" : "p";
+      const embedKind = sourceUrl.includes("/reel") ? "reel" : sourceUrl.includes("/tv/") ? "tv" : "p";
       const embedUrl = `https://www.instagram.com/${embedKind}/${shortcode}/embed/captioned/`;
       const er = await doFetch(embedUrl, {
         headers: { "User-Agent": UA },

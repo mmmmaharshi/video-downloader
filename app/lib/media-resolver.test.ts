@@ -48,6 +48,28 @@ describe("resolve", () => {
     expect(asset.sourceUrl).toBe(REEL);
   });
 
+  test("accepts the plural /reels/ share shape", async () => {
+    const [asset] = await resolve("https://www.instagram.com/reels/DeUJBPLgZeX/", {
+      fetch: stubFetch(() => page(`<meta property="og:video" content="${CDN}">`)),
+    });
+    expect(asset.shortcode).toBe("DeUJBPLgZeX");
+    expect(asset.platform).toBe("instagram");
+  });
+
+  test("a plural /reels/ url falls back to the singular reel embed", async () => {
+    const requested: string[] = [];
+    const [asset] = await resolve("https://www.instagram.com/reels/DeUJBPLgZeX/", {
+      fetch: stubFetch((url) => {
+        requested.push(url);
+        return url.includes("/embed/")
+          ? page(`"video_url":"https:\\/\\/scontent.cdninstagram.com\\/v\\/embed.mp4"`)
+          : page("<p>no player here</p>");
+      }),
+    });
+    expect(asset.videoUrl).toBe("https://scontent.cdninstagram.com/v/embed.mp4");
+    expect(requested.some((u) => u.includes("/reel/DeUJBPLgZeX/embed/"))).toBe(true);
+  });
+
   test("rejects an empty url", async () => {
     await expect(resolve("   ", { fetch: stubFetch(() => page("")) })).rejects.toThrow("Paste an Instagram or X link");
   });

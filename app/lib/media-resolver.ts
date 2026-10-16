@@ -7,7 +7,7 @@
 import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 
-export type Platform = "instagram" | "twitter" | "youtube" | "facebook";
+export type Platform = "instagram" | "twitter" | "youtube" | "facebook" | "direct";
 
 export type VideoAsset = {
   videoUrl: string;
@@ -30,7 +30,7 @@ const FETCH_TIMEOUT_MS = 15_000;
 
 export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): Promise<VideoAsset[]> {
   const trimmed = sourceUrl.trim();
-  if (!trimmed) throw new Error("Paste an Instagram, Facebook, or X link");
+  if (!trimmed) throw new Error("Paste a video link");
 
   const doFetch = deps.fetch ?? fetch;
 
@@ -46,7 +46,24 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
   const ytId = matchYouTubeId(trimmed);
   if (ytId) return resolveYouTube(trimmed, ytId, deps.youtube ?? getYouTubeFormats);
 
-  throw new Error("Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, or a YouTube video link.");
+  try {
+    new URL(trimmed);
+  } catch {
+    throw new Error("Invalid URL. Paste a link to a video page or file.");
+  }
+  if (isKnownMediaHost(trimmed)) {
+    throw new Error("Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, or a YouTube video link.");
+  }
+  return resolveGeneric(trimmed, doFetch);
+}
+
+// a supported host with an unrecognized path is a mistyped platform link,
+// not a generic page — fail fast instead of fetching it
+const KNOWN_MEDIA_HOSTS = ["instagram.com", "facebook.com", "fb.watch", "twitter.com", "x.com", "youtube.com", "youtu.be"];
+
+function isKnownMediaHost(sourceUrl: string): boolean {
+  const host = new URL(sourceUrl).hostname.toLowerCase();
+  return KNOWN_MEDIA_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
 }
 
 // Instagram answers the plural /reels/ route with a login redirect for anonymous
@@ -217,6 +234,46 @@ async function resolveFacebook(
   if (!videoUrl) throw new Error("No downloadable video found. Only public video/reel posts work, and Facebook limits anonymous access to some of them.");
 
   return [{ videoUrl, thumbnail: extractThumbnail(html), shortcode: id, sourceUrl, platform: "facebook" }];
+}
+
+// Catch-all for any other link: a video content-type resolves the link
+// itself, otherwise the page's og:video tag is the last resort. The body of a
+// video response is never read — only headers — so large files cost nothing.
+async function resolveGeneric(sourceUrl: string, doFetch: typeof fetch): Promise<VideoAsset[]> {
+  const res = await doFetch(sourceUrl, {
+    headers: {
+      "User-Agent": CHROME_UA,
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+  if (res.status === 404) throw new Error("Post not found. Check the URL.");
+  if (!res.ok) throw new Error(`This link returned ${res.status}. Try again later.`);
+
+  const shortcode = slugOf(sourceUrl);
+  const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+  if (contentType.startsWith("video/")) {
+    return [{ videoUrl: sourceUrl, thumbnail: undefined, shortcode, sourceUrl, platform: "direct" }];
+  }
+
+  const html = await res.text();
+  const videoUrl = extractOgVideo(html);
+  if (!videoUrl) throw new Error("No video found at this link. Only pages and files that serve video are downloadable.");
+
+  return [{ videoUrl, thumbnail: extractThumbnail(html), shortcode, sourceUrl, platform: "direct" }];
+}
+
+// last path segment without its extension, for download filenames
+function slugOf(sourceUrl: string): string {
+  const last = new URL(sourceUrl).pathname.split("/").filter(Boolean).pop() ?? "";
+  let stem: string;
+  try {
+    stem = decodeURIComponent(last).replace(/\.[a-z0-9]+$/i, "");
+  } catch {
+    stem = last.replace(/\.[a-z0-9]+$/i, "");
+  }
+  return stem || "video";
 }
 
 async function resolveYouTube(

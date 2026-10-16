@@ -81,13 +81,17 @@ describe("resolve", () => {
   });
 
   test("rejects an empty url", async () => {
-    await expect(resolve("   ", { fetch: stubFetch(() => page("")) })).rejects.toThrow("Paste an Instagram, Facebook, or X link");
+    await expect(resolve("   ", { fetch: stubFetch(() => page("")) })).rejects.toThrow("Paste a video link");
   });
 
-  test("rejects a non-instagram url", async () => {
+  test("rejects a page with no video", async () => {
     await expect(resolve("https://example.com/reel/ABC123/", { fetch: stubFetch(() => page("")) })).rejects.toThrow(
-      "Invalid URL",
+      "No video found at this link",
     );
+  });
+
+  test("rejects garbage that is not a url", async () => {
+    await expect(resolve("not a url", { fetch: stubFetch(() => page("")) })).rejects.toThrow("Invalid URL");
   });
 
   test("rejects a missing post", async () => {
@@ -434,5 +438,64 @@ describe("resolve — Facebook", () => {
   test("reports a non-ok upstream status", async () => {
     const down = stubFetch(() => new Response("boom", { status: 503 }));
     await expect(resolve(FB_REEL, { fetch: down })).rejects.toThrow("Facebook returned 503");
+  });
+});
+
+// Any other link is fetched generically: a video content-type resolves
+// directly, otherwise the page's og:video tag is the last resort.
+const MP4_URL = "https://cdn.example.com/clips/funny-cat.mp4?token=abc";
+
+describe("resolve — direct links", () => {
+  test("resolves a link that serves video content directly", async () => {
+    const [asset] = await resolve(MP4_URL, {
+      fetch: stubFetch(() => new Response("bytes", { status: 200, headers: { "content-type": "video/mp4" } })),
+    });
+    expect(asset).toEqual({
+      videoUrl: MP4_URL,
+      thumbnail: undefined,
+      shortcode: "funny-cat",
+      sourceUrl: MP4_URL,
+      platform: "direct",
+    });
+  });
+
+  test("resolves a page exposing og:video on an unknown host", async () => {
+    const pageUrl = "https://blog.example.com/posts/42";
+    const [asset] = await resolve(pageUrl, {
+      fetch: stubFetch(() =>
+        page(`<meta property="og:video:secure_url" content="${MP4_URL}"><meta property="og:image" content="https://img.example/p.jpg">`),
+      ),
+    });
+    expect(asset).toEqual({
+      videoUrl: MP4_URL,
+      thumbnail: "https://img.example/p.jpg",
+      shortcode: "42",
+      sourceUrl: pageUrl,
+      platform: "direct",
+    });
+  });
+
+  test("falls back to a safe name when the path has no slug", async () => {
+    const [asset] = await resolve("https://cdn.example.com/", {
+      fetch: stubFetch(() => new Response("bytes", { status: 200, headers: { "content-type": "video/mp4" } })),
+    });
+    expect(asset.shortcode).toBe("video");
+  });
+
+  test("survives a malformed percent-escape in the filename", async () => {
+    const [asset] = await resolve("https://cdn.example.com/100%.mp4", {
+      fetch: stubFetch(() => new Response("bytes", { status: 200, headers: { "content-type": "video/mp4" } })),
+    });
+    expect(asset.shortcode).toBe("100%");
+  });
+
+  test("reports a missing generic link", async () => {
+    const notFound = stubFetch(() => new Response("gone", { status: 404 }));
+    await expect(resolve(MP4_URL, { fetch: notFound })).rejects.toThrow("Post not found");
+  });
+
+  test("reports a non-ok generic status", async () => {
+    const down = stubFetch(() => new Response("busy", { status: 503 }));
+    await expect(resolve(MP4_URL, { fetch: down })).rejects.toThrow("returned 503");
   });
 });

@@ -1,6 +1,6 @@
 import type { Route } from "./+types/home";
 import * as React from "react";
-import { useFetcher } from "react-router";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Button,
   Input,
@@ -13,10 +13,9 @@ import {
   Typography,
   toast,
 } from "@heroui/react";
-import { resolve, type VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview, type PreviewState } from "../lib/preview";
 import { toDownloadHref } from "../lib/download-link";
-import { rememberResolved } from "../lib/recent-resolves";
+import { isFresh, resolveKey, type ResolveResult } from "../lib/resolve-query";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -25,36 +24,49 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  const formData = await request.formData();
-  const url = String(formData.get("url") ?? "").trim();
-  try {
-    const assets = await resolve(url);
-    for (const a of assets) rememberResolved(a.videoUrl);
-    return { assets, inputUrl: url } as const;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Failed to extract video";
-    return { error: msg, inputUrl: url } as const;
-  }
-}
-
-type ActionData =
-  | { assets: VideoAsset[]; inputUrl: string; error?: never }
-  | { error: string; inputUrl: string; assets?: never };
-
 // The media never overflows the dialog: 70vh keeps landscape videos width-bound
 // on tall screens, while 100dvh minus the header/footer/dialog chrome (~300px)
 // shrinks portrait videos into the visible body instead of scrolling it.
 const MEDIA_CLASS = "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
 
 export default function Home() {
-  const fetcher = useFetcher<ActionData>();
-  const data = fetcher.data;
-  const isLoading = fetcher.state !== "idle";
+  const queryClient = useQueryClient();
+  const [data, setData] = React.useState<ResolveResult | undefined>();
+  const mutation = useMutation({
+    mutationFn: async (url: string): Promise<ResolveResult> => {
+      const form = new FormData();
+      form.set("url", url);
+      const res = await fetch("/api/resolve", { method: "POST", body: form });
+      return (await res.json()) as ResolveResult;
+    },
+    onSuccess: (result, url) => {
+      queryClient.setQueryData(resolveKey(url), result);
+      // a fresh object per submit so the effect below refires even for
+      // repeat submits of the same link
+      setData({ ...result });
+    },
+    onError: (_e, url) => {
+      setData({ error: "Network error. Check your connection and try again.", inputUrl: url });
+    },
+  });
+  const isLoading = mutation.isPending;
+
+  // A fresh resolution stays cached inside the download gate window, so
+  // re-submits skip the network without risking an expired download.
+  const submit = (url: string) => {
+    const key = resolveKey(url);
+    const state = queryClient.getQueryState(key);
+    const cached = state?.data as ResolveResult | undefined;
+    if (cached && state?.dataUpdatedAt && isFresh(state.dataUpdatedAt)) {
+      setData({ ...cached });
+    } else {
+      mutation.mutate(url);
+    }
+  };
 
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
 
-  // The preview renders the assets that opened it, not whatever the fetcher holds now.
+  // The preview renders the assets that opened it, not whatever the latest result holds.
   const shown = preview.shown;
   const current = shown[preview.active];
   const isYouTube = current?.platform === "youtube";
@@ -83,7 +95,13 @@ export default function Home() {
         <div className="flex flex-col gap-6">
           <Typography type="h1">Video downloader</Typography>
 
-          <fetcher.Form method="post" className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <form
+            className="flex flex-col gap-2 sm:flex-row sm:items-end"
+            onSubmit={(e) => {
+              e.preventDefault();
+              submit(new FormData(e.currentTarget).get("url")?.toString() ?? "");
+            }}
+          >
             <TextField
               aria-label="Video link"
               defaultValue={data?.inputUrl ?? ""}
@@ -104,7 +122,7 @@ export default function Home() {
                 </>
               )}
             </Button>
-          </fetcher.Form>
+          </form>
         </div>
 
         <Typography color="muted">

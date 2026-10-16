@@ -15,6 +15,7 @@ export type VideoAsset = {
   shortcode: string;
   sourceUrl: string;
   platform: Platform;
+  label?: string;
 };
 
 export type MediaResolverDeps = {
@@ -152,19 +153,24 @@ async function resolveYouTube(
   id: string,
   getFormats: typeof getYouTubeFormats,
 ): Promise<VideoAsset[]> {
-  // one watch page is one video: the formats are renditions, so only the best ships
-  const best = (await getFormats(id))[0];
-  if (!best) throw new Error("No downloadable video found for this post.");
-
-  return [
-    {
-      videoUrl: best.videoUrl,
+  // renditions of one video, not separate videos: one labeled asset per distinct quality
+  const seen = new Set<number>();
+  const assets = (await getFormats(id))
+    .filter((f) => {
+      if (seen.has(f.height)) return false;
+      seen.add(f.height);
+      return true;
+    })
+    .map((f) => ({
+      videoUrl: f.videoUrl,
       thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
       shortcode: id,
       sourceUrl,
-      platform: "youtube",
-    },
-  ];
+      platform: "youtube" as const,
+      label: f.height > 0 ? `${f.height}p` : undefined,
+    }));
+  if (!assets.length) throw new Error("No downloadable video found for this post.");
+  return assets;
 }
 
 type SyndicationMedia = {

@@ -279,6 +279,7 @@ describe("resolve — YouTube", () => {
       shortcode: YT_ID,
       sourceUrl: `https://www.youtube.com/watch?v=${YT_ID}`,
       platform: "youtube",
+      label: "720p",
     });
   });
 
@@ -297,12 +298,24 @@ describe("resolve — YouTube", () => {
     }
   });
 
+  test("labels one asset per distinct YouTube rendition, best first", async () => {
+    const assets = await resolve(`https://youtu.be/${YT_ID}`, {
+      youtube: async () => [
+        { videoUrl: "https://x/1080.mp4", height: 1080 },
+        { videoUrl: "https://x/1080b.mp4", height: 1080 },
+        { videoUrl: "https://x/720.mp4", height: 720 },
+      ],
+    });
+    expect(assets.map((a) => [a.label, a.videoUrl])).toEqual([
+      ["1080p", "https://x/1080.mp4"],
+      ["720p", "https://x/720.mp4"],
+    ]);
+  });
   test("reports no downloadable video when YouTube has no mp4 rendition", async () => {
     await expect(resolve(`https://youtu.be/${YT_ID}`, { youtube: async () => [] })).rejects.toThrow(
       "No downloadable video found",
     );
   });
-
   test("surfaces YouTube's own failure message", async () => {
     const unavailable = async () => {
       throw new Error("This video is unavailable. Private videos need a login, which is not supported.");

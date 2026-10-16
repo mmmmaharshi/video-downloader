@@ -158,9 +158,9 @@ export default function Home() {
                 <video src={current.videoUrl} controls poster={current.thumbnail} className={MEDIA_CLASS} />
               )}
             </div>
-            {shown.length > 1 && (
+            {shown.length > 1 && current.platform !== "youtube" && (
               <div role="group" aria-label="Videos in this post" className="flex items-center gap-2 px-6 py-3">
-                {shown.map((_, i) => (
+                {shown.map((a, i) => (
                   <button
                     key={i}
                     type="button"
@@ -169,7 +169,7 @@ export default function Home() {
                     aria-current={i === preview.active}
                     className={`${i === preview.active ? SOLID_BUTTON : GHOST_BUTTON} px-3 py-1`}
                   >
-                    {i + 1}
+                    {a.label ?? i + 1}
                   </button>
                 ))}
               </div>
@@ -191,13 +191,13 @@ export default function Home() {
                 </button>
               ) : (
                 <div className="flex flex-col gap-2">
-                  {shown.map((_, i) => (
+                  {shown.map((a, i) => (
                     <button
                       key={i}
                       onClick={() => (window.location.href = toDownloadHref(shown, i))}
                       className={`${SOLID_BUTTON} px-4 py-2`}
                     >
-                      Download video {i + 1}
+                      Download {a.label ?? `video ${i + 1}`}
                     </button>
                   ))}
                 </div>

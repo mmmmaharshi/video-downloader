@@ -2,11 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { fromDownloadRequest, toDownloadHref } from "./download-link";
 import type { VideoAsset } from "./media-resolver";
 
-const asset = (platform: VideoAsset["platform"], shortcode: string, videoUrl: string): VideoAsset => ({
+const asset = (platform: VideoAsset["platform"], shortcode: string, videoUrl: string, label?: string): VideoAsset => ({
   videoUrl,
   shortcode,
   sourceUrl: `https://example.com/${shortcode}`,
   platform,
+  ...(label ? { label } : {}),
 });
 
 describe("toDownloadHref", () => {
@@ -36,6 +37,18 @@ describe("toDownloadHref", () => {
     expect(new URL(toDownloadHref(assets, 1), "https://app.example").searchParams.get("name")).toBe("twitter-99-2");
   });
 
+  test("tags siblings by quality label when present", () => {
+    const assets = [
+      asset("youtube", "dQw4w9WgXcQ", "https://x/1080.mp4", "1080p"),
+      asset("youtube", "dQw4w9WgXcQ", "https://x/720.mp4", "720p"),
+    ];
+    expect(new URL(toDownloadHref(assets, 0), "https://app.example").searchParams.get("name")).toBe(
+      "youtube-dQw4w9WgXcQ-1080p",
+    );
+    expect(new URL(toDownloadHref(assets, 1), "https://app.example").searchParams.get("name")).toBe(
+      "youtube-dQw4w9WgXcQ-720p",
+    );
+  });
   test("refuses an index past the end", () => {
     expect(() => toDownloadHref([asset("twitter", "99", "https://video.twimg.com/x.mp4")], 1)).toThrow("No video at this position");
   });

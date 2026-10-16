@@ -29,7 +29,7 @@ The dev server runs at `http://localhost:5173`.
 
 `CONTEXT.md` holds the domain language. Small modules sit behind injectable seams, which is where the tests plug in fixtures:
 
-- `app/lib/media-resolver.ts` — `resolve(sourceUrl, deps) → VideoAsset[]`. Picks the platform from the URL, then either scrapes the Instagram post page (`og:video`, with an embed fallback), asks X's syndication endpoint for the tweet's `video_info` variants, or asks YouTube's InnerTube API (anonymous IOS client) for MP4 renditions — keeping the best MP4 of every video in the post. Rejects private or login-required posts, photo-only tweets, and text-only tweets.
+- `app/lib/media-resolver.ts` — `resolve(sourceUrl, deps) → VideoAsset[]`. Picks the platform from the URL, then either scrapes the Instagram post page (`og:video`, with an embed fallback), asks X's syndication endpoint for the tweet's `video_info` variants, or asks YouTube's InnerTube API (anonymous IOS client, ANDROID fallback) for MP4 renditions — keeping the best MP4 of every video in the post, one labeled asset per YouTube rendition. Rejects private or login-required posts, photo-only tweets, and text-only tweets.
 - `app/lib/youtube.ts` — `getYouTubeFormats(id, deps) → TubeAsset[]` (best rendition first). Owns the anonymous InnerTube session and the streaming-data mapping.
 - `app/lib/transfer.ts` — `proxy(videoUrl, stem, deps) → Response` and `isAllowedHost(url)`. Owns the CDN allowlist (https only), streams the upstream body through with an overall deadline, passes the size through, and names the download `<stem>.mp4`.
 - `app/lib/preview.ts` — `nextPreview(state, event) → PreviewState`. Owns the preview's open/dismiss rule.

@@ -9,6 +9,7 @@
 - Dark theme only: `<html class="dark" data-theme="dark">` in `app/root.tsx`. Use HeroUI theme tokens (`bg-background`, `text-muted`, …), no custom colors.
 - Typeface: Geist Pixel Variable via `@fontsource-variable/geist-pixel`, set as `--font-sans` in `app/app.css`.
 - Layout with standard Tailwind utilities only. No custom CSS beyond the two imports and the font token.
+- Before adding custom styles or component logic, search the HeroUI docs first (MCP `heroui-react` server in `opencode.json`, or `node scripts/*` in the `heroui-react` skill). Only hand-roll what the docs don't cover.
 
 ## Agent skills
 

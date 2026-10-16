@@ -85,9 +85,12 @@ describe("resolve", () => {
   });
 
   test("rejects a page with no video", async () => {
-    await expect(resolve("https://example.com/reel/ABC123/", { fetch: stubFetch(() => page("")) })).rejects.toThrow(
-      "No video found at this link",
-    );
+    await expect(
+      resolve("https://example.com/reel/ABC123/", {
+        fetch: stubFetch(() => page("")),
+        lookup: async () => ["93.184.216.34"],
+      }),
+    ).rejects.toThrow("No video found at this link");
   });
 
   test("rejects garbage that is not a url", async () => {
@@ -445,10 +448,14 @@ describe("resolve — Facebook", () => {
 // directly, otherwise the page's og:video tag is the last resort.
 const MP4_URL = "https://cdn.example.com/clips/funny-cat.mp4?token=abc";
 
+// deterministic DNS: no test below touches the real resolver
+const publicHost = async () => ["93.184.216.34"];
+
 describe("resolve — direct links", () => {
   test("resolves a link that serves video content directly", async () => {
     const [asset] = await resolve(MP4_URL, {
       fetch: stubFetch(() => new Response("bytes", { status: 200, headers: { "content-type": "video/mp4" } })),
+      lookup: publicHost,
     });
     expect(asset).toEqual({
       videoUrl: MP4_URL,
@@ -465,6 +472,7 @@ describe("resolve — direct links", () => {
       fetch: stubFetch(() =>
         page(`<meta property="og:video:secure_url" content="${MP4_URL}"><meta property="og:image" content="https://img.example/p.jpg">`),
       ),
+      lookup: publicHost,
     });
     expect(asset).toEqual({
       videoUrl: MP4_URL,
@@ -478,6 +486,7 @@ describe("resolve — direct links", () => {
   test("falls back to a safe name when the path has no slug", async () => {
     const [asset] = await resolve("https://cdn.example.com/", {
       fetch: stubFetch(() => new Response("bytes", { status: 200, headers: { "content-type": "video/mp4" } })),
+      lookup: publicHost,
     });
     expect(asset.shortcode).toBe("video");
   });
@@ -485,17 +494,74 @@ describe("resolve — direct links", () => {
   test("survives a malformed percent-escape in the filename", async () => {
     const [asset] = await resolve("https://cdn.example.com/100%.mp4", {
       fetch: stubFetch(() => new Response("bytes", { status: 200, headers: { "content-type": "video/mp4" } })),
+      lookup: publicHost,
     });
     expect(asset.shortcode).toBe("100%");
   });
 
   test("reports a missing generic link", async () => {
     const notFound = stubFetch(() => new Response("gone", { status: 404 }));
-    await expect(resolve(MP4_URL, { fetch: notFound })).rejects.toThrow("Post not found");
+    await expect(resolve(MP4_URL, { fetch: notFound, lookup: publicHost })).rejects.toThrow("Post not found");
   });
 
   test("reports a non-ok generic status", async () => {
     const down = stubFetch(() => new Response("busy", { status: 503 }));
-    await expect(resolve(MP4_URL, { fetch: down })).rejects.toThrow("returned 503");
+    await expect(resolve(MP4_URL, { fetch: down, lookup: publicHost })).rejects.toThrow("returned 503");
+  });
+
+  test("refuses a link resolving to a private address", async () => {
+    for (const ip of ["127.0.0.1", "10.0.0.5", "192.168.1.20", "169.254.169.254", "::1"]) {
+      await expect(
+        resolve(`http://internal.example/${ip}`, {
+          fetch: stubFetch(() => new Response("bytes", { headers: { "content-type": "video/mp4" } })),
+          lookup: async () => [ip],
+        }),
+      ).rejects.toThrow("Only public links");
+    }
+  });
+
+  test("refuses a link that does not resolve", async () => {
+    await expect(
+      resolve(MP4_URL, {
+        fetch: stubFetch(() => new Response("bytes", { headers: { "content-type": "video/mp4" } })),
+        lookup: async () => {
+          throw new Error("ENOTFOUND");
+        },
+      }),
+    ).rejects.toThrow("Could not resolve");
+  });
+
+  test("follows a redirect to a public host", async () => {
+    const [asset] = await resolve("https://short.example/x", {
+      fetch: stubFetch((url) =>
+        url.includes("short.example")
+          ? new Response(null, { status: 301, headers: { location: MP4_URL } })
+          : new Response("bytes", { status: 200, headers: { "content-type": "video/mp4" } }),
+      ),
+      lookup: publicHost,
+    });
+    expect(asset.videoUrl).toBe(MP4_URL);
+  });
+
+  test("refuses a redirect to a private address", async () => {
+    await expect(
+      resolve("https://short.example/x", {
+        fetch: stubFetch((url) =>
+          url.includes("short.example")
+            ? new Response(null, { status: 301, headers: { location: "http://127.0.0.1/secret.mp4" } })
+            : new Response("bytes", { headers: { "content-type": "video/mp4" } }),
+        ),
+        lookup: async (host) => (host === "short.example" ? ["93.184.216.34"] : ["127.0.0.1"]),
+      }),
+    ).rejects.toThrow("Only public links");
+  });
+
+  test("refuses a redirect loop", async () => {
+    await expect(
+      resolve("https://short.example/x", {
+        fetch: stubFetch(() => new Response(null, { status: 301, headers: { location: "https://short.example/y" } })),
+        lookup: publicHost,
+      }),
+    ).rejects.toThrow("too many times");
   });
 });

@@ -1,8 +1,8 @@
 // Module: ResolveQuery — the TanStack Query seam for link resolution.
 // Interface: resolveKey(url) → query key; isFresh(updatedAt, now?) → gate check.
 // Resolved CDN urls go stale, so cached resolutions stay valid only inside
-// FRESH_MS — kept equal to the download gate in recent-resolves, so a cached
-// hit can still download.
+// FRESH_MS — the same window recent-resolves honors at the download gate, so a
+// cached hit can still download.
 
 import type { VideoAsset } from "./media-resolver";
 

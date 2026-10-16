@@ -6,6 +6,8 @@
 
 import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
+import { lookup as dnsLookup } from "node:dns/promises";
+import { isIP } from "node:net";
 
 export type Platform = "instagram" | "twitter" | "youtube" | "facebook" | "direct";
 
@@ -22,11 +24,85 @@ export type VideoAsset = {
 export type MediaResolverDeps = {
   fetch?: typeof fetch;
   youtube?: typeof getYouTubeFormats;
+  lookup?: HostLookup;
 };
+
+// DNS seam: production resolves for real, tests inject addresses
+export type HostLookup = (hostname: string) => Promise<string[]>;
+
+const defaultLookup: HostLookup = async (hostname) =>
+  (await dnsLookup(hostname, { all: true })).map((r) => r.address);
 
 const INSTA_RE = /^https?:\/\/(?:www\.)?instagram\.com\/(p|reels?|tv)\/([A-Za-z0-9_-]+)\/?(\?.*)?$/;
 const TWEET_RE = /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/(?:[^/?#]+\/)*status(?:es)?\/(\d+)(?:[/?#]|$)/i;
 const FETCH_TIMEOUT_MS = 15_000;
+
+const PAGE_HEADERS = {
+  "User-Agent": CHROME_UA,
+  Accept: "text/html,application/xhtml+xml",
+  "Accept-Language": "en-US,en;q=0.9",
+};
+// probing for a file, not a page: accept whatever the host serves
+const FILE_HEADERS = { ...PAGE_HEADERS, Accept: "*/*" };
+
+function fetchPage(doFetch: typeof fetch, url: string, headers: typeof PAGE_HEADERS = PAGE_HEADERS): Promise<Response> {
+  return doFetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+}
+
+// Server-side fetch of a user-supplied link must never reach the private
+// network: every hop (redirects included) resolves against a blocklist first.
+// (Explicit range checks — Bun's net.BlockList mishandles IPv6.)
+function isBlockedAddress(addr: string): boolean {
+  if (isIP(addr) !== 4 && isIP(addr) !== 6) return true;
+  if (isIP(addr) === 4) {
+    const [a, b] = addr.split(".").map(Number);
+    return (
+      a === 0 || a === 10 || a === 127 || a >= 224 || (a === 172 && b >= 16 && b <= 31) || (a === 169 && b === 254) || (a === 192 && b === 168)
+    );
+  }
+  const n = addr.toLowerCase();
+  // mapped-in-v6 IPv4 (e.g. ::ffff:127.0.0.1) judges by the embedded address
+  const mapped = n.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isBlockedAddress(mapped[1]);
+  const first = n.split(":")[0];
+  // fe80::/10: first hextet fe80–febf, i.e. second hex digit 8–b
+  return n === "::" || n === "::1" || /^0(:0){6,7}(:1)?$/.test(n) || first.startsWith("fc") || first.startsWith("fd") || first.startsWith("ff") || /^fe[89ab]/i.test(first);
+}
+
+async function assertPublicHost(url: string, lookup: HostLookup): Promise<void> {
+  let addresses: string[];
+  try {
+    addresses = await lookup(new URL(url).hostname);
+  } catch {
+    throw new Error("Could not resolve this link. Check the URL.");
+  }
+  if (!addresses.length || addresses.some(isBlockedAddress)) {
+    throw new Error("Only public links are supported.");
+  }
+}
+
+const MAX_REDIRECTS = 4;
+
+async function fetchPublic(
+  doFetch: typeof fetch,
+  url: string,
+  lookup: HostLookup,
+  headers: typeof PAGE_HEADERS,
+): Promise<{ res: Response; url: string }> {
+  let current = url;
+  for (let hop = 0; hop < MAX_REDIRECTS; hop++) {
+    await assertPublicHost(current, lookup);
+    const res = await doFetch(current, { headers, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const location = res.status >= 300 && res.status < 400 ? res.headers.get("location") : null;
+    if (!location) return { res, url: current };
+    try {
+      current = new URL(location, current).href;
+    } catch {
+      throw new Error("This link redirects somewhere invalid.");
+    }
+  }
+  throw new Error("This link redirects too many times.");
+}
 
 export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): Promise<VideoAsset[]> {
   const trimmed = sourceUrl.trim();
@@ -54,7 +130,7 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
   if (isKnownMediaHost(trimmed)) {
     throw new Error("Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, or a YouTube video link.");
   }
-  return resolveGeneric(trimmed, doFetch);
+  return resolveGeneric(trimmed, doFetch, deps.lookup ?? defaultLookup);
 }
 
 // a supported host with an unrecognized path is a mistyped platform link,
@@ -120,14 +196,7 @@ function assertOk(res: Response, upstream: string): void {
 }
 
 async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: typeof fetch): Promise<VideoAsset[]> {
-  const res = await doFetch(sourceUrl, {
-    headers: {
-      "User-Agent": CHROME_UA,
-      Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
+  const res = await fetchPage(doFetch, sourceUrl);
 
   // more specific than the status itself: a login redirect is a private post, not a bad link
   if (res.redirected && res.url.includes("/accounts/login")) {
@@ -207,14 +276,7 @@ async function resolveFacebook(
   fetchUrl: string,
   doFetch: typeof fetch,
 ): Promise<VideoAsset[]> {
-  const res = await doFetch(fetchUrl, {
-    headers: {
-      "User-Agent": CHROME_UA,
-      Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
+  const res = await fetchPage(doFetch, fetchUrl);
 
   // a login redirect is the only reliable private signal: public pages carry
   // login links in their chrome, so page text must never decide this
@@ -239,22 +301,15 @@ async function resolveFacebook(
 // Catch-all for any other link: a video content-type resolves the link
 // itself, otherwise the page's og:video tag is the last resort. The body of a
 // video response is never read — only headers — so large files cost nothing.
-async function resolveGeneric(sourceUrl: string, doFetch: typeof fetch): Promise<VideoAsset[]> {
-  const res = await doFetch(sourceUrl, {
-    headers: {
-      "User-Agent": CHROME_UA,
-      Accept: "text/html,application/xhtml+xml",
-      "Accept-Language": "en-US,en;q=0.9",
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
+async function resolveGeneric(sourceUrl: string, doFetch: typeof fetch, lookup: HostLookup): Promise<VideoAsset[]> {
+  const { res, url } = await fetchPublic(doFetch, sourceUrl, lookup, FILE_HEADERS);
   if (res.status === 404) throw new Error("Post not found. Check the URL.");
   if (!res.ok) throw new Error(`This link returned ${res.status}. Try again later.`);
 
-  const shortcode = slugOf(sourceUrl);
+  const shortcode = slugOf(url);
   const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
   if (contentType.startsWith("video/")) {
-    return [{ videoUrl: sourceUrl, thumbnail: undefined, shortcode, sourceUrl, platform: "direct" }];
+    return [{ videoUrl: url, thumbnail: undefined, shortcode, sourceUrl, platform: "direct" }];
   }
 
   const html = await res.text();

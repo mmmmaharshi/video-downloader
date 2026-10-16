@@ -95,10 +95,10 @@ export default function Home() {
             >
               <Input autoComplete="off" placeholder="Paste an Instagram, Facebook, X, or YouTube video URL" />
             </TextField>
-            <Button isDisabled={isLoading} type="submit" variant="primary" className="relative w-full sm:w-fit">
-              {/* overlaid in the left padding: no layout slot, so the label is
-                  centered alike idle and loading */}
-              {isLoading ? <Spinner size="sm" className="absolute left-4" /> : null}
+            <Button isDisabled={isLoading} type="submit" variant="primary" className="w-full sm:w-28">
+              {/* fixed width + constant label: the spinner joins the centered
+                  content without resizing the button or shifting the input */}
+              {isLoading ? <Spinner size="sm" /> : null}
               Fetch
             </Button>
           </fetcher.Form>

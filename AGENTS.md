@@ -14,6 +14,7 @@
 ## Workflow
 
 - Don't run the dev server. Verify with `bun run verify`.
+- Don't push without the user's permission. Commit locally; the user pushes.
 
 ## Agent skills
 

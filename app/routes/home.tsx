@@ -95,7 +95,7 @@ export default function Home() {
             >
               <Input autoComplete="off" placeholder="Paste an Instagram, X, or YouTube video URL" />
             </TextField>
-            <Button isDisabled={isLoading} type="submit" variant="primary" className="relative">
+            <Button isDisabled={isLoading} type="submit" variant="primary" className="relative w-full sm:w-fit">
               {/* overlaid in the left padding: no layout slot, so the label is
                   centered alike idle and loading */}
               {isLoading ? <Spinner size="sm" className="absolute left-4" /> : null}

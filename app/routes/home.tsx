@@ -18,7 +18,7 @@ export async function action({ request }: Route.ActionArgs) {
   const url = String(formData.get("url") ?? "").trim();
   try {
     const assets = await resolve(url);
-    rememberResolved(assets[0].videoUrl);
+    for (const a of assets) rememberResolved(a.videoUrl);
     return { assets, inputUrl: url } as const;
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to extract video";
@@ -38,16 +38,16 @@ export default function Home() {
 
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
 
-  // The preview renders the asset that opened it, not whatever the fetcher holds now.
+  // The preview renders the assets that opened it, not whatever the fetcher holds now.
   const shown = preview.shown;
-  const downloadHref = preview.open && shown ? toDownloadHref(shown) : undefined;
+  const current = shown[preview.active];
 
   React.useEffect(() => {
     if (!data) return;
     if ("error" in data) {
       setPreview((p) => nextPreview(p, { type: "failed" }));
     } else {
-      setPreview((p) => nextPreview(p, { type: "resolved", asset: data.assets[0] }));
+      setPreview((p) => nextPreview(p, { type: "resolved", assets: data.assets }));
     }
     // depends on the response, not the url inside it: re-fetching the same link resolves to an
     // equal url and must still reopen the preview
@@ -128,7 +128,7 @@ export default function Home() {
       </main>
 
       {/* Modal */}
-      {preview.open && shown && (
+      {preview.open && current && (
         <div
           role="dialog"
           aria-modal="true"
@@ -138,11 +138,31 @@ export default function Home() {
           <div className="w-full max-w-lg border border-[color:var(--border)] bg-[color:var(--sc-surface)] transition-[transform,opacity] duration-[200ms] ease-out">
             <div className="flex items-center justify-between border-b border-[color:var(--border)] px-6 py-4">
               <span className="text-[15px] font-medium leading-[1.4]">Preview</span>
-              <span className="text-sm leading-4 text-[color:var(--secondary)]">{shown.shortcode}</span>
+              <span className="text-sm leading-4 text-[color:var(--secondary)]">{current.shortcode}</span>
             </div>
             <div className="bg-[color:var(--sc-background)]">
-              <video src={shown.videoUrl} controls poster={shown.thumbnail} className="block w-full" />
+              <video src={current.videoUrl} controls poster={current.thumbnail} className="block w-full" />
             </div>
+            {shown.length > 1 && (
+              <div role="group" aria-label="Videos in this post" className="flex items-center gap-2 px-6 py-3">
+                {shown.map((_, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setPreview((p) => nextPreview(p, { type: "selected", index: i }))}
+                    aria-label={`Show video ${i + 1}`}
+                    aria-current={i === preview.active}
+                    className={
+                      i === preview.active
+                        ? "rounded-md bg-[#fff] px-3 py-1 text-[15px] font-medium leading-[1.45] text-[#0a0a0a]"
+                        : "rounded-md border border-white/[12%] bg-[#fff]/[8%] px-3 py-1 text-[15px] font-medium leading-[1.45] text-white transition-all duration-[150ms] ease-out hover:bg-[#fff]/[16%] active:scale-[0.98]"
+                    }
+                  >
+                    {i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="flex items-center justify-end gap-3 px-6 py-4">
               <button
                 type="button"
@@ -151,13 +171,25 @@ export default function Home() {
               >
                 Close
               </button>
-              {downloadHref && (
+              {shown.length === 1 ? (
                 <button
-                  onClick={() => (window.location.href = downloadHref)}
+                  onClick={() => (window.location.href = toDownloadHref(shown, 0))}
                   className="rounded-md bg-[#fff] px-4 py-2 text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[#f0f0f0] active:scale-[0.98]"
                 >
                   Download .mp4
                 </button>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {shown.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => (window.location.href = toDownloadHref(shown, i))}
+                      className="rounded-md bg-[#fff] px-4 py-2 text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[#f0f0f0] active:scale-[0.98]"
+                    >
+                      Download video {i + 1}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>

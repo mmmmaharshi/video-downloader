@@ -30,6 +30,12 @@ type ActionData =
   | { assets: VideoAsset[]; inputUrl: string; error?: never }
   | { error: string; inputUrl: string; assets?: never };
 
+// One owner for the modal's button look: each use composes a style with its padding.
+const GHOST_BUTTON =
+  "rounded-md border border-white/[12%] bg-[#fff]/[8%] text-[15px] font-medium leading-[1.45] text-white transition-all duration-[150ms] ease-out hover:bg-[#fff]/[16%] active:scale-[0.98]";
+const SOLID_BUTTON =
+  "rounded-md bg-[#fff] text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[#f0f0f0] active:scale-[0.98]";
+
 export default function Home() {
   const fetcher = useFetcher<ActionData>();
   const data = fetcher.data;
@@ -152,11 +158,7 @@ export default function Home() {
                     onClick={() => setPreview((p) => nextPreview(p, { type: "selected", index: i }))}
                     aria-label={`Show video ${i + 1}`}
                     aria-current={i === preview.active}
-                    className={
-                      i === preview.active
-                        ? "rounded-md bg-[#fff] px-3 py-1 text-[15px] font-medium leading-[1.45] text-[#0a0a0a]"
-                        : "rounded-md border border-white/[12%] bg-[#fff]/[8%] px-3 py-1 text-[15px] font-medium leading-[1.45] text-white transition-all duration-[150ms] ease-out hover:bg-[#fff]/[16%] active:scale-[0.98]"
-                    }
+                    className={`${i === preview.active ? SOLID_BUTTON : GHOST_BUTTON} px-3 py-1`}
                   >
                     {i + 1}
                   </button>
@@ -167,14 +169,14 @@ export default function Home() {
               <button
                 type="button"
                 onClick={() => setPreview((p) => nextPreview(p, { type: "dismissed" }))}
-                className="rounded-md border border-white/[12%] bg-[#fff]/[8%] px-4 py-2 text-[15px] font-medium leading-[1.45] text-white transition-all duration-[150ms] ease-out hover:bg-[#fff]/[16%] active:scale-[0.98]"
+                className={`${GHOST_BUTTON} px-4 py-2`}
               >
                 Close
               </button>
               {shown.length === 1 ? (
                 <button
                   onClick={() => (window.location.href = toDownloadHref(shown, 0))}
-                  className="rounded-md bg-[#fff] px-4 py-2 text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[#f0f0f0] active:scale-[0.98]"
+                  className={`${SOLID_BUTTON} px-4 py-2`}
                 >
                   Download .mp4
                 </button>
@@ -184,7 +186,7 @@ export default function Home() {
                     <button
                       key={i}
                       onClick={() => (window.location.href = toDownloadHref(shown, i))}
-                      className="rounded-md bg-[#fff] px-4 py-2 text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[#f0f0f0] active:scale-[0.98]"
+                      className={`${SOLID_BUTTON} px-4 py-2`}
                     >
                       Download video {i + 1}
                     </button>

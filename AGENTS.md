@@ -3,6 +3,13 @@
 - Follow all guidelines defined in @CODING_STANDARDS.md for every code change, review, and architectural decision in this repository.
 - Use Bun (https://bun.sh/llms.txt) as the runtime and package manager for this project.
 
+## Styling
+
+- HeroUI v3 (`@heroui/react`, `@heroui/styles`) on Tailwind CSS v4. Compound components, `onPress` handlers, semantic variants. No provider.
+- Dark theme only: `<html class="dark" data-theme="dark">` in `app/root.tsx`. Use HeroUI theme tokens (`bg-background`, `text-muted`, …), no custom colors.
+- Typeface: Geist Pixel Variable via `@fontsource-variable/geist-pixel`, set as `--font-sans` in `app/app.css`.
+- Layout with standard Tailwind utilities only. No custom CSS beyond the two imports and the font token.
+
 ## Agent skills
 
 ### Issue tracker

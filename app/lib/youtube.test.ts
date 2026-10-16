@@ -36,10 +36,14 @@ describe("getYouTubeFormats", () => {
   });
 
   test("reports an unreachable YouTube instead of crashing", async () => {
+    const failure = new TypeError("fetch failed");
     const down = () => {
-      throw new TypeError("fetch failed");
+      throw failure;
     };
-    await expect(getYouTubeFormats("dQw4w9WgXcQ", { getInfo: down })).rejects.toThrow("YouTube is unreachable");
+    const err = await getYouTubeFormats("dQw4w9WgXcQ", { getInfo: down }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch("YouTube is unreachable");
+    expect((err as Error).cause).toBe(failure);
   });
 
   test("returns an empty list when no mp4 rendition exists", async () => {

@@ -45,8 +45,8 @@ export async function getYouTubeFormats(id: string, deps: YouTubeDeps = {}): Pro
   let info: TubeInfo;
   try {
     info = await getInfo(id);
-  } catch {
-    throw new Error("YouTube is unreachable right now. Try again later.");
+  } catch (e) {
+    throw new Error("YouTube is unreachable right now. Try again later.", { cause: e });
   }
   if (info.playability !== "OK")
     throw new Error(

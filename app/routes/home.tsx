@@ -78,11 +78,11 @@ export default function Home() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center gap-8 px-6 py-10 md:px-8 md:py-20">
+      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center gap-8 px-6 py-10 md:px-10 md:py-20">
         <div className="flex flex-col gap-6">
           <Typography type="h1">Video downloader</Typography>
 
-          <fetcher.Form method="post" className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <fetcher.Form method="post" className="flex flex-col gap-2 sm:flex-row sm:items-end">
             <TextField
               aria-label="Instagram, X, or YouTube video URL"
               defaultValue={data?.inputUrl ?? ""}

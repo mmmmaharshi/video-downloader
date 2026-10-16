@@ -9,7 +9,8 @@
     "typecheck": "react-router typegen && tsc",
     "test": "bun test",
     "check": "ultracite check",
-    "fix": "ultracite fix"
+    "fix": "ultracite fix",
+    "verify": "bun run typecheck && bun test && bun run check && bun run build"
   },
   "dependencies": {
     "@fontsource-variable/geist-pixel": "^5.3.1",

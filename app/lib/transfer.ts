@@ -15,11 +15,11 @@ export interface TransferDeps {
   maxMs?: number;
 }
 
-export async function proxy(
+export const proxy = async (
   videoUrl: string | null,
   stem: string,
   deps: TransferDeps = {}
-): Promise<Response> {
+): Promise<Response> => {
   if (!videoUrl) {
     throw new Response("Missing url", { status: 400 });
   }
@@ -61,4 +61,4 @@ export async function proxy(
     headers["Content-Length"] = length;
   }
   return new Response(upstream.body, { headers });
-}
+};

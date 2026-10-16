@@ -19,15 +19,13 @@ import type { PreviewState } from "../lib/preview";
 import { isFresh, resolveKey } from "../lib/resolve-query";
 import type { ResolveResult } from "../lib/resolve-query";
 
-export function meta() {
-  return [
-    { title: "Video Downloader — Save Online Videos" },
-    {
-      content: "Paste any public video link to download. No login, no storage.",
-      name: "description",
-    },
-  ];
-}
+export const meta = () => [
+  { title: "Video Downloader — Save Online Videos" },
+  {
+    content: "Paste any public video link to download. No login, no storage.",
+    name: "description",
+  },
+];
 
 // The media never overflows the dialog: 70vh keeps landscape videos width-bound
 // on tall screens, while 100dvh minus the header/footer/dialog chrome (~300px)
@@ -35,9 +33,26 @@ export function meta() {
 const MEDIA_CLASS =
   "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
 
-export default function Home() {
+const Home = () => {
   const queryClient = useQueryClient();
   const [data, setData] = React.useState<ResolveResult | undefined>();
+  const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
+
+  // One transition per resolved submit, whether the answer came from the
+  // network or the cache. A fresh object per submit keeps repeat submits of
+  // the same link reopening the preview.
+  const applyResult = (result: ResolveResult) => {
+    setData({ ...result });
+    if ("error" in result) {
+      setPreview((p) => nextPreview(p, { type: "failed" }));
+      toast.danger("Could not fetch", { description: result.error });
+    } else {
+      setPreview((p) =>
+        nextPreview(p, { assets: result.assets, type: "resolved" })
+      );
+    }
+  };
+
   const mutation = useMutation({
     mutationFn: async (url: string): Promise<ResolveResult> => {
       const form = new FormData();
@@ -47,7 +62,7 @@ export default function Home() {
       return result;
     },
     onError: (_e, url) => {
-      setData({
+      applyResult({
         error: "Network error. Check your connection and try again.",
         inputUrl: url,
       });
@@ -58,9 +73,7 @@ export default function Home() {
       if ("assets" in result) {
         queryClient.setQueryData(resolveKey(url), result);
       }
-      // a fresh object per submit so the effect below refires even for
-      // repeat submits of the same link
-      setData({ ...result });
+      applyResult(result);
     },
   });
   const isLoading = mutation.isPending;
@@ -77,34 +90,16 @@ export default function Home() {
     const state = queryClient.getQueryState(key);
     const cached = state?.data as ResolveResult | undefined;
     if (cached && state?.dataUpdatedAt && isFresh(state.dataUpdatedAt)) {
-      setData({ ...cached });
+      applyResult(cached);
     } else {
       mutation.mutate(url);
     }
   };
 
-  const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
-
   // The preview renders the assets that opened it, not whatever the latest result holds.
   const { shown } = preview;
   const current = shown[preview.active];
   const isYouTube = current?.platform === "youtube";
-
-  React.useEffect(() => {
-    if (!data) {
-      return;
-    }
-    if ("error" in data) {
-      setPreview((p) => nextPreview(p, { type: "failed" }));
-      toast.danger("Could not fetch", { description: data.error });
-    } else {
-      setPreview((p) =>
-        nextPreview(p, { assets: data.assets, type: "resolved" })
-      );
-    }
-    // depends on the response, not the url inside it: re-fetching the same link resolves to an
-    // equal url and must still reopen the preview
-  }, [data]);
 
   const dismiss = () =>
     setPreview((p) => nextPreview(p, { type: "dismissed" }));
@@ -194,6 +189,8 @@ export default function Home() {
                   />
                 )}
                 {!isYouTube && current && (
+                  // remote posts ship no caption track — a placeholder <track> would claim accessibility that does not exist
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
                   <video
                     src={current.videoUrl}
                     controls
@@ -202,8 +199,8 @@ export default function Home() {
                   />
                 )}
                 {shown.length > 1 && !isYouTube ? (
-                  <div
-                    role="group"
+                  // fieldset is the native group element; preflight strips its chrome
+                  <fieldset
                     aria-label="Videos in this post"
                     className="flex items-center gap-2"
                   >
@@ -219,7 +216,7 @@ export default function Home() {
                         {a.label ?? i + 1}
                       </Button>
                     ))}
-                  </div>
+                  </fieldset>
                 ) : null}
               </Modal.Body>
               <Modal.Footer>
@@ -286,4 +283,6 @@ export default function Home() {
       </Modal>
     </div>
   );
-}
+};
+
+export default Home;

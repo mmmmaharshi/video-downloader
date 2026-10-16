@@ -5,5 +5,11 @@ import react from "ultracite/oxlint/react";
 export default defineConfig({
   env: core.env,
   extends: [core, react],
-  ignorePatterns: core.ignorePatterns,
+  // vendored agent-skill assets, not project code — never shipped
+  ignorePatterns: [
+    ...(core.ignorePatterns ?? []),
+    "agent/",
+    ".claude/",
+    ".agents/",
+  ],
 });

@@ -4,7 +4,7 @@ import { fromDownloadRequest } from "../lib/download-link";
 import { wasResolved } from "../lib/recent-resolves";
 import { proxy } from "../lib/transfer";
 
-export function loader({ request }: LoaderFunctionArgs) {
+export const loader = ({ request }: LoaderFunctionArgs) => {
   const { videoUrl, stem } = fromDownloadRequest(request.url);
   // the proxy answers the app, not the internet: only serve urls the form resolved
   if (!wasResolved(videoUrl)) {
@@ -12,4 +12,4 @@ export function loader({ request }: LoaderFunctionArgs) {
   }
 
   return proxy(videoUrl, stem);
-}
+};

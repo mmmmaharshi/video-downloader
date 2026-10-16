@@ -19,27 +19,25 @@ export const links: Route.LinksFunction = () => [
   { href: "/favicon.ico?v=2", rel: "icon", type: "image/x-icon" },
 ];
 
-export function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <html lang="en" className="dark" data-theme="dark">
-      <head>
-        <meta charSet="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        {/* X's CDN answers 403 to any request carrying a Referer, so cross-origin media must go without one */}
-        <meta name="referrer" content="same-origin" />
-        <Meta />
-        <Links />
-      </head>
-      <body>
-        {children}
-        <ScrollRestoration />
-        <Scripts />
-      </body>
-    </html>
-  );
-}
+export const Layout = ({ children }: { children: React.ReactNode }) => (
+  <html lang="en" className="dark" data-theme="dark">
+    <head>
+      <meta charSet="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      {/* X's CDN answers 403 to any request carrying a Referer, so cross-origin media must go without one */}
+      <meta name="referrer" content="same-origin" />
+      <Meta />
+      <Links />
+    </head>
+    <body>
+      {children}
+      <ScrollRestoration />
+      <Scripts />
+    </body>
+  </html>
+);
 
-export default function App() {
+const App = () => {
   // per-component instance: a module singleton would share cached
   // resolutions across server requests
   const queryClient = React.useMemo(
@@ -51,9 +49,11 @@ export default function App() {
       <Outlet />
     </QueryClientProvider>
   );
-}
+};
 
-export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+export default App;
+
+export const ErrorBoundary = ({ error }: Route.ErrorBoundaryProps) => {
   let message = "Oops!";
   let details = "An unexpected error occurred.";
   let stack: string | undefined;
@@ -81,4 +81,4 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       )}
     </main>
   );
-}
+};

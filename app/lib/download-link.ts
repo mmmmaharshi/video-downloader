@@ -4,7 +4,7 @@
 
 import type { VideoAsset } from "./media-resolver";
 
-export function toDownloadHref(assets: VideoAsset[], index = 0): string {
+export const toDownloadHref = (assets: VideoAsset[], index = 0): string => {
   const asset = assets[index];
   if (!asset) {
     throw new Error("No video at this position");
@@ -16,12 +16,14 @@ export function toDownloadHref(assets: VideoAsset[], index = 0): string {
       ? `${asset.platform}-${asset.shortcode}-${tag}`
       : `${asset.platform}-${asset.shortcode}`;
   return `/api/download?url=${encodeURIComponent(asset.videoUrl)}&name=${encodeURIComponent(stem)}`;
-}
+};
 
-export function fromDownloadRequest(url: string): {
+export const fromDownloadRequest = (
+  url: string
+): {
   videoUrl: string | null;
   stem: string;
-} {
+} => {
   const params = new URL(url).searchParams;
   return { stem: params.get("name") ?? "video", videoUrl: params.get("url") };
-}
+};

@@ -3,7 +3,9 @@ import { rememberResolved } from "../lib/recent-resolves";
 import type { ResolveResult } from "../lib/resolve-query";
 import type { Route } from "./+types/api.resolve";
 
-export async function action({ request }: Route.ActionArgs): Promise<Response> {
+export const action = async ({
+  request,
+}: Route.ActionArgs): Promise<Response> => {
   const formData = await request.formData();
   const url = String(formData.get("url") ?? "").trim();
   try {
@@ -17,4 +19,4 @@ export async function action({ request }: Route.ActionArgs): Promise<Response> {
       error instanceof Error ? error.message : "Failed to extract video";
     return Response.json({ error: msg, inputUrl: url } satisfies ResolveResult);
   }
-}
+};

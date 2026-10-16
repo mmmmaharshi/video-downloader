@@ -22,10 +22,10 @@ export const closedPreview: PreviewState = {
   shown: [],
 };
 
-export function nextPreview(
+export const nextPreview = (
   state: PreviewState,
   event: PreviewEvent
-): PreviewState {
+): PreviewState => {
   switch (event.type) {
     case "resolved": {
       return { active: 0, open: true, shown: event.assets };
@@ -50,4 +50,4 @@ export function nextPreview(
       return state;
     }
   }
-}
+};

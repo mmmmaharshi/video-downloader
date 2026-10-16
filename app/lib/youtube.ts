@@ -36,7 +36,7 @@ export interface TubeInfo {
 
 // one anonymous session per process; a failed creation retries on the next call
 let session: Promise<Innertube> | undefined;
-async function getSession(): Promise<Innertube> {
+const getSession = async (): Promise<Innertube> => {
   if (!session) {
     // assigned before awaiting so concurrent callers share one creation
     session = Innertube.create();
@@ -48,9 +48,12 @@ async function getSession(): Promise<Innertube> {
     }
   }
   return session;
-}
+};
 
-async function liveGetInfo(id: string, client: ClientName): Promise<TubeInfo> {
+const liveGetInfo = async (
+  id: string,
+  client: ClientName
+): Promise<TubeInfo> => {
   const tube = await getSession();
   const info = await tube.getBasicInfo(id, { client });
   const sd = info.streaming_data;
@@ -67,33 +70,33 @@ async function liveGetInfo(id: string, client: ClientName): Promise<TubeInfo> {
     reason: info.playability_status?.reason ?? undefined,
     title: info.basic_info?.title ?? undefined,
   };
-}
+};
 
-async function headOk(head: typeof fetch, url: string): Promise<boolean> {
+const headOk = async (head: typeof fetch, url: string): Promise<boolean> => {
   try {
     const res = await head(url, { method: "HEAD" });
     return res.ok;
   } catch {
     return false;
   }
-}
+};
 
-function bestMp4s(info: TubeInfo): TubeAsset[] {
-  // sort runs on the mapped copy, so nothing shared is mutated (toSorted
-  // needs ES2023 lib, which this project does not target)
-  return info.formats
+// sort runs on the mapped copy, so nothing shared is mutated (toSorted
+// needs ES2023 lib, which this project does not target)
+const bestMp4s = (info: TubeInfo): TubeAsset[] =>
+  info.formats
     .filter(
       (f): f is TubeFormat & { url: string } =>
         f.mime_type.startsWith("video/mp4") && f.url !== undefined
     )
     .map((f) => ({ height: f.height ?? 0, videoUrl: f.url }))
+    // eslint-disable-next-line unicorn/no-array-sort -- fresh mapped copy, and toSorted needs ES2023 lib
     .sort((a, b) => b.height - a.height);
-}
 
-export async function getYouTubeFormats(
+export const getYouTubeFormats = async (
   id: string,
   deps: YouTubeDeps = {}
-): Promise<TubeAsset[]> {
+): Promise<TubeAsset[]> => {
   const getInfo = deps.getInfo ?? liveGetInfo;
   const head = deps.fetch ?? fetch;
   let answered = false;
@@ -102,6 +105,7 @@ export async function getYouTubeFormats(
   for (const client of CLIENTS) {
     let info: TubeInfo;
     try {
+      // eslint-disable-next-line no-await-in-loop -- ANDROID is the fallback for exactly the videos IOS failed
       info = await getInfo(id, client);
     } catch (error) {
       failure ??= error;
@@ -116,6 +120,7 @@ export async function getYouTubeFormats(
     if (!mp4s.length) {
       continue;
     }
+    // eslint-disable-next-line no-await-in-loop -- the HEAD probe gates this client before falling back to the next
     if (await headOk(head, mp4s[0].videoUrl)) {
       return mp4s.map((m) => ({ ...m, title: info.title }));
     }
@@ -131,4 +136,4 @@ export async function getYouTubeFormats(
     );
   }
   return [];
-}
+};

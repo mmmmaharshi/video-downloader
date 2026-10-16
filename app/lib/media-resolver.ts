@@ -60,21 +60,20 @@ const PAGE_HEADERS = {
 // probing for a file, not a page: accept whatever the host serves
 const FILE_HEADERS = { ...PAGE_HEADERS, Accept: "*/*" };
 
-function fetchPage(
+const fetchPage = (
   doFetch: typeof fetch,
   url: string,
   headers: typeof PAGE_HEADERS = PAGE_HEADERS
-): Promise<Response> {
-  return doFetch(url, {
+): Promise<Response> =>
+  doFetch(url, {
     headers,
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
-}
 
 // Server-side fetch of a user-supplied link must never reach the private
 // network: every hop (redirects included) resolves against a blocklist first.
 // (Explicit range checks — Bun's net.BlockList mishandles IPv6.)
-function isBlockedIPV4(addr: string): boolean {
+const isBlockedIPV4 = (addr: string): boolean => {
   const [a, b] = addr.split(".").map(Number);
   return (
     a === 0 ||
@@ -85,9 +84,9 @@ function isBlockedIPV4(addr: string): boolean {
     (a === 169 && b === 254) ||
     (a === 192 && b === 168)
   );
-}
+};
 
-function isBlockedIPV6(addr: string): boolean {
+const isBlockedIPV6 = (addr: string): boolean => {
   const n = addr.toLowerCase();
   // mapped-in-v6 IPv4 (e.g. ::ffff:127.0.0.1) judges by the embedded address
   const mapped = n.match(/^::ffff:(?<ipv4>\d+\.\d+\.\d+\.\d+)$/u)?.groups?.ipv4;
@@ -106,9 +105,9 @@ function isBlockedIPV6(addr: string): boolean {
     first.startsWith("ff") ||
     /^fe[89ab]/u.test(first)
   );
-}
+};
 
-function isBlockedAddress(addr: string): boolean {
+const isBlockedAddress = (addr: string): boolean => {
   if (isIP(addr) === 4) {
     return isBlockedIPV4(addr);
   }
@@ -116,12 +115,12 @@ function isBlockedAddress(addr: string): boolean {
     return isBlockedIPV6(addr);
   }
   return true;
-}
+};
 
-async function assertPublicHost(
+const assertPublicHost = async (
   url: string,
   lookup: HostLookup
-): Promise<void> {
+): Promise<void> => {
   let addresses: string[];
   try {
     addresses = await lookup(new URL(url).hostname);
@@ -131,19 +130,21 @@ async function assertPublicHost(
   if (!addresses.length || addresses.some(isBlockedAddress)) {
     throw new Error("Only public links are supported.");
   }
-}
+};
 
 const MAX_REDIRECTS = 4;
 
-async function fetchPublic(
+const fetchPublic = async (
   doFetch: typeof fetch,
   url: string,
   lookup: HostLookup,
   headers: typeof PAGE_HEADERS
-): Promise<{ res: Response; url: string }> {
+): Promise<{ res: Response; url: string }> => {
   let current = url;
   for (let hop = 0; hop < MAX_REDIRECTS; hop += 1) {
+    // eslint-disable-next-line no-await-in-loop -- chain stays sequential: each hop feeds the next lookup
     await assertPublicHost(current, lookup);
+    // eslint-disable-next-line no-await-in-loop -- response needed before following the redirect
     const res = await doFetch(current, {
       headers,
       redirect: "manual",
@@ -163,52 +164,28 @@ async function fetchPublic(
     }
   }
   throw new Error("This link redirects too many times.");
-}
-
-export async function resolve(
-  sourceUrl: string,
-  deps: MediaResolverDeps = {}
-): Promise<VideoAsset[]> {
-  const trimmed = sourceUrl.trim();
-  if (!trimmed) {
-    throw new Error("Paste a video link");
-  }
-
-  const doFetch = deps.fetch ?? fetch;
-
-  const insta = trimmed.match(INSTA_RE)?.groups?.shortcode;
-  if (insta) {
-    return resolveInstagram(canonicalReelUrl(trimmed), insta, doFetch);
-  }
-
-  const fb = matchFacebookId(trimmed);
-  if (fb) {
-    return resolveFacebook(trimmed, fb.id, fb.fetchUrl, doFetch);
-  }
-
-  const tweet = trimmed.match(TWEET_RE)?.groups?.id;
-  if (tweet) {
-    return resolveTwitter(trimmed, tweet, doFetch);
-  }
-
-  const ytId = matchYouTubeId(trimmed);
-  if (ytId) {
-    return resolveYouTube(trimmed, ytId, deps.youtube ?? getYouTubeFormats);
-  }
-
-  if (!URL.parse(trimmed)) {
-    throw new Error("Invalid URL. Paste a link to a video page or file.");
-  }
-  if (isKnownMediaHost(trimmed)) {
-    throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, or a YouTube video link."
-    );
-  }
-  return resolveGeneric(trimmed, doFetch, deps.lookup ?? defaultLookup);
-}
+};
 
 // a supported host with an unrecognized path is a mistyped platform link,
 // not a generic page — fail fast instead of fetching it
+// last path segment without its extension, for download filenames
+const slugOf = (sourceUrl: string): string => {
+  const segments = new URL(sourceUrl).pathname.split("/");
+  let last = "";
+  for (const segment of segments) {
+    if (segment) {
+      last = segment;
+    }
+  }
+  let stem: string;
+  try {
+    stem = decodeURIComponent(last).replace(/\.[a-z0-9]+$/iu, "");
+  } catch {
+    stem = last.replace(/\.[a-z0-9]+$/iu, "");
+  }
+  return stem || "video";
+};
+
 const KNOWN_MEDIA_HOSTS = [
   "instagram.com",
   "facebook.com",
@@ -219,28 +196,26 @@ const KNOWN_MEDIA_HOSTS = [
   "youtu.be",
 ];
 
-function isKnownMediaHost(sourceUrl: string): boolean {
+const isKnownMediaHost = (sourceUrl: string): boolean => {
   const host = new URL(sourceUrl).hostname.toLowerCase();
   return KNOWN_MEDIA_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
-}
+};
 
 // Instagram answers the plural /reels/ route with a login redirect for anonymous
 // fetches while /reel/ serves the same post: fetch the canonical singular form.
-function canonicalReelUrl(url: string): string {
-  return url.replace("instagram.com/reels/", "instagram.com/reel/");
-}
+const canonicalReelUrl = (url: string): string =>
+  url.replace("instagram.com/reels/", "instagram.com/reel/");
 
-function normalizeUrl(raw: string): string {
-  return raw
+const normalizeUrl = (raw: string): string =>
+  raw
     .replaceAll("\\u0026", "&")
     .replaceAll("\\/", "/")
     .replaceAll("&amp;", "&");
-}
 
 // A watch page is identified by its 11-char id, wherever it sits: watch?v= (any param
 // order), youtu.be, /shorts/, /live/, /embed/. A regex cannot read query params, so parse.
 const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/u;
-function matchYouTubeId(sourceUrl: string): string | undefined {
+const matchYouTubeId = (sourceUrl: string): string | undefined => {
   let url: URL;
   try {
     url = new URL(sourceUrl);
@@ -265,9 +240,9 @@ function matchYouTubeId(sourceUrl: string): string | undefined {
     }
   }
   return undefined;
-}
+};
 
-function extractOgVideo(html: string): string | undefined {
+const extractOgVideo = (html: string): string | undefined => {
   const v =
     html.match(
       /<meta\s+property="og:video:secure_url"\s+content="(?<url>[^"]+)"/u
@@ -277,29 +252,28 @@ function extractOgVideo(html: string): string | undefined {
     html.match(/"video_url"\s*:\s*"(?<url>[^"]+)"/u)?.groups?.url ??
     html.match(/"videoUrl"\s*:\s*"(?<url>[^"]+)"/u)?.groups?.url;
   return v ? normalizeUrl(v) : undefined;
-}
+};
 
-function extractThumbnail(html: string): string | undefined {
-  return html
+const extractThumbnail = (html: string): string | undefined =>
+  html
     .match(/<meta\s+property="og:image"\s+content="(?<url>[^"]+)"/u)
     ?.groups?.url?.replaceAll("&amp;", "&");
-}
 
 // both resolvers diagnose a failed upstream the same way
-function assertOk(res: Response, upstream: string): void {
+const assertOk = (res: Response, upstream: string): void => {
   if (res.status === 404) {
     throw new Error("Post not found. Check the URL.");
   }
   if (!res.ok) {
     throw new Error(`${upstream} returned ${res.status}. Try again later.`);
   }
-}
+};
 
-async function resolveInstagram(
+const resolveInstagram = async (
   sourceUrl: string,
   shortcode: string,
   doFetch: typeof fetch
-): Promise<VideoAsset[]> {
+): Promise<VideoAsset[]> => {
   const res = await fetchPage(doFetch, sourceUrl);
 
   // more specific than the status itself: a login redirect is a private post, not a bad link
@@ -365,15 +339,15 @@ async function resolveInstagram(
       videoUrl,
     },
   ];
-}
+};
 
 // Facebook ships the video file only on the full (browser-header) page variant:
 // browser_native_hd/sd_url inside the ScheduledServerJS payload, with og:video
 // and hd_src/sd_src as fallbacks. Supported shapes: /reel/<id>, /watch/?v=<id>,
 // /<page>/videos/<id>, and the fb.watch short link.
-function matchFacebookId(
+const matchFacebookId = (
   sourceUrl: string
-): { id: string; fetchUrl: string } | undefined {
+): { id: string; fetchUrl: string } | undefined => {
   let url: URL;
   try {
     url = new URL(sourceUrl);
@@ -404,20 +378,20 @@ function matchFacebookId(
     }
   }
   return undefined;
-}
+};
 
-function extractFbFile(html: string, key: string): string | undefined {
+const extractFbFile = (html: string, key: string): string | undefined => {
   const v = html.match(new RegExp(`"${key}"\\s*:\\s*"(?<value>[^"]+)"`, "u"))
     ?.groups?.value;
   return v ? normalizeUrl(v) : undefined;
-}
+};
 
-async function resolveFacebook(
+const resolveFacebook = async (
   sourceUrl: string,
   id: string,
   fetchUrl: string,
   doFetch: typeof fetch
-): Promise<VideoAsset[]> {
+): Promise<VideoAsset[]> => {
   const res = await fetchPage(doFetch, fetchUrl);
 
   // a login redirect is the only reliable private signal: public pages carry
@@ -452,16 +426,16 @@ async function resolveFacebook(
       videoUrl,
     },
   ];
-}
+};
 
 // Catch-all for any other link: a video content-type resolves the link
 // itself, otherwise the page's og:video tag is the last resort. The body of a
 // video response is never read — only headers — so large files cost nothing.
-async function resolveGeneric(
+const resolveGeneric = async (
   sourceUrl: string,
   doFetch: typeof fetch,
   lookup: HostLookup
-): Promise<VideoAsset[]> {
+): Promise<VideoAsset[]> => {
   const { res, url } = await fetchPublic(
     doFetch,
     sourceUrl,
@@ -506,34 +480,16 @@ async function resolveGeneric(
       videoUrl,
     },
   ];
-}
+};
 
-// last path segment without its extension, for download filenames
-function slugOf(sourceUrl: string): string {
-  const segments = new URL(sourceUrl).pathname.split("/");
-  let last = "";
-  for (const segment of segments) {
-    if (segment) {
-      last = segment;
-    }
-  }
-  let stem: string;
-  try {
-    stem = decodeURIComponent(last).replace(/\.[a-z0-9]+$/iu, "");
-  } catch {
-    stem = last.replace(/\.[a-z0-9]+$/iu, "");
-  }
-  return stem || "video";
-}
-
-async function resolveYouTube(
+const resolveYouTube = async (
   sourceUrl: string,
   id: string,
   getFormats: (
     id: string,
     deps?: YouTubeDeps
   ) => Promise<TubeAsset[]> | TubeAsset[]
-): Promise<VideoAsset[]> {
+): Promise<VideoAsset[]> => {
   // renditions of one video, not separate videos: one labeled asset per distinct quality
   const seen = new Set<number>();
   const formats = await getFormats(id);
@@ -558,7 +514,7 @@ async function resolveYouTube(
     throw new Error("No downloadable video found for this post.");
   }
   return assets;
-}
+};
 
 interface SyndicationMedia {
   type?: string;
@@ -573,11 +529,11 @@ interface SyndicationTweet {
   mediaDetails?: SyndicationMedia[];
 }
 
-async function resolveTwitter(
+const resolveTwitter = async (
   sourceUrl: string,
   id: string,
   doFetch: typeof fetch
-): Promise<VideoAsset[]> {
+): Promise<VideoAsset[]> => {
   // the token is the web client's derivation from the tweet id; an absent token returns an empty payload
   // shortcut: X does not validate this token today and the derivation divides an id above 2^53 as a float — derive it exactly if X ever starts rejecting tokens
   const token = ((Number(id) / 1e15) * Math.PI)
@@ -615,9 +571,12 @@ async function resolveTwitter(
   // (sort runs on the filtered copy, so nothing shared is mutated — toSorted
   // needs ES2023 lib, which this project does not target)
   const assets: VideoAsset[] = [];
+  // (the sort runs on the per-tweet filtered copy — toSorted needs ES2023 lib)
+  // (sort runs on the per-tweet filtered copy: toSorted needs ES2023 lib)
   for (const video of videos) {
     const [mp4] = (video.video_info?.variants ?? [])
       .filter((v) => v.content_type === "video/mp4")
+      // eslint-disable-next-line unicorn/no-array-sort -- per-tweet filtered copy, nothing shared
       .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
     if (mp4) {
       assets.push({
@@ -634,4 +593,49 @@ async function resolveTwitter(
   }
 
   return assets;
-}
+};
+
+// async only so sync validation throws reject the promise instead of
+// throwing synchronously — callers uniformly await
+// eslint-disable-next-line require-await
+export const resolve = async (
+  sourceUrl: string,
+  deps: MediaResolverDeps = {}
+): Promise<VideoAsset[]> => {
+  const trimmed = sourceUrl.trim();
+  if (!trimmed) {
+    throw new Error("Paste a video link");
+  }
+
+  const doFetch = deps.fetch ?? fetch;
+
+  const insta = trimmed.match(INSTA_RE)?.groups?.shortcode;
+  if (insta) {
+    return resolveInstagram(canonicalReelUrl(trimmed), insta, doFetch);
+  }
+
+  const fb = matchFacebookId(trimmed);
+  if (fb) {
+    return resolveFacebook(trimmed, fb.id, fb.fetchUrl, doFetch);
+  }
+
+  const tweet = trimmed.match(TWEET_RE)?.groups?.id;
+  if (tweet) {
+    return resolveTwitter(trimmed, tweet, doFetch);
+  }
+
+  const ytId = matchYouTubeId(trimmed);
+  if (ytId) {
+    return resolveYouTube(trimmed, ytId, deps.youtube ?? getYouTubeFormats);
+  }
+
+  if (!URL.parse(trimmed)) {
+    throw new Error("Invalid URL. Paste a link to a video page or file.");
+  }
+  if (isKnownMediaHost(trimmed)) {
+    throw new Error(
+      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, or a YouTube video link."
+    );
+  }
+  return resolveGeneric(trimmed, doFetch, deps.lookup ?? defaultLookup);
+};

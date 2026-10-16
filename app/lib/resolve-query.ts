@@ -12,13 +12,10 @@ export type ResolveResult =
 
 export const FRESH_MS = 10 * 60_000;
 
-export function resolveKey(url: string): readonly ["resolve", string] {
-  return ["resolve", url.trim()] as const;
-}
+export const resolveKey = (url: string): readonly ["resolve", string] =>
+  ["resolve", url.trim()] as const;
 
-export function isFresh(
+export const isFresh = (
   dataUpdatedAt: number,
   now: number = Date.now()
-): boolean {
-  return now - dataUpdatedAt < FRESH_MS;
-}
+): boolean => now - dataUpdatedAt < FRESH_MS;

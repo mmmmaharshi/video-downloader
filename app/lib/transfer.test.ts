@@ -5,21 +5,20 @@ import { proxy } from "./transfer";
 
 const CDN = "https://scontent.cdninstagram.com/v/abc.mp4";
 
-function ok(body = "video-bytes", contentType = "video/mp4") {
-  return stubFetch(
+const ok = (body = "video-bytes", contentType = "video/mp4") =>
+  stubFetch(
     () =>
       new Response(body, {
         headers: { "content-type": contentType },
         status: 200,
       })
   );
-}
 
-async function thrown(p: Promise<unknown>): Promise<Response> {
+const thrown = async (p: Promise<unknown>): Promise<Response> => {
   const e = await p.catch((error: unknown) => error);
   expect(e).toBeInstanceOf(Response);
   return e as Response;
-}
+};
 
 describe("proxy", () => {
   test("streams the upstream body as an mp4 attachment", async () => {
@@ -67,7 +66,9 @@ describe("proxy", () => {
   });
 
   test("aborts a stalled upstream past the total bound", async () => {
+    // the stub must stay pending until the abort fires — no awaitable built-in expresses that
     const hanging = ((_input: unknown, init?: { signal?: AbortSignal }) =>
+      // eslint-disable-next-line promise/avoid-new
       new Promise((_resolve, reject) => {
         init?.signal?.addEventListener("abort", () =>
           reject(new DOMException("aborted", "AbortError"))

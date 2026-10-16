@@ -27,10 +27,13 @@ The dev server runs at `http://localhost:5173`.
 
 ## How it works
 
-`CONTEXT.md` holds the domain language. Two deep modules sit behind an injectable `fetch` seam, which is where the tests plug in fixtures:
+`CONTEXT.md` holds the domain language. Small modules sit behind injectable seams, which is where the tests plug in fixtures:
 
 - `app/lib/media-resolver.ts` — `resolve(sourceUrl, deps) → VideoAsset`. Picks the platform from the URL, then either scrapes the Instagram post page (`og:video`, with an embed fallback) or asks X's syndication endpoint for the tweet's `video_info` variants and keeps the highest-bitrate MP4. Rejects private or login-required Instagram posts, photo-only tweets, and text-only tweets.
-- `app/lib/transfer.ts` — `proxy(videoUrl, filename, deps) → Response` and `isAllowedHost(url)`. Owns the CDN allowlist (https only), streams the upstream body through, and names the download `<filename>.mp4`.
+- `app/lib/transfer.ts` — `proxy(videoUrl, stem, deps) → Response` and `isAllowedHost(url)`. Owns the CDN allowlist (https only), streams the upstream body through with an overall deadline, passes the size through, and names the download `<stem>.mp4`.
+- `app/lib/preview.ts` — `nextPreview(state, event) → PreviewState`. Owns the preview's open/dismiss rule.
+- `app/lib/download-link.ts` — `toDownloadHref(asset)` and `fromDownloadRequest(url)`. Owns the download link both routes share.
+- `app/lib/recent-resolves.ts` — `rememberResolved(url)` and `wasResolved(url)`. The form remembers what it resolved; the download route only serves those.
 
 Routes: `/` serves the form and preview; `/api/download?url=…&name=…` streams the file.
 

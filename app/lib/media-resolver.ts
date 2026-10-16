@@ -7,7 +7,7 @@
 import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 
-export type Platform = "instagram" | "twitter" | "youtube";
+export type Platform = "instagram" | "twitter" | "youtube" | "facebook";
 
 export type VideoAsset = {
   videoUrl: string;
@@ -30,12 +30,15 @@ const FETCH_TIMEOUT_MS = 15_000;
 
 export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): Promise<VideoAsset[]> {
   const trimmed = sourceUrl.trim();
-  if (!trimmed) throw new Error("Paste an Instagram or X link");
+  if (!trimmed) throw new Error("Paste an Instagram, Facebook, or X link");
 
   const doFetch = deps.fetch ?? fetch;
 
   const insta = trimmed.match(INSTA_RE);
   if (insta) return resolveInstagram(canonicalReelUrl(trimmed), insta[2], doFetch);
+
+  const fb = matchFacebookId(trimmed);
+  if (fb) return resolveFacebook(trimmed, fb.id, fb.fetchUrl, doFetch);
 
   const tweet = trimmed.match(TWEET_RE);
   if (tweet) return resolveTwitter(trimmed, tweet[1], doFetch);
@@ -43,7 +46,7 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
   const ytId = matchYouTubeId(trimmed);
   if (ytId) return resolveYouTube(trimmed, ytId, deps.youtube ?? getYouTubeFormats);
 
-  throw new Error("Invalid URL. Use an instagram.com post/reel, an x.com status link, or a YouTube video link.");
+  throw new Error("Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, or a YouTube video link.");
 }
 
 // Instagram answers the plural /reels/ route with a login redirect for anonymous
@@ -147,6 +150,69 @@ async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: t
   if (!videoUrl) throw new Error("No video found. Only video/reel posts are downloadable, or IG changed its page.");
 
   return [{ videoUrl, thumbnail: extractThumbnail(html), shortcode, sourceUrl, platform: "instagram" }];
+}
+
+// Facebook serves public videos like Instagram: an og:video tag on the page,
+// with hd_src/sd_src JSON as the fallback. Supported shapes: /reel/<id>,
+// /watch/?v=<id>, /<page>/videos/<id>, and the fb.watch short link.
+function matchFacebookId(sourceUrl: string): { id: string; fetchUrl: string } | undefined {
+  let url: URL;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+  const host = url.hostname.toLowerCase();
+  if (host === "fb.watch") {
+    const code = url.pathname.slice(1).split("/")[0];
+    return code ? { id: code, fetchUrl: sourceUrl } : undefined;
+  }
+  if (host === "facebook.com" || host.endsWith(".facebook.com")) {
+    const reel = url.pathname.match(/^\/reel\/(\d+)(?:\/|$)/)?.[1];
+    if (reel) return { id: reel, fetchUrl: `https://www.facebook.com/reel/${reel}/` };
+    const v = url.searchParams.get("v");
+    if (v && /^\d+$/.test(v)) return { id: v, fetchUrl: `https://www.facebook.com/watch/?v=${v}` };
+    const video = url.pathname.match(/\/videos\/(\d+)(?:\/|$)/)?.[1];
+    if (video) return { id: video, fetchUrl: `https://www.facebook.com/watch/?v=${video}` };
+  }
+  return undefined;
+}
+
+function extractFbSrc(html: string): string | undefined {
+  const v = html.match(/"hd_src"\s*:\s*"([^"]+)"/)?.[1] ?? html.match(/"sd_src"\s*:\s*"([^"]+)"/)?.[1];
+  return v ? normalizeUrl(v) : undefined;
+}
+
+async function resolveFacebook(
+  sourceUrl: string,
+  id: string,
+  fetchUrl: string,
+  doFetch: typeof fetch,
+): Promise<VideoAsset[]> {
+  const res = await doFetch(fetchUrl, {
+    headers: {
+      "User-Agent": CHROME_UA,
+      Accept: "text/html,application/xhtml+xml",
+      "Accept-Language": "en-US,en;q=0.9",
+    },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (res.redirected && res.url.includes("facebook.com/login")) {
+    throw new Error("Private or login-required post. Only public posts are supported.");
+  }
+  assertOk(res, "Facebook");
+
+  const html = await res.text();
+
+  if (html.includes("/login.php") && !html.includes("og:video")) {
+    throw new Error("Private post or requires login. Only public posts work.");
+  }
+
+  const videoUrl = extractOgVideo(html) ?? extractFbSrc(html);
+  if (!videoUrl) throw new Error("No video found. Only public video/reel posts are downloadable, or FB changed its page.");
+
+  return [{ videoUrl, thumbnail: extractThumbnail(html), shortcode: id, sourceUrl, platform: "facebook" }];
 }
 
 async function resolveYouTube(

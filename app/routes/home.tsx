@@ -56,7 +56,9 @@ export default function Home() {
 
   React.useEffect(() => {
     if (videoUrl) setIsOpen(true);
-  }, [videoUrl]);
+    // depends on the response, not the url inside it: re-fetching the same link resolves to an
+    // equal url and must still reopen the preview
+  }, [data]);
 
   // Close on backdrop click or Escape key
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {

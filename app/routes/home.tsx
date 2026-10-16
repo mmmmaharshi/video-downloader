@@ -147,7 +147,12 @@ export default function Home() {
               <span className="text-sm leading-4 text-[color:var(--secondary)]">{current.shortcode}</span>
             </div>
             <div className="bg-[color:var(--sc-background)]">
-              <video src={current.videoUrl} controls poster={current.thumbnail} className="block w-full" />
+              {/* YouTube previews stay a thumbnail: its mp4s are huge and gated, the file is what downloads */}
+              {current.platform === "youtube" ? (
+                <img src={current.thumbnail} alt="Video thumbnail" className="block w-full" />
+              ) : (
+                <video src={current.videoUrl} controls poster={current.thumbnail} className="block w-full" />
+              )}
             </div>
             {shown.length > 1 && (
               <div role="group" aria-label="Videos in this post" className="flex items-center gap-2 px-6 py-3">

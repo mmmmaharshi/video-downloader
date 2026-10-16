@@ -189,6 +189,27 @@ export default function Home() {
                 >
                   Download .mp4
                 </button>
+              ) : current.platform === "youtube" ? (
+                <>
+                  <select
+                    value={preview.active}
+                    onChange={(e) => setPreview((p) => nextPreview(p, { type: "selected", index: Number(e.target.value) }))}
+                    aria-label="Video quality"
+                    className={`${GHOST_BUTTON} px-3 py-2`}
+                  >
+                    {shown.map((a, i) => (
+                      <option key={i} value={i}>
+                        {a.label ?? `Video ${i + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => (window.location.href = toDownloadHref(shown, preview.active))}
+                    className={`${SOLID_BUTTON} px-4 py-2`}
+                  >
+                    Download .mp4
+                  </button>
+                </>
               ) : (
                 <div className="flex flex-col gap-2">
                   {shown.map((a, i) => (

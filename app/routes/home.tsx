@@ -91,10 +91,10 @@ export default function Home() {
             >
               <Input autoComplete="off" placeholder="Paste an Instagram, X, or YouTube video URL" />
             </TextField>
-            <Button isDisabled={isLoading} type="submit" variant="primary">
-              {/* always rendered: hiding (not unmounting) reserves its width so the
-                  label never shifts when loading starts */}
-              <Spinner size="sm" className={isLoading ? undefined : "invisible"} />
+            <Button isDisabled={isLoading} type="submit" variant="primary" className="relative">
+              {/* overlaid in the left padding: no layout slot, so the label is
+                  centered alike idle and loading */}
+              {isLoading ? <Spinner size="sm" className="absolute left-4" /> : null}
               Fetch
             </Button>
           </fetcher.Form>

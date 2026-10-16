@@ -9,6 +9,7 @@ import {
 
 import type { Route } from "./+types/root";
 import "./app.css";
+import "@fontsource-variable/geist-pixel/elsh.css";
 
 export const links: Route.LinksFunction = () => [
   { rel: "icon", href: "/favicon.svg?v=2", type: "image/svg+xml" },

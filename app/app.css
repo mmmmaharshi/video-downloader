@@ -1,2 +1,6 @@
 @import "tailwindcss";
 @import "@heroui/styles";
+
+@theme {
+  --font-sans: "Geist Pixel Variable", ui-sans-serif, system-ui, sans-serif;
+}

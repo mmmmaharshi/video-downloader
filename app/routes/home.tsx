@@ -105,7 +105,7 @@ export default function Home() {
         </div>
 
         <Typography color="muted">
-          Paste any video link below and hit Fetch.
+          Paste any video link and hit Fetch and download.
           <br />
           Supported Platforms: Instagram &middot; X (Twitter) &middot; YouTube.
         </Typography>

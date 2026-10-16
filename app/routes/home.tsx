@@ -139,7 +139,7 @@ export default function Home() {
       </main>
 
       {/* Modal */}
-      {preview.open && current && (
+      {preview.open && current ? (
         <div
           role="dialog"
           aria-modal="true"
@@ -227,7 +227,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

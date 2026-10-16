@@ -33,7 +33,7 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
   const doFetch = deps.fetch ?? fetch;
 
   const insta = trimmed.match(INSTA_RE);
-  if (insta) return resolveInstagram(trimmed, insta[2], doFetch);
+  if (insta) return resolveInstagram(canonicalReelUrl(trimmed), insta[2], doFetch);
 
   const tweet = trimmed.match(TWEET_RE);
   if (tweet) return resolveTwitter(trimmed, tweet[1], doFetch);
@@ -42,6 +42,12 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
   if (ytId) return resolveYouTube(trimmed, ytId, deps.youtube ?? getYouTubeFormats);
 
   throw new Error("Invalid URL. Use an instagram.com post/reel, an x.com status link, or a YouTube video link.");
+}
+
+// Instagram answers the plural /reels/ route with a login redirect for anonymous
+// fetches while /reel/ serves the same post: fetch the canonical singular form.
+function canonicalReelUrl(url: string): string {
+  return url.replace("instagram.com/reels/", "instagram.com/reel/");
 }
 
 function normalizeUrl(raw: string): string {

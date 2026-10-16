@@ -56,8 +56,7 @@ describe("resolve", () => {
     expect(asset.platform).toBe("instagram");
   });
 
-  test("a plural /reels/ url falls back to the singular reel embed", async () => {
-    const requested: string[] = [];
+  test("a plural /reels/ url falls back to the singular reel embed", async () => {    const requested: string[] = [];
     const [asset] = await resolve("https://www.instagram.com/reels/DeUJBPLgZeX/", {
       fetch: stubFetch((url) => {
         requested.push(url);
@@ -68,6 +67,17 @@ describe("resolve", () => {
     });
     expect(asset.videoUrl).toBe("https://scontent.cdninstagram.com/v/embed.mp4");
     expect(requested.some((u) => u.includes("/reel/DeUJBPLgZeX/embed/"))).toBe(true);
+  });
+
+  test("a plural /reels/ url is fetched as the singular /reel/ form", async () => {
+    const requested: string[] = [];
+    await resolve("https://www.instagram.com/reels/DeUJBPLgZeX/", {
+      fetch: stubFetch((url) => {
+        requested.push(url);
+        return page(`<meta property="og:video" content="${CDN}">`);
+      }),
+    });
+    expect(requested[0]).toBe("https://www.instagram.com/reel/DeUJBPLgZeX/");
   });
 
   test("rejects an empty url", async () => {

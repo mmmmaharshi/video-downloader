@@ -51,6 +51,7 @@ export default function Home() {
   // The preview renders the assets that opened it, not whatever the fetcher holds now.
   const shown = preview.shown;
   const current = shown[preview.active];
+  const isYouTube = current?.platform === "youtube";
 
   React.useEffect(() => {
     if (!data) return;
@@ -152,13 +153,13 @@ export default function Home() {
             </div>
             <div className="bg-[color:var(--sc-background)]">
               {/* YouTube previews stay a thumbnail: its mp4s are huge and gated, the file is what downloads */}
-              {current.platform === "youtube" ? (
+              {isYouTube ? (
                 <img src={current.thumbnail} alt="Video thumbnail" className={MEDIA_CLASS} />
               ) : (
                 <video src={current.videoUrl} controls poster={current.thumbnail} className={MEDIA_CLASS} />
               )}
             </div>
-            {shown.length > 1 && current.platform !== "youtube" && (
+            {shown.length > 1 && !isYouTube && (
               <div role="group" aria-label="Videos in this post" className="flex items-center gap-2 px-6 py-3">
                 {shown.map((a, i) => (
                   <button
@@ -182,7 +183,7 @@ export default function Home() {
               >
                 Close
               </button>
-              {current.platform === "youtube" ? (
+              {isYouTube ? (
                 <>
                   <select
                     value={preview.active}

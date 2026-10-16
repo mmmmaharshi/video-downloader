@@ -134,7 +134,7 @@ export default function Home() {
                 <Modal.Heading>Preview</Modal.Heading>
                 {current ? (
                   <Typography color="muted" type="body-sm">
-                    {current.shortcode}
+                    {current.title ?? current.shortcode}
                   </Typography>
                 ) : null}
               </Modal.Header>

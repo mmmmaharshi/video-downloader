@@ -8,7 +8,7 @@
 
 import { Innertube } from "youtubei.js";
 
-export type TubeAsset = { videoUrl: string; height: number };
+export type TubeAsset = { videoUrl: string; height: number; title?: string };
 export type YouTubeDeps = {
   getInfo?: (id: string, client: ClientName) => Promise<TubeInfo>;
   fetch?: typeof fetch;
@@ -18,7 +18,7 @@ type ClientName = "IOS" | "ANDROID";
 const CLIENTS: ClientName[] = ["IOS", "ANDROID"];
 
 type TubeFormat = { url?: string; mime_type: string; width?: number; height?: number };
-export type TubeInfo = { playability: string; reason?: string; formats: TubeFormat[] };
+export type TubeInfo = { playability: string; reason?: string; title?: string; formats: TubeFormat[] };
 
 // one anonymous session per process; a failed creation retries on the next call
 let session: Promise<Innertube> | undefined;
@@ -38,6 +38,7 @@ async function liveGetInfo(id: string, client: ClientName): Promise<TubeInfo> {
   return {
     playability: info.playability_status?.status ?? "UNKNOWN",
     reason: info.playability_status?.reason ?? undefined,
+    title: info.basic_info?.title ?? undefined,
     formats: [...(sd?.formats ?? []), ...(sd?.adaptive_formats ?? [])].map((f) => ({
       url: f.url,
       mime_type: f.mime_type,
@@ -83,7 +84,7 @@ export async function getYouTubeFormats(id: string, deps: YouTubeDeps = {}): Pro
     }
     const mp4s = bestMp4s(info);
     if (!mp4s.length) continue;
-    if (await headOk(head, mp4s[0].videoUrl)) return mp4s;
+    if (await headOk(head, mp4s[0].videoUrl)) return mp4s.map((m) => ({ ...m, title: info.title }));
   }
   if (!answered) throw new Error("YouTube is unreachable right now. Try again later.", { cause: failure });
   if (reason)

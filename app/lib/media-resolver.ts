@@ -16,6 +16,7 @@ export type VideoAsset = {
   sourceUrl: string;
   platform: Platform;
   label?: string;
+  title?: string;
 };
 
 export type MediaResolverDeps = {
@@ -168,6 +169,7 @@ async function resolveYouTube(
       sourceUrl,
       platform: "youtube" as const,
       label: f.height > 0 ? `${f.height}p` : undefined,
+      title: f.title,
     }));
   if (!assets.length) throw new Error("No downloadable video found for this post.");
   return assets;

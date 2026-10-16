@@ -78,4 +78,12 @@ describe("getYouTubeFormats", () => {
     });
     expect(formats).toEqual([]);
   });
+
+  test("carries the video title onto every rendition", async () => {
+    const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
+      getInfo: async () => ({ ...info([mp4("https://x/720.mp4", 720)]), title: "Never Gonna Give You Up" }),
+      fetch: headOk,
+    });
+    expect(formats.map((f) => f.title)).toEqual(["Never Gonna Give You Up"]);
+  });
 });

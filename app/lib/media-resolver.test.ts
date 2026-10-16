@@ -311,6 +311,13 @@ describe("resolve — YouTube", () => {
       ["720p", "https://x/720.mp4"],
     ]);
   });
+
+  test("carries the YouTube title onto every asset", async () => {
+    const [asset] = await resolve(`https://youtu.be/${YT_ID}`, {
+      youtube: async () => [{ videoUrl: YT_MP4, height: 720, title: "Never Gonna Give You Up" }],
+    });
+    expect(asset.title).toBe("Never Gonna Give You Up");
+  });
   test("reports no downloadable video when YouTube has no mp4 rendition", async () => {
     await expect(resolve(`https://youtu.be/${YT_ID}`, { youtube: async () => [] })).rejects.toThrow(
       "No downloadable video found",

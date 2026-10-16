@@ -1,0 +1,83 @@
+import { describe, expect, test } from "bun:test";
+import { stubFetch } from "./fake-fetch";
+import { isAllowedHost, proxy } from "./transfer";
+
+const CDN = "https://scontent.cdninstagram.com/v/abc.mp4";
+
+function ok(body = "video-bytes", contentType = "video/mp4") {
+  return stubFetch(() => new Response(body, { status: 200, headers: { "content-type": contentType } }));
+}
+
+async function thrown(p: Promise<unknown>): Promise<Response> {
+  const e = await p.catch((e: unknown) => e);
+  expect(e).toBeInstanceOf(Response);
+  return e as Response;
+}
+
+describe("isAllowedHost", () => {
+  test("allows Instagram CDN hosts, exact or suffixed", () => {
+    expect(isAllowedHost(CDN)).toBe(true);
+    expect(isAllowedHost("https://cdninstagram.com/v/x.mp4")).toBe(true);
+    expect(isAllowedHost("https://video.fbcdn.net/x.mp4")).toBe(true);
+  });
+
+  test("rejects lookalike hosts", () => {
+    expect(isAllowedHost("https://evil.com/cdninstagram.com")).toBe(false);
+    expect(isAllowedHost("https://cdninstagram.com.evil.com/x")).toBe(false);
+    expect(isAllowedHost("https://cdninstagram.com@evil.com/x")).toBe(false);
+    expect(isAllowedHost("https://fbcdn.net.evil.com/x")).toBe(false);
+  });
+
+  test("rejects anything that is not a URL", () => {
+    expect(isAllowedHost("not a url")).toBe(false);
+    expect(isAllowedHost("")).toBe(false);
+  });
+
+  test("rejects insecure http", () => {
+    expect(isAllowedHost("http://scontent.cdninstagram.com/x.mp4")).toBe(false);
+  });
+});
+
+describe("proxy", () => {
+  test("streams the upstream body as an mp4 attachment", async () => {
+    const res = await proxy(CDN, "ABC123", { fetch: ok() });
+    expect(res.headers.get("content-disposition")).toBe('attachment; filename="instagram-ABC123.mp4"');
+    expect(res.headers.get("content-type")).toBe("video/mp4");
+    expect(await res.text()).toBe("video-bytes");
+  });
+
+  test("falls back to video/mp4 when upstream sends no content type", async () => {
+    const res = await proxy(CDN, "ABC123", { fetch: stubFetch(() => new Response("x", { status: 200 })) });
+    expect(res.headers.get("content-type")).toBe("video/mp4");
+  });
+
+  test("rejects a missing url with 400", async () => {
+    expect((await thrown(proxy("", "ABC123", { fetch: ok() }))).status).toBe(400);
+  });
+
+  test("rejects an off-allowlist url with 400 without fetching", async () => {
+    const never = stubFetch(() => {
+      throw new Error("must not fetch");
+    });
+    expect((await thrown(proxy("https://evil.com/x.mp4", "ABC123", { fetch: never }))).status).toBe(400);
+  });
+
+  test("maps an upstream error status to 502", async () => {
+    const failing = stubFetch(() => new Response("nope", { status: 500 }));
+    expect((await thrown(proxy(CDN, "ABC123", { fetch: failing }))).status).toBe(502);
+  });
+
+  test("maps a bodiless upstream response to 502", async () => {
+    const bodiless = stubFetch(() => new Response(null, { status: 200 }));
+    expect((await thrown(proxy(CDN, "ABC123", { fetch: bodiless }))).status).toBe(502);
+  });
+
+  test("maps an unreachable upstream to 502", async () => {
+    const unreachable = stubFetch(() => {
+      throw new TypeError("fetch failed");
+    });
+    const res = await thrown(proxy(CDN, "ABC123", { fetch: unreachable }));
+    expect(res.status).toBe(502);
+    expect(await res.text()).toBe("Upstream unreachable");
+  });
+});

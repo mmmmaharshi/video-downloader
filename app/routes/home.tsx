@@ -171,10 +171,8 @@ export default function Home() {
                   <>
                     <Select
                       aria-label="Video quality"
-                      value={String(preview.active)}
-                      onChange={(key) => {
-                        if (key != null) select(Number(key));
-                      }}
+                      selectedKey={String(preview.active)}
+                      onSelectionChange={(key) => select(Number(key))}
                     >
                       <Label>Quality</Label>
                       <Select.Trigger>

@@ -10,11 +10,8 @@
 
   /* Canvas & surfaces — pure neutral, zero channel spread */
   --sc-background: #0a0a0a;
-  --sc-canvas: #0a0a0a;
   --sc-surface: #0f0f0f;
   --sc-border-alpha: 10%;
-  --sc-hover-alpha: 9%;
-  --sc-pressed-alpha: 14%;
 
   /* Ink — alpha white on near-black canvas.
    * Secondary ~56% → 8.2:1 (AAA).
@@ -27,12 +24,9 @@
   --color-background: var(--sc-background);
   --color-foreground: rgb(255 255 255 / 96%);
   --color-secondary: var(--sc-secondary);
-  --color-tertiary: var(--sc-tertiary);
   --color-border: rgb(255 255 255 / var(--sc-border-alpha));
-  --color-muted: var(--sc-tertiary);
   --font-sans: "Geist Pixel Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
   --radius-md: 8px;
-  --spacing-unit: 8px;
 }
 
 html,

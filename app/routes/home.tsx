@@ -140,7 +140,6 @@ export default function Home() {
             </div>
             <div className="bg-[color:var(--sc-background)]">
               {videoUrl && (
-                /* eslint-disable-next-line jsx-a11y/media-has-caption */
                 <video src={videoUrl} controls poster={data && "thumbnail" in data ? data.thumbnail : undefined} className="block w-full" />
               )}
             </div>

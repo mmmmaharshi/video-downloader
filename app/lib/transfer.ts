@@ -1,6 +1,8 @@
 // Module: Transfer — deep module per CONTEXT.md
-// Interface: isAllowedHost(url), proxy(videoUrl, filename, deps?) → Response
+// Interface: isAllowedHost(url), proxy(videoUrl, stem, deps?) → Response
 // Owns allowlist policy + streaming. Both routes call it — one policy, N call sites.
+
+import { UA } from "./user-agent";
 
 const ALLOWED_HOSTS = ["cdninstagram.com", "fbcdn.net", "scontent.cdninstagram.com", "video.twimg.com"] as const;
 const UPSTREAM_TIMEOUT_MS = 15_000;
@@ -22,7 +24,7 @@ export function isAllowedHost(url: string): boolean {
 
 export async function proxy(
   videoUrl: string | null,
-  filename: string,
+  stem: string,
   deps: TransferDeps = {},
 ): Promise<Response> {
   if (!videoUrl) throw new Response("Missing url", { status: 400 });
@@ -36,7 +38,7 @@ export async function proxy(
   let upstream: Response;
   try {
     upstream = await doFetch(videoUrl, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+      headers: { "User-Agent": UA },
       signal: controller.signal,
     });
   } catch {
@@ -48,8 +50,8 @@ export async function proxy(
   if (!upstream.ok || !upstream.body) throw new Response(`Upstream ${upstream.status}`, { status: 502 });
 
   const contentType = upstream.headers.get("content-type") ?? "video/mp4";
-  // name arrives from the query string — keep it out of the header grammar
-  const safeName = filename.replace(/[^\w.-]+/g, "_");
+  // the stem arrives from the query string — keep it out of the header grammar
+  const safeName = stem.replace(/[^\w.-]+/g, "_");
   return new Response(upstream.body, {
     headers: {
       "Content-Type": contentType,

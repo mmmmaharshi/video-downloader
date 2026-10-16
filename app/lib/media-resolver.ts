@@ -2,6 +2,8 @@
 // Interface: resolve(sourceUrl, deps?) → VideoAsset
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
+import { CHROME_UA, UA } from "./user-agent";
+
 export type Platform = "instagram" | "twitter";
 
 export type VideoAsset = {
@@ -19,8 +21,6 @@ export type MediaResolverDeps = {
 const INSTA_RE = /^https?:\/\/(?:www\.)?instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)\/?(\?.*)?$/;
 const TWEET_RE = /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/(?:[^/?#]+\/)*status(?:es)?\/(\d+)(?:[/?#]|$)/i;
 const FETCH_TIMEOUT_MS = 15_000;
-const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
-const CHROME_UA = `${UA} (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36`;
 
 export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): Promise<VideoAsset> {
   const trimmed = sourceUrl.trim();
@@ -54,6 +54,12 @@ function extractThumbnail(html: string): string | undefined {
   return html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/)?.[1]?.replace(/&amp;/g, "&");
 }
 
+// both resolvers diagnose a failed upstream the same way
+function assertOk(res: Response, upstream: string): void {
+  if (res.status === 404) throw new Error("Post not found. Check the URL.");
+  if (!res.ok) throw new Error(`${upstream} returned ${res.status}. Try again later.`);
+}
+
 async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: typeof fetch): Promise<VideoAsset> {
   const res = await doFetch(sourceUrl, {
     headers: {
@@ -64,11 +70,11 @@ async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: t
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (res.status === 404) throw new Error("Post not found. Check the URL.");
+  // more specific than the status itself: a login redirect is a private post, not a bad link
   if (res.redirected && res.url.includes("/accounts/login")) {
     throw new Error("Private or login-required post. Only public posts are supported.");
   }
-  if (!res.ok) throw new Error(`Instagram returned ${res.status}. Try again later.`);
+  assertOk(res, "Instagram");
 
   const html = await res.text();
 
@@ -117,6 +123,7 @@ type SyndicationTweet = {
 
 async function resolveTwitter(sourceUrl: string, id: string, doFetch: typeof fetch): Promise<VideoAsset> {
   // the token is the web client's derivation from the tweet id; an absent token returns an empty payload
+  // shortcut: X does not validate this token today and the derivation divides an id above 2^53 as a float — derive it exactly if X ever starts rejecting tokens
   const token = ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
   const endpoint = `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=en`;
 
@@ -125,8 +132,7 @@ async function resolveTwitter(sourceUrl: string, id: string, doFetch: typeof fet
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-  if (res.status === 404) throw new Error("Post not found. Check the URL.");
-  if (!res.ok) throw new Error(`X returned ${res.status}. Try again later.`);
+  assertOk(res, "X");
 
   // this endpoint answers with HTML on some failure paths and with {} when the token is missing
   let tweet: SyndicationTweet;

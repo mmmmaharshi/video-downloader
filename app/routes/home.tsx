@@ -2,6 +2,7 @@ import type { Route } from "./+types/home";
 import * as React from "react";
 import { useFetcher } from "react-router";
 import { resolve, type Platform } from "../lib/media-resolver";
+import { closedPreview, nextPreview, type PreviewState } from "../lib/preview";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -44,38 +45,50 @@ export default function Home() {
   const fetcher = useFetcher<ActionData>();
   const data = fetcher.data;
   const isLoading = fetcher.state !== "idle";
-  const videoUrl = data && "videoUrl" in data ? data.videoUrl : undefined;
   const error = data && "error" in data ? data.error : undefined;
-  const shortcode = data && "shortcode" in data ? data.shortcode : undefined;
-  const downloadName = data && "platform" in data ? `${data.platform}-${data.shortcode}` : undefined;
 
-  const downloadHref =
-    videoUrl && downloadName ? `/api/download?url=${encodeURIComponent(videoUrl)}&name=${encodeURIComponent(downloadName)}` : undefined;
+  const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
 
-  const [isOpen, setIsOpen] = React.useState(false);
+  // The preview renders the asset that opened it, not whatever the fetcher holds now.
+  const shown = preview.shown;
+  const downloadHref = preview.open && shown
+    ? `/api/download?url=${encodeURIComponent(shown.videoUrl)}&name=${encodeURIComponent(`${shown.platform}-${shown.shortcode}`)}`
+    : undefined;
 
   React.useEffect(() => {
-    if (videoUrl) setIsOpen(true);
+    if (!data) return;
+    if ("error" in data) {
+      setPreview((p) => nextPreview(p, { type: "failed" }));
+    } else {
+      const asset = {
+        videoUrl: data.videoUrl,
+        thumbnail: data.thumbnail,
+        shortcode: data.shortcode,
+        sourceUrl: data.inputUrl,
+        platform: data.platform,
+      };
+      setPreview((p) => nextPreview(p, { type: "resolved", asset }));
+    }
     // depends on the response, not the url inside it: re-fetching the same link resolves to an
     // equal url and must still reopen the preview
   }, [data]);
 
   React.useEffect(() => {
-    if (!isOpen) return;
+    if (!preview.open) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsOpen(false);
+      if (e.key === "Escape") setPreview((p) => nextPreview(p, { type: "dismissed" }));
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [isOpen]);
+  }, [preview.open]);
 
   // Prevent body scroll when modal is open
   React.useEffect(() => {
-    document.body.style.overflow = isOpen ? "hidden" : "";
+    document.body.style.overflow = preview.open ? "hidden" : "";
     return () => {
       document.body.style.overflow = "";
     };
-  }, [isOpen]);
+  }, [preview.open]);
 
   return (
     <div className="flex min-h-dvh flex-col bg-[color:var(--sc-background)] text-[color:var(--foreground)]">
@@ -135,7 +148,7 @@ export default function Home() {
       </main>
 
       {/* Modal */}
-      {isOpen && (
+      {preview.open && shown && (
         <div
           role="dialog"
           aria-modal="true"
@@ -145,17 +158,15 @@ export default function Home() {
           <div className="w-full max-w-lg border border-[color:var(--border)] bg-[color:var(--sc-surface)] transition-[transform,opacity] duration-[200ms] ease-out">
             <div className="flex items-center justify-between border-b border-[color:var(--border)] px-6 py-4">
               <span className="text-[15px] font-medium leading-[1.4]">Preview</span>
-              {shortcode ? <span className="text-sm leading-4 text-[color:var(--secondary)]">{shortcode}</span> : null}
+              <span className="text-sm leading-4 text-[color:var(--secondary)]">{shown.shortcode}</span>
             </div>
             <div className="bg-[color:var(--sc-background)]">
-              {videoUrl && (
-                <video src={videoUrl} controls poster={data && "thumbnail" in data ? data.thumbnail : undefined} className="block w-full" />
-              )}
+              <video src={shown.videoUrl} controls poster={shown.thumbnail} className="block w-full" />
             </div>
             <div className="flex items-center justify-end gap-3 px-6 py-4">
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={() => setPreview((p) => nextPreview(p, { type: "dismissed" }))}
                 className="rounded-md border border-white/[12%] bg-[#fff]/[8%] px-4 py-2 text-[15px] font-medium leading-[1.45] text-white transition-all duration-[150ms] ease-out hover:bg-[#fff]/[16%] active:scale-[0.98]"
               >
                 Close

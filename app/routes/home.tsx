@@ -60,11 +60,6 @@ export default function Home() {
     // equal url and must still reopen the preview
   }, [data]);
 
-  // Close on backdrop click or Escape key
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === e.currentTarget) setIsOpen(false);
-  };
-
   React.useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -145,7 +140,6 @@ export default function Home() {
           role="dialog"
           aria-modal="true"
           aria-label="Video preview"
-          onClick={handleBackdropClick}
           className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-[rgb(0_0_0/_56%)] p-6 transition-[background-color] duration-[200ms] ease-out"
         >
           <div className="w-full max-w-lg border border-[color:var(--border)] bg-[color:var(--sc-surface)] transition-[transform,opacity] duration-[200ms] ease-out">

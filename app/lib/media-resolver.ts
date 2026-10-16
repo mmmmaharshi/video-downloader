@@ -14,6 +14,7 @@ export type MediaResolverDeps = {
 };
 
 const INSTA_RE = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)\/?(\?.*)?$/;
+const FETCH_TIMEOUT_MS = 15_000;
 
 function parseShortcode(sourceUrl: string): string {
   const m = sourceUrl.trim().match(INSTA_RE);
@@ -51,12 +52,11 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
       Accept: "text/html,application/xhtml+xml",
       "Accept-Language": "en-US,en;q=0.9",
     },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
   if (res.status === 404) throw new Error("Post not found. Check the URL.");
-  // node fetch sets redirected; bun fetch similar — check raw url if available
-  const finalUrl = (res as unknown as { url?: string }).url ?? "";
-  if ((res as unknown as { redirected?: boolean }).redirected && finalUrl.includes("/accounts/login")) {
+  if (res.redirected && res.url.includes("/accounts/login")) {
     throw new Error("Private or login-required post. Only public posts are supported.");
   }
   if (!res.ok) throw new Error(`Instagram returned ${res.status}. Try again later.`);
@@ -76,13 +76,14 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
       const embedUrl = `https://www.instagram.com/${embedKind}/${shortcode}/embed/captioned/`;
       const er = await doFetch(embedUrl, {
         headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (er.ok) {
         const ehtml = await er.text();
         const evRaw =
           ehtml.match(/(?:\\"|")video_url(?:\\"|")\s*:\s*(?:\\"|")([^"]+)(?:\\"|")/)?.[1] ??
           ehtml.match(/(?:\\"|")videoUrl(?:\\"|")\s*:\s*(?:\\"|")([^"]+)(?:\\"|")/)?.[1];
-        if (evRaw) videoUrl = evRaw.replace(/\\u0026/g, "&").replace(/\\\//g, "/").replace(/\\/g, "").replace(/&amp;/g, "&");
+        if (evRaw) videoUrl = normalizeUrl(evRaw).replace(/\\/g, "");
       }
     } catch {
       // swallow — handled by final throw

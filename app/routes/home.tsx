@@ -42,9 +42,10 @@ type ActionData =
   | { assets: VideoAsset[]; inputUrl: string; error?: never }
   | { error: string; inputUrl: string; assets?: never };
 
-// The media box never grows past the viewport: landscape videos stay width-bound
-// while portrait ones clamp and letterbox instead of pushing the modal off-screen.
-const MEDIA_CLASS = "block w-full max-h-[70vh] object-contain";
+// The media never overflows the dialog: 70vh keeps landscape videos width-bound
+// on tall screens, while 100dvh minus the header/footer/dialog chrome (~300px)
+// shrinks portrait videos into the visible body instead of scrolling it.
+const MEDIA_CLASS = "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
 
 export default function Home() {
   const fetcher = useFetcher<ActionData>();

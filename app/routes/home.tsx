@@ -182,14 +182,7 @@ export default function Home() {
               >
                 Close
               </button>
-              {shown.length === 1 ? (
-                <button
-                  onClick={() => (window.location.href = toDownloadHref(shown, 0))}
-                  className={`${SOLID_BUTTON} px-4 py-2`}
-                >
-                  Download .mp4
-                </button>
-              ) : current.platform === "youtube" ? (
+              {current.platform === "youtube" ? (
                 <>
                   <select
                     value={preview.active}
@@ -210,6 +203,13 @@ export default function Home() {
                     Download .mp4
                   </button>
                 </>
+              ) : shown.length === 1 ? (
+                <button
+                  onClick={() => (window.location.href = toDownloadHref(shown, 0))}
+                  className={`${SOLID_BUTTON} px-4 py-2`}
+                >
+                  Download .mp4
+                </button>
               ) : (
                 <div className="flex flex-col gap-2">
                   {shown.map((a, i) => (

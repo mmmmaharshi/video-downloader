@@ -1,10 +1,11 @@
 // Module: Transfer — deep module per CONTEXT.md
-// Interface: isAllowedHost(url), proxy(videoUrl, stem, deps?) → Response
-// Owns allowlist policy + streaming. Both routes call it — one policy, N call sites.
+// Interface: proxy(videoUrl, stem, deps?) → Response
+// Owns streaming + download naming. Access control lives upstream: the caller
+// only passes urls the resolver produced (public hosts only), inside the
+// remember window enforced at the download route.
 
 import { UA } from "./user-agent";
 
-const ALLOWED_HOSTS = ["cdninstagram.com", "fbcdn.net", "scontent.cdninstagram.com", "video.twimg.com", "googlevideo.com"] as const;
 const UPSTREAM_TIMEOUT_MS = 15_000;
 // a 500MB file at modest speed finishes inside this; past it the upstream is stalled or abusive
 const UPSTREAM_MAX_MS = 10 * 60_000;
@@ -14,24 +15,12 @@ export type TransferDeps = {
   maxMs?: number;
 };
 
-export function isAllowedHost(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:") return false;
-    const h = parsed.hostname.toLowerCase();
-    return ALLOWED_HOSTS.some((allowed) => h === allowed || h.endsWith(`.${allowed}`));
-  } catch {
-    return false;
-  }
-}
-
 export async function proxy(
   videoUrl: string | null,
   stem: string,
   deps: TransferDeps = {},
 ): Promise<Response> {
   if (!videoUrl) throw new Response("Missing url", { status: 400 });
-  if (!isAllowedHost(videoUrl)) throw new Response("URL not allowed", { status: 400 });
 
   const doFetch = deps.fetch ?? fetch;
   const maxMs = deps.maxMs ?? UPSTREAM_MAX_MS;

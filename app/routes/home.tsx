@@ -40,7 +40,9 @@ export default function Home() {
       return (await res.json()) as ResolveResult;
     },
     onSuccess: (result, url) => {
-      queryClient.setQueryData(resolveKey(url), result);
+      // errors stay uncached so a transient failure never blocks retries;
+      // only downloadable results are worth re-serving
+      if ("assets" in result) queryClient.setQueryData(resolveKey(url), result);
       // a fresh object per submit so the effect below refires even for
       // repeat submits of the same link
       setData({ ...result });
@@ -53,7 +55,10 @@ export default function Home() {
 
   // A fresh resolution stays cached inside the download gate window, so
   // re-submits skip the network without risking an expired download.
+  // The pending guard stops double submits (Enter plus click, double click)
+  // from firing duplicate mutations and toasts.
   const submit = (url: string) => {
+    if (mutation.isPending) return;
     const key = resolveKey(url);
     const state = queryClient.getQueryState(key);
     const cached = state?.data as ResolveResult | undefined;

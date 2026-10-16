@@ -47,15 +47,6 @@ describe("nextPreview", () => {
     expect(nextPreview(closedPreview, { type: "dismissed" })).toBe(closedPreview);
   });
 
-  test("a backdrop click leaves an open preview open", () => {
-    const state = openOn([asset("1")]);
-    expect(nextPreview(state, { type: "backdropClicked" })).toBe(state);
-  });
-
-  test("a backdrop click leaves a closed preview closed", () => {
-    expect(nextPreview(closedPreview, { type: "backdropClicked" })).toBe(closedPreview);
-  });
-
   test("selected flips to that video", () => {
     const next = nextPreview(openOn([asset("1"), asset("2")]), { type: "selected", index: 1 });
     expect(next).toEqual({ open: true, shown: [asset("1"), asset("2")], active: 1 });

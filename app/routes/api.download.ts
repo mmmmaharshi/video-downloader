@@ -1,9 +1,9 @@
 import type { LoaderFunctionArgs } from "react-router";
+import { fromDownloadRequest } from "../lib/download-link";
 import { proxy } from "../lib/transfer";
 
 export async function loader({ request }: LoaderFunctionArgs) {
-  const url = new URL(request.url);
-  const stem = url.searchParams.get("name") ?? "video";
+  const { videoUrl, stem } = fromDownloadRequest(request.url);
 
-  return proxy(url.searchParams.get("url"), stem);
+  return proxy(videoUrl, stem);
 }

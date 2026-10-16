@@ -1,8 +1,9 @@
 import type { Route } from "./+types/home";
 import * as React from "react";
 import { useFetcher } from "react-router";
-import { resolve, type Platform } from "../lib/media-resolver";
+import { resolve, type VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview, type PreviewState } from "../lib/preview";
+import { toDownloadHref } from "../lib/download-link";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -16,14 +17,8 @@ export async function action({ request }: Route.ActionArgs) {
   const url = String(formData.get("url") ?? "").trim();
   if (!url) return { error: "Paste an Instagram or X link" } as const;
   try {
-    const data = await resolve(url);
-    return {
-      videoUrl: data.videoUrl,
-      thumbnail: data.thumbnail,
-      shortcode: data.shortcode,
-      platform: data.platform,
-      inputUrl: url,
-    } as const;
+    const asset = await resolve(url);
+    return { asset, inputUrl: url } as const;
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to extract video";
     return { error: msg, inputUrl: url } as const;
@@ -31,15 +26,8 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 type ActionData =
-  | {
-      videoUrl: string;
-      thumbnail?: string;
-      shortcode: string;
-      platform: Platform;
-      inputUrl: string;
-      error?: never;
-    }
-  | { error: string; inputUrl: string; videoUrl?: never };
+  | { asset: VideoAsset; inputUrl: string; error?: never }
+  | { error: string; inputUrl: string; asset?: never };
 
 export default function Home() {
   const fetcher = useFetcher<ActionData>();
@@ -51,23 +39,14 @@ export default function Home() {
 
   // The preview renders the asset that opened it, not whatever the fetcher holds now.
   const shown = preview.shown;
-  const downloadHref = preview.open && shown
-    ? `/api/download?url=${encodeURIComponent(shown.videoUrl)}&name=${encodeURIComponent(`${shown.platform}-${shown.shortcode}`)}`
-    : undefined;
+  const downloadHref = preview.open && shown ? toDownloadHref(shown) : undefined;
 
   React.useEffect(() => {
     if (!data) return;
     if ("error" in data) {
       setPreview((p) => nextPreview(p, { type: "failed" }));
     } else {
-      const asset = {
-        videoUrl: data.videoUrl,
-        thumbnail: data.thumbnail,
-        shortcode: data.shortcode,
-        sourceUrl: data.inputUrl,
-        platform: data.platform,
-      };
-      setPreview((p) => nextPreview(p, { type: "resolved", asset }));
+      setPreview((p) => nextPreview(p, { type: "resolved", asset: data.asset }));
     }
     // depends on the response, not the url inside it: re-fetching the same link resolves to an
     // equal url and must still reopen the preview

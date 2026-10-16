@@ -1,8 +1,8 @@
 // Module: Transfer — deep module per CONTEXT.md
-// Interface: isAllowedHost(url), proxy(videoUrl, shortcode, deps?) → Response
+// Interface: isAllowedHost(url), proxy(videoUrl, filename, deps?) → Response
 // Owns allowlist policy + streaming. Both routes call it — one policy, N call sites.
 
-const ALLOWED_HOSTS = ["cdninstagram.com", "fbcdn.net", "scontent.cdninstagram.com"] as const;
+const ALLOWED_HOSTS = ["cdninstagram.com", "fbcdn.net", "scontent.cdninstagram.com", "video.twimg.com"] as const;
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
 export type TransferDeps = {
@@ -22,7 +22,7 @@ export function isAllowedHost(url: string): boolean {
 
 export async function proxy(
   videoUrl: string | null,
-  shortcode: string,
+  filename: string,
   deps: TransferDeps = {},
 ): Promise<Response> {
   if (!videoUrl) throw new Response("Missing url", { status: 400 });
@@ -48,10 +48,12 @@ export async function proxy(
   if (!upstream.ok || !upstream.body) throw new Response(`Upstream ${upstream.status}`, { status: 502 });
 
   const contentType = upstream.headers.get("content-type") ?? "video/mp4";
+  // name arrives from the query string — keep it out of the header grammar
+  const safeName = filename.replace(/[^\w.-]+/g, "_");
   return new Response(upstream.body, {
     headers: {
       "Content-Type": contentType,
-      "Content-Disposition": `attachment; filename="instagram-${shortcode}.mp4"`,
+      "Content-Disposition": `attachment; filename="${safeName}.mp4"`,
       "Cache-Control": "private, max-age=60",
     },
   });

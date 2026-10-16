@@ -2,24 +2,39 @@
 // Interface: resolve(sourceUrl, deps?) → VideoAsset
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
+export type Platform = "instagram" | "twitter";
+
 export type VideoAsset = {
   videoUrl: string;
   thumbnail?: string;
   shortcode: string;
   sourceUrl: string;
+  platform: Platform;
 };
 
 export type MediaResolverDeps = {
   fetch?: typeof fetch;
 };
 
-const INSTA_RE = /^https?:\/\/(www\.)?instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)\/?(\?.*)?$/;
+const INSTA_RE = /^https?:\/\/(?:www\.)?instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)\/?(\?.*)?$/;
+const TWEET_RE = /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/(?:[^/?#]+\/)*status(?:es)?\/(\d+)(?:[/?#]|$)/i;
 const FETCH_TIMEOUT_MS = 15_000;
+const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+const CHROME_UA = `${UA} (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36`;
 
-function parseShortcode(sourceUrl: string): string {
-  const m = sourceUrl.trim().match(INSTA_RE);
-  if (!m) throw new Error("Invalid URL. Use https://instagram.com/reel/… or /p/…");
-  return m[3];
+export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): Promise<VideoAsset> {
+  const trimmed = sourceUrl.trim();
+  if (!trimmed) throw new Error("Paste an Instagram or X link");
+
+  const doFetch = deps.fetch ?? fetch;
+
+  const insta = trimmed.match(INSTA_RE);
+  if (insta) return resolveInstagram(trimmed, insta[2], doFetch);
+
+  const tweet = trimmed.match(TWEET_RE);
+  if (tweet) return resolveTwitter(trimmed, tweet[1], doFetch);
+
+  throw new Error("Invalid URL. Use an instagram.com post/reel or an x.com status link.");
 }
 
 function normalizeUrl(raw: string): string {
@@ -27,7 +42,7 @@ function normalizeUrl(raw: string): string {
 }
 
 function extractOgVideo(html: string): string | undefined {
-  let v =
+  const v =
     html.match(/<meta\s+property="og:video:secure_url"\s+content="([^"]+)"/)?.[1] ??
     html.match(/<meta\s+property="og:video"\s+content="([^"]+)"/)?.[1] ??
     html.match(/"video_url"\s*:\s*"([^"]+)"/)?.[1] ??
@@ -39,16 +54,10 @@ function extractThumbnail(html: string): string | undefined {
   return html.match(/<meta\s+property="og:image"\s+content="([^"]+)"/)?.[1]?.replace(/&amp;/g, "&");
 }
 
-export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): Promise<VideoAsset> {
-  const trimmed = sourceUrl.trim();
-  if (!trimmed) throw new Error("Paste an Instagram URL");
-  const shortcode = parseShortcode(trimmed);
-
-  const doFetch = deps.fetch ?? fetch;
-
-  const res = await doFetch(trimmed, {
+async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: typeof fetch): Promise<VideoAsset> {
+  const res = await doFetch(sourceUrl, {
     headers: {
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+      "User-Agent": CHROME_UA,
       Accept: "text/html,application/xhtml+xml",
       "Accept-Language": "en-US,en;q=0.9",
     },
@@ -72,10 +81,10 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
   // embed fallback — double-escaped JSON in embed HTML
   if (!videoUrl) {
     try {
-      const embedKind = trimmed.includes("/reel/") ? "reel" : trimmed.includes("/tv/") ? "tv" : "p";
+      const embedKind = sourceUrl.includes("/reel/") ? "reel" : sourceUrl.includes("/tv/") ? "tv" : "p";
       const embedUrl = `https://www.instagram.com/${embedKind}/${shortcode}/embed/captioned/`;
       const er = await doFetch(embedUrl, {
-        headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+        headers: { "User-Agent": UA },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (er.ok) {
@@ -92,5 +101,50 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
 
   if (!videoUrl) throw new Error("No video found. Only video/reel posts are downloadable, or IG changed its page.");
 
-  return { videoUrl, thumbnail: extractThumbnail(html), shortcode, sourceUrl: trimmed };
+  return { videoUrl, thumbnail: extractThumbnail(html), shortcode, sourceUrl, platform: "instagram" };
+}
+
+type SyndicationMedia = {
+  type?: string;
+  media_url_https?: string;
+  video_info?: { variants?: { bitrate?: number; content_type: string; url: string }[] };
+};
+
+type SyndicationTweet = {
+  id_str?: string;
+  mediaDetails?: SyndicationMedia[];
+};
+
+async function resolveTwitter(sourceUrl: string, id: string, doFetch: typeof fetch): Promise<VideoAsset> {
+  // the token is the web client's derivation from the tweet id; an absent token returns an empty payload
+  const token = ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
+  const endpoint = `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=en`;
+
+  const res = await doFetch(endpoint, {
+    headers: { "User-Agent": CHROME_UA, Accept: "application/json" },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  if (res.status === 404) throw new Error("Post not found. Check the URL.");
+  if (!res.ok) throw new Error(`X returned ${res.status}. Try again later.`);
+
+  // this endpoint answers with HTML on some failure paths and with {} when the token is missing
+  let tweet: SyndicationTweet;
+  try {
+    tweet = await res.json();
+  } catch {
+    throw new Error("X returned an unexpected response. Try again later.");
+  }
+  if (!tweet.id_str) throw new Error("X returned an unexpected response. Try again later.");
+
+  // an animated_gif is an mp4 on X too; it carries a single variant with bitrate 0
+  const video = tweet.mediaDetails?.find((m) => m.type === "video" || m.type === "animated_gif");
+  if (!video) throw new Error("No video found. Only video posts are downloadable.");
+
+  const mp4 = (video.video_info?.variants ?? [])
+    .filter((v) => v.content_type === "video/mp4")
+    .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0))[0];
+  if (!mp4) throw new Error("No downloadable video found for this post.");
+
+  return { videoUrl: mp4.url, thumbnail: video.media_url_https, shortcode: id, sourceUrl, platform: "twitter" };
 }

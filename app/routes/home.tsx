@@ -1,22 +1,28 @@
 import type { Route } from "./+types/home";
 import * as React from "react";
 import { useFetcher } from "react-router";
-import { resolve } from "../lib/media-resolver";
+import { resolve, type Platform } from "../lib/media-resolver";
 
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "Video Downloader — Save Online Videos" },
-    { name: "description", content: "Paste a public Instagram reel or post URL to preview and download. No login, no storage." },
+    { name: "description", content: "Paste a public Instagram or X post URL to preview and download. No login, no storage." },
   ];
 }
 
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const url = String(formData.get("url") ?? "").trim();
-  if (!url) return { error: "Paste an Instagram URL" } as const;
+  if (!url) return { error: "Paste an Instagram or X link" } as const;
   try {
     const data = await resolve(url);
-    return { videoUrl: data.videoUrl, thumbnail: data.thumbnail, shortcode: data.shortcode, inputUrl: url } as const;
+    return {
+      videoUrl: data.videoUrl,
+      thumbnail: data.thumbnail,
+      shortcode: data.shortcode,
+      platform: data.platform,
+      inputUrl: url,
+    } as const;
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Failed to extract video";
     return { error: msg, inputUrl: url } as const;
@@ -24,7 +30,14 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 type ActionData =
-  | { videoUrl: string; thumbnail?: string; shortcode: string; inputUrl: string; error?: never }
+  | {
+      videoUrl: string;
+      thumbnail?: string;
+      shortcode: string;
+      platform: Platform;
+      inputUrl: string;
+      error?: never;
+    }
   | { error: string; inputUrl: string; videoUrl?: never };
 
 export default function Home() {
@@ -34,10 +47,10 @@ export default function Home() {
   const videoUrl = data && "videoUrl" in data ? data.videoUrl : undefined;
   const error = data && "error" in data ? data.error : undefined;
   const shortcode = data && "shortcode" in data ? data.shortcode : undefined;
+  const downloadName = data && "platform" in data ? `${data.platform}-${data.shortcode}` : undefined;
 
-  const downloadHref = videoUrl
-    ? `/api/download?url=${encodeURIComponent(videoUrl)}&code=${encodeURIComponent(shortcode ?? "video")}`
-    : undefined;
+  const downloadHref =
+    videoUrl && downloadName ? `/api/download?url=${encodeURIComponent(videoUrl)}&name=${encodeURIComponent(downloadName)}` : undefined;
 
   const [isOpen, setIsOpen] = React.useState(false);
 
@@ -78,8 +91,8 @@ export default function Home() {
           <fetcher.Form method="post" className="flex flex-col gap-3 sm:flex-row">
             <input
               name="url"
-              aria-label="Instagram URL"
-              placeholder="https://www.instagram.com/reel/.../"
+              aria-label="Instagram or X post URL"
+              placeholder="Paste an Instagram or X post URL"
               defaultValue={data?.inputUrl ?? ""}
               autoComplete="off"
               required
@@ -120,7 +133,7 @@ export default function Home() {
         ) : null}
 
         <p className="max-w-[68ch] text-[15px] leading-6 text-secondary">
-          Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect Instagram&apos;s terms.
+          Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect Instagram&apos;s and X&apos;s terms.
         </p>
       </main>
 

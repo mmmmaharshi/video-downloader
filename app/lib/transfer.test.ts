@@ -36,14 +36,31 @@ describe("isAllowedHost", () => {
   test("rejects insecure http", () => {
     expect(isAllowedHost("http://scontent.cdninstagram.com/x.mp4")).toBe(false);
   });
+
+  test("allows the X video CDN", () => {
+    expect(isAllowedHost("https://video.twimg.com/amplify_video/1/vid/avc1/480x270/x.mp4")).toBe(true);
+    expect(isAllowedHost("https://video.twimg.com.evil.com/x.mp4")).toBe(false);
+    expect(isAllowedHost("https://pbs.twimg.com/media/x.jpg")).toBe(false);
+  });
 });
 
 describe("proxy", () => {
   test("streams the upstream body as an mp4 attachment", async () => {
-    const res = await proxy(CDN, "ABC123", { fetch: ok() });
+    const res = await proxy(CDN, "instagram-ABC123", { fetch: ok() });
     expect(res.headers.get("content-disposition")).toBe('attachment; filename="instagram-ABC123.mp4"');
     expect(res.headers.get("content-type")).toBe("video/mp4");
     expect(await res.text()).toBe("video-bytes");
+  });
+
+  test("names an X download after the tweet", async () => {
+    const twimg = "https://video.twimg.com/amplify_video/1/vid/avc1/480x270/x.mp4";
+    const res = await proxy(twimg, "twitter-2006763209378922836", { fetch: ok() });
+    expect(res.headers.get("content-disposition")).toBe('attachment; filename="twitter-2006763209378922836.mp4"');
+  });
+
+  test("strips header-breaking characters out of the download name", async () => {
+    const res = await proxy(CDN, 'a"b;c d', { fetch: ok() });
+    expect(res.headers.get("content-disposition")).toBe('attachment; filename="a_b_c_d.mp4"');
   });
 
   test("falls back to video/mp4 when upstream sends no content type", async () => {

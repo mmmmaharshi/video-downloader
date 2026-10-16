@@ -3,7 +3,7 @@ import { proxy } from "../lib/transfer";
 
 export async function loader({ request }: LoaderFunctionArgs) {
   const url = new URL(request.url);
-  const shortcode = url.searchParams.get("code") ?? "video";
+  const filename = url.searchParams.get("name") ?? "video";
 
-  return proxy(url.searchParams.get("url"), shortcode);
+  return proxy(url.searchParams.get("url"), filename);
 }

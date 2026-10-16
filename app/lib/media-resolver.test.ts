@@ -19,6 +19,7 @@ describe("resolve", () => {
       thumbnail: "https://img.example/x.jpg",
       shortcode: "ABC123",
       sourceUrl: REEL,
+      platform: "instagram",
     });
   });
 
@@ -48,7 +49,7 @@ describe("resolve", () => {
   });
 
   test("rejects an empty url", async () => {
-    await expect(resolve("   ", { fetch: stubFetch(() => page("")) })).rejects.toThrow("Paste an Instagram URL");
+    await expect(resolve("   ", { fetch: stubFetch(() => page("")) })).rejects.toThrow("Paste an Instagram or X link");
   });
 
   test("rejects a non-instagram url", async () => {
@@ -87,5 +88,114 @@ describe("resolve", () => {
   test("reports a non-ok upstream status", async () => {
     const down = stubFetch(() => new Response("boom", { status: 503 }));
     await expect(resolve(REEL, { fetch: down })).rejects.toThrow("Instagram returned 503");
+  });
+});
+
+// Fixtures copied from live cdn.syndication.twimg.com responses
+const TWEET = "https://x.com/pressmanc/status/2006763209378922836";
+const POSTER = "https://pbs.twimg.com/amplify_video_thumb/2006763055372271616/img/N9cPDOrH7L72WaTi.jpg";
+const BEST_MP4 = "https://video.twimg.com/amplify_video/2006763055372271616/vid/avc1/1920x1080/9LGsQpvaGMJD8_Yp.mp4";
+const GIF_MP4 = "https://video.twimg.com/tweet_video/DOo8AEAX2l.mp4";
+
+const syndication = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+const videoMedia = {
+  type: "video",
+  media_url_https: POSTER,
+  video_info: {
+    variants: [
+      { content_type: "application/x-mpegURL", url: "https://video.twimg.com/amplify_video/2006763055372271616/pl/RjNj4QNxUJ5d3cAJ.m3u8?v=cfc" },
+      { bitrate: 256000, content_type: "video/mp4", url: "https://video.twimg.com/vid/avc1/480x270/a.mp4" },
+      { bitrate: 10368000, content_type: "video/mp4", url: BEST_MP4 },
+      { bitrate: 832000, content_type: "video/mp4", url: "https://video.twimg.com/vid/avc1/640x360/b.mp4" },
+    ],
+  },
+};
+
+describe("resolve — X/Twitter", () => {
+  test("picks the highest-bitrate mp4 and the poster as thumbnail", async () => {
+    const asset = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "2006763209378922836", mediaDetails: [videoMedia] })) });
+    expect(asset).toEqual({
+      videoUrl: BEST_MP4,
+      thumbnail: POSTER,
+      shortcode: "2006763209378922836",
+      sourceUrl: TWEET,
+      platform: "twitter",
+    });
+  });
+
+  test("resolves every supported X url shape", async () => {
+    for (const url of [
+      "https://twitter.com/pressmanc/status/2006763209378922836",
+      "https://x.com/i/status/2006763209378922836/video/1",
+      "https://www.x.com/pressmanc/status/2006763209378922836?s=20",
+      "https://mobile.twitter.com/pressmanc/status/2006763209378922836",
+    ]) {
+      const asset = await resolve(url, { fetch: stubFetch(() => syndication({ id_str: "2006763209378922836", mediaDetails: [videoMedia] })) });
+      expect(asset.shortcode).toBe("2006763209378922836");
+      expect(asset.platform).toBe("twitter");
+    }
+  });
+
+  test("asks the syndication endpoint for the tweet id", async () => {
+    let requested = "";
+    await resolve(TWEET, {
+      fetch: stubFetch((url) => {
+        requested = url;
+        return syndication({ id_str: "2006763209378922836", mediaDetails: [videoMedia] });
+      }),
+    });
+    const u = new URL(requested);
+    expect(`${u.origin}${u.pathname}`).toBe("https://cdn.syndication.twimg.com/tweet-result");
+    expect(u.searchParams.get("id")).toBe("2006763209378922836");
+    expect(u.searchParams.get("token")).toBeTruthy();
+  });
+
+  test("rejects a tweet with only photos", async () => {
+    const photo = { type: "photo", media_url_https: "https://pbs.twimg.com/media/x.jpg" };
+    await expect(resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [photo] })) })).rejects.toThrow(
+      "No video found",
+    );
+  });
+
+  test("rejects a text-only tweet", async () => {
+    await expect(resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "1", text: "hi" })) })).rejects.toThrow("No video found");
+  });
+
+  test("reports a missing tweet", async () => {
+    const missing = stubFetch(() => new Response("<!DOCTYPE html><html>", { status: 404, headers: { "content-type": "text/html" } }));
+    await expect(resolve(TWEET, { fetch: missing })).rejects.toThrow("Post not found");
+  });
+
+  test("reports an X error status", async () => {
+    await expect(resolve(TWEET, { fetch: stubFetch(() => new Response("busy", { status: 503 })) })).rejects.toThrow("X returned 503");
+  });
+
+  test("reports a non-json body instead of crashing", async () => {
+    const html = stubFetch(() => new Response("<!DOCTYPE html>", { status: 200, headers: { "content-type": "text/html" } }));
+    await expect(resolve(TWEET, { fetch: html })).rejects.toThrow("X returned an unexpected response");
+  });
+
+  test("reports an unexpected empty payload", async () => {
+    await expect(resolve(TWEET, { fetch: stubFetch(() => syndication({})) })).rejects.toThrow("X returned an unexpected response");
+  });
+
+  test("accepts an animated gif, whose only mp4 carries bitrate 0", async () => {
+    const gif = { type: "animated_gif", video_info: { variants: [{ bitrate: 0, content_type: "video/mp4", url: GIF_MP4 }] } };
+    const asset = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [gif] })) });
+    expect(asset.videoUrl).toBe(GIF_MP4);
+  });
+
+  test("accepts the sole mp4 when the variant omits bitrate", async () => {
+    const video = { type: "video", video_info: { variants: [{ content_type: "video/mp4", url: GIF_MP4 }] } };
+    const asset = await resolve(TWEET, { fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [video] })) });
+    expect(asset.videoUrl).toBe(GIF_MP4);
+  });
+
+  test("rejects a status id with trailing junk instead of resolving the wrong tweet", async () => {
+    await expect(
+      resolve("https://x.com/pressmanc/status/2006763209378922836junk", { fetch: stubFetch(() => syndication({})) }),
+    ).rejects.toThrow("Invalid URL");
   });
 });

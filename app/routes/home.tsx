@@ -15,7 +15,6 @@ export function meta({}: Route.MetaArgs) {
 export async function action({ request }: Route.ActionArgs) {
   const formData = await request.formData();
   const url = String(formData.get("url") ?? "").trim();
-  if (!url) return { error: "Paste an Instagram or X link" } as const;
   try {
     const asset = await resolve(url);
     return { asset, inputUrl: url } as const;

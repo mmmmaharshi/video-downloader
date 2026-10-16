@@ -36,6 +36,10 @@ const GHOST_BUTTON =
 const SOLID_BUTTON =
   "rounded-md bg-[#fff] text-[15px] font-medium leading-[1.45] text-[#0a0a0a] transition-all duration-[150ms] ease-out hover:bg-[#f0f0f0] active:scale-[0.98]";
 
+// The media box never grows past the viewport: landscape videos stay width-bound
+// while portrait ones clamp and letterbox instead of pushing the modal off-screen.
+const MEDIA_CLASS = "block w-full max-h-[70vh] object-contain";
+
 export default function Home() {
   const fetcher = useFetcher<ActionData>();
   const data = fetcher.data;
@@ -149,9 +153,9 @@ export default function Home() {
             <div className="bg-[color:var(--sc-background)]">
               {/* YouTube previews stay a thumbnail: its mp4s are huge and gated, the file is what downloads */}
               {current.platform === "youtube" ? (
-                <img src={current.thumbnail} alt="Video thumbnail" className="block w-full" />
+                <img src={current.thumbnail} alt="Video thumbnail" className={MEDIA_CLASS} />
               ) : (
-                <video src={current.videoUrl} controls poster={current.thumbnail} className="block w-full" />
+                <video src={current.videoUrl} controls poster={current.thumbnail} className={MEDIA_CLASS} />
               )}
             </div>
             {shown.length > 1 && (

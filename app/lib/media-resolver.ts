@@ -43,13 +43,16 @@ export type HostLookup = (hostname: string) => Promise<string[]> | string[];
 
 const defaultLookup: HostLookup = async (hostname) => {
   const records = await dnsLookup(hostname, { all: true });
+
   return records.map((r) => r.address);
 };
 
 const INSTA_RE =
   /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reels?|tv)\/(?<shortcode>[A-Za-z0-9_-]+)\/?(?:\?.*)?$/u;
+
 const TWEET_RE =
   /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/(?:[^/?#]+\/)*status(?:es)?\/(?<id>\d+)(?:[/?#]|$)/iu;
+
 const FETCH_TIMEOUT_MS = 15_000;
 
 const PAGE_HEADERS = {
@@ -57,6 +60,7 @@ const PAGE_HEADERS = {
   "Accept-Language": "en-US,en;q=0.9",
   "User-Agent": CHROME_UA,
 };
+
 // probing for a file, not a page: accept whatever the host serves
 const FILE_HEADERS = { ...PAGE_HEADERS, Accept: "*/*" };
 
@@ -75,6 +79,7 @@ const fetchPage = (
 // (Explicit range checks — Bun's net.BlockList mishandles IPv6.)
 const isBlockedIPV4 = (addr: string): boolean => {
   const [a, b] = addr.split(".").map(Number);
+
   return (
     a === 0 ||
     a === 10 ||
@@ -90,10 +95,13 @@ const isBlockedIPV6 = (addr: string): boolean => {
   const n = addr.toLowerCase();
   // mapped-in-v6 IPv4 (e.g. ::ffff:127.0.0.1) judges by the embedded address
   const mapped = n.match(/^::ffff:(?<ipv4>\d+\.\d+\.\d+\.\d+)$/u)?.groups?.ipv4;
+
   if (mapped) {
     return isBlockedIPV4(mapped);
   }
+
   const [first] = n.split(":");
+
   // fe80 split
   // fe80::/10: first hextet fe80–febf, i.e. second hex digit 8–b
   return (
@@ -111,9 +119,11 @@ const isBlockedAddress = (addr: string): boolean => {
   if (isIP(addr) === 4) {
     return isBlockedIPV4(addr);
   }
+
   if (isIP(addr) === 6) {
     return isBlockedIPV6(addr);
   }
+
   return true;
 };
 
@@ -122,11 +132,13 @@ const assertPublicHost = async (
   lookup: HostLookup
 ): Promise<void> => {
   let addresses: string[];
+
   try {
     addresses = await lookup(new URL(url).hostname);
   } catch {
     throw new Error("Could not resolve this link. Check the URL.");
   }
+
   if (!addresses.length || addresses.some(isBlockedAddress)) {
     throw new Error("Only public links are supported.");
   }
@@ -141,28 +153,34 @@ const fetchPublic = async (
   headers: typeof PAGE_HEADERS
 ): Promise<{ res: Response; url: string }> => {
   let current = url;
+
   for (let hop = 0; hop < MAX_REDIRECTS; hop += 1) {
     // eslint-disable-next-line no-await-in-loop -- chain stays sequential: each hop feeds the next lookup
     await assertPublicHost(current, lookup);
+
     // eslint-disable-next-line no-await-in-loop -- response needed before following the redirect
     const res = await doFetch(current, {
       headers,
       redirect: "manual",
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
+
     const location =
       res.status >= 300 && res.status < 400
         ? res.headers.get("location")
         : null;
+
     if (!location) {
       return { res, url: current };
     }
+
     try {
       current = new URL(location, current).href;
     } catch {
       throw new Error("This link redirects somewhere invalid.");
     }
   }
+
   throw new Error("This link redirects too many times.");
 };
 
@@ -172,17 +190,21 @@ const fetchPublic = async (
 const slugOf = (sourceUrl: string): string => {
   const segments = new URL(sourceUrl).pathname.split("/");
   let last = "";
+
   for (const segment of segments) {
     if (segment) {
       last = segment;
     }
   }
+
   let stem: string;
+
   try {
     stem = decodeURIComponent(last).replace(/\.[a-z0-9]+$/iu, "");
   } catch {
     stem = last.replace(/\.[a-z0-9]+$/iu, "");
   }
+
   return stem || "video";
 };
 
@@ -198,6 +220,7 @@ const KNOWN_MEDIA_HOSTS = [
 
 const isKnownMediaHost = (sourceUrl: string): boolean => {
   const host = new URL(sourceUrl).hostname.toLowerCase();
+
   return KNOWN_MEDIA_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
 };
 
@@ -215,30 +238,40 @@ const normalizeUrl = (raw: string): string =>
 // A watch page is identified by its 11-char id, wherever it sits: watch?v= (any param
 // order), youtu.be, /shorts/, /live/, /embed/. A regex cannot read query params, so parse.
 const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/u;
+
 const matchYouTubeId = (sourceUrl: string): string | undefined => {
   let url: URL;
+
   try {
     url = new URL(sourceUrl);
   } catch {
     return undefined;
   }
+
   const host = url.hostname.toLowerCase();
+
   if (host === "youtu.be") {
     const [id] = url.pathname.slice(1).split("/");
+
     return id && YT_ID_RE.test(id) ? id : undefined;
   }
+
   if (host === "youtube.com" || host.endsWith(".youtube.com")) {
     const v = url.searchParams.get("v");
+
     if (v && YT_ID_RE.test(v)) {
       return v;
     }
+
     const pathId = url.pathname.match(
       /^\/(?:shorts|live|embed)\/(?<pathId>[A-Za-z0-9_-]{11})(?:\/|$)/u
     )?.groups?.pathId;
+
     if (pathId) {
       return pathId;
     }
   }
+
   return undefined;
 };
 
@@ -251,6 +284,7 @@ const extractOgVideo = (html: string): string | undefined => {
       ?.url ??
     html.match(/"video_url"\s*:\s*"(?<url>[^"]+)"/u)?.groups?.url ??
     html.match(/"videoUrl"\s*:\s*"(?<url>[^"]+)"/u)?.groups?.url;
+
   return v ? normalizeUrl(v) : undefined;
 };
 
@@ -264,6 +298,7 @@ const assertOk = (res: Response, upstream: string): void => {
   if (res.status === 404) {
     throw new Error("Post not found. Check the URL.");
   }
+
   if (!res.ok) {
     throw new Error(`${upstream} returned ${res.status}. Try again later.`);
   }
@@ -282,6 +317,7 @@ const resolveInstagram = async (
       "Private or login-required post. Only public posts are supported."
     );
   }
+
   assertOk(res, "Instagram");
 
   const html = await res.text();
@@ -296,18 +332,23 @@ const resolveInstagram = async (
   if (!videoUrl) {
     try {
       let embedKind = "p";
+
       if (sourceUrl.includes("/reel")) {
         embedKind = "reel";
       } else if (sourceUrl.includes("/tv/")) {
         embedKind = "tv";
       }
+
       const embedUrl = `https://www.instagram.com/${embedKind}/${shortcode}/embed/captioned/`;
+
       const er = await doFetch(embedUrl, {
         headers: { "User-Agent": UA },
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
+
       if (er.ok) {
         const ehtml = await er.text();
+
         const evRaw =
           ehtml.match(
             /(?:\\"|")video_url(?:\\"|")\s*:\s*(?:\\"|")(?<url>[^"]+)(?:\\"|")/u
@@ -315,6 +356,7 @@ const resolveInstagram = async (
           ehtml.match(
             /(?:\\"|")videoUrl(?:\\"|")\s*:\s*(?:\\"|")(?<url>[^"]+)(?:\\"|")/u
           )?.groups?.url;
+
         if (evRaw) {
           videoUrl = normalizeUrl(evRaw).replaceAll("\\", "");
         }
@@ -349,27 +391,37 @@ const matchFacebookId = (
   sourceUrl: string
 ): { id: string; fetchUrl: string } | undefined => {
   let url: URL;
+
   try {
     url = new URL(sourceUrl);
   } catch {
     return undefined;
   }
+
   const host = url.hostname.toLowerCase();
+
   if (host === "fb.watch") {
     const [code] = url.pathname.slice(1).split("/");
+
     return code ? { fetchUrl: sourceUrl, id: code } : undefined;
   }
+
   if (host === "facebook.com" || host.endsWith(".facebook.com")) {
     const reel = url.pathname.match(/^\/reel\/(?<id>\d+)(?:\/|$)/u)?.groups?.id;
+
     if (reel) {
       return { fetchUrl: `https://www.facebook.com/reel/${reel}/`, id: reel };
     }
+
     const v = url.searchParams.get("v");
+
     if (v && /^\d+$/u.test(v)) {
       return { fetchUrl: `https://www.facebook.com/watch/?v=${v}`, id: v };
     }
+
     const video = url.pathname.match(/\/videos\/(?<id>\d+)(?:\/|$)/u)?.groups
       ?.id;
+
     if (video) {
       return {
         fetchUrl: `https://www.facebook.com/watch/?v=${video}`,
@@ -377,12 +429,14 @@ const matchFacebookId = (
       };
     }
   }
+
   return undefined;
 };
 
 const extractFbFile = (html: string, key: string): string | undefined => {
   const v = html.match(new RegExp(`"${key}"\\s*:\\s*"(?<value>[^"]+)"`, "u"))
     ?.groups?.value;
+
   return v ? normalizeUrl(v) : undefined;
 };
 
@@ -401,6 +455,7 @@ const resolveFacebook = async (
       "Private or login-required post. Only public posts are supported."
     );
   }
+
   assertOk(res, "Facebook");
 
   const html = await res.text();
@@ -411,6 +466,7 @@ const resolveFacebook = async (
     extractFbFile(html, "browser_native_sd_url") ??
     extractFbFile(html, "hd_src") ??
     extractFbFile(html, "sd_src");
+
   if (!videoUrl) {
     throw new Error(
       "No downloadable video found. Only public video/reel posts work, and Facebook limits anonymous access to some of them."
@@ -442,15 +498,18 @@ const resolveGeneric = async (
     lookup,
     FILE_HEADERS
   );
+
   if (res.status === 404) {
     throw new Error("Post not found. Check the URL.");
   }
+
   if (!res.ok) {
     throw new Error(`This link returned ${res.status}. Try again later.`);
   }
 
   const shortcode = slugOf(url);
   const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
+
   if (contentType.startsWith("video/")) {
     return [
       {
@@ -465,6 +524,7 @@ const resolveGeneric = async (
 
   const html = await res.text();
   const videoUrl = extractOgVideo(html);
+
   if (!videoUrl) {
     throw new Error(
       "No video found at this link. Only pages and files that serve video are downloadable."
@@ -493,12 +553,15 @@ const resolveYouTube = async (
   // renditions of one video, not separate videos: one labeled asset per distinct quality
   const seen = new Set<number>();
   const formats = await getFormats(id);
+
   const assets = formats
     .filter((f) => {
       if (seen.has(f.height)) {
         return false;
       }
+
       seen.add(f.height);
+
       return true;
     })
     .map((f) => ({
@@ -510,9 +573,11 @@ const resolveYouTube = async (
       title: f.title,
       videoUrl: f.videoUrl,
     }));
+
   if (!assets.length) {
     throw new Error("No downloadable video found for this post.");
   }
+
   return assets;
 };
 
@@ -539,6 +604,7 @@ const resolveTwitter = async (
   const token = ((Number(id) / 1e15) * Math.PI)
     .toString(36)
     .replaceAll(/(?:0+|\.)/gu, "");
+
   const endpoint = `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=en`;
 
   const res = await doFetch(endpoint, {
@@ -550,11 +616,13 @@ const resolveTwitter = async (
 
   // this endpoint answers with HTML on some failure paths and with {} when the token is missing
   let tweet: SyndicationTweet;
+
   try {
     tweet = await res.json();
   } catch {
     throw new Error("X returned an unexpected response. Try again later.");
   }
+
   if (!tweet.id_str) {
     throw new Error("X returned an unexpected response. Try again later.");
   }
@@ -563,6 +631,7 @@ const resolveTwitter = async (
   const videos = (tweet.mediaDetails ?? []).filter(
     (m) => m.type === "video" || m.type === "animated_gif"
   );
+
   if (!videos.length) {
     throw new Error("No video found. Only video posts are downloadable.");
   }
@@ -571,6 +640,7 @@ const resolveTwitter = async (
   // (sort runs on the filtered copy, so nothing shared is mutated — toSorted
   // needs ES2023 lib, which this project does not target)
   const assets: VideoAsset[] = [];
+
   // (the sort runs on the per-tweet filtered copy — toSorted needs ES2023 lib)
   // (sort runs on the per-tweet filtered copy: toSorted needs ES2023 lib)
   for (const video of videos) {
@@ -578,6 +648,7 @@ const resolveTwitter = async (
       .filter((v) => v.content_type === "video/mp4")
       // eslint-disable-next-line unicorn/no-array-sort -- per-tweet filtered copy, nothing shared
       .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
+
     if (mp4) {
       assets.push({
         platform: "twitter",
@@ -588,6 +659,7 @@ const resolveTwitter = async (
       });
     }
   }
+
   if (!assets.length) {
     throw new Error("No downloadable video found for this post.");
   }
@@ -603,6 +675,7 @@ export const resolve = async (
   deps: MediaResolverDeps = {}
 ): Promise<VideoAsset[]> => {
   const trimmed = sourceUrl.trim();
+
   if (!trimmed) {
     throw new Error("Paste a video link");
   }
@@ -610,21 +683,25 @@ export const resolve = async (
   const doFetch = deps.fetch ?? fetch;
 
   const insta = trimmed.match(INSTA_RE)?.groups?.shortcode;
+
   if (insta) {
     return resolveInstagram(canonicalReelUrl(trimmed), insta, doFetch);
   }
 
   const fb = matchFacebookId(trimmed);
+
   if (fb) {
     return resolveFacebook(trimmed, fb.id, fb.fetchUrl, doFetch);
   }
 
   const tweet = trimmed.match(TWEET_RE)?.groups?.id;
+
   if (tweet) {
     return resolveTwitter(trimmed, tweet, doFetch);
   }
 
   const ytId = matchYouTubeId(trimmed);
+
   if (ytId) {
     return resolveYouTube(trimmed, ytId, deps.youtube ?? getYouTubeFormats);
   }
@@ -632,10 +709,12 @@ export const resolve = async (
   if (!URL.parse(trimmed)) {
     throw new Error("Invalid URL. Paste a link to a video page or file.");
   }
+
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
       "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, or a YouTube video link."
     );
   }
+
   return resolveGeneric(trimmed, doFetch, deps.lookup ?? defaultLookup);
 };

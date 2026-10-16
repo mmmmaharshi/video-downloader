@@ -20,6 +20,7 @@ const mp4 = (url: string, height: number) => ({
   url,
   width: 0,
 });
+
 const headOk = stubFetch(() => new Response(null, { status: 200 }));
 
 describe("getYouTubeFormats", () => {
@@ -33,6 +34,7 @@ describe("getYouTubeFormats", () => {
           mp4("https://x/720.mp4", 720),
         ]),
     });
+
     expect(formats.map((f) => f.videoUrl)).toEqual([
       "https://x/1080.mp4",
       "https://x/720.mp4",
@@ -60,6 +62,7 @@ describe("getYouTubeFormats", () => {
           },
         ]),
     });
+
     expect(formats.map((f) => f.videoUrl)).toEqual([
       "https://x/cipher.mp4",
       "https://x/720.mp4",
@@ -69,6 +72,7 @@ describe("getYouTubeFormats", () => {
   test("falls back to ANDROID when the IOS urls refuse playback", async () => {
     const gated = "https://x/ios-gated.mp4";
     const open = "https://x/android-open.mp4";
+
     const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
       fetch: stubFetch(
         (url) => new Response(null, { status: url === gated ? 403 : 200 })
@@ -76,6 +80,7 @@ describe("getYouTubeFormats", () => {
       getInfo: (_id, client) =>
         client === "IOS" ? info([mp4(gated, 1080)]) : info([mp4(open, 360)]),
     });
+
     expect(formats.map((f) => f.videoUrl)).toEqual([open]);
   });
 
@@ -84,6 +89,7 @@ describe("getYouTubeFormats", () => {
       fetch: stubFetch(() => new Response(null, { status: 403 })),
       getInfo: () => info([mp4("https://x/gated.mp4", 1080)]),
     });
+
     expect(formats).toEqual([]);
   });
 
@@ -99,16 +105,22 @@ describe("getYouTubeFormats", () => {
 
   test("reports an unreachable YouTube instead of crashing", async () => {
     const failure = new TypeError("fetch failed");
+
     const down = () => {
       throw failure;
     };
+
     const err = await getYouTubeFormats("dQw4w9WgXcQ", {
       fetch: headOk,
       getInfo: down,
-    }).catch((error: unknown) => error);
-    expect(err).toBeInstanceOf(Error);
-    expect((err as Error).message).toMatch("YouTube is unreachable");
-    expect((err as Error).cause).toBe(failure);
+    }).catch((error) => error);
+
+    if (!(err instanceof Error)) {
+      throw new Error(`expected an Error, got ${String(err)}`);
+    }
+
+    expect(err.message).toMatch("YouTube is unreachable");
+    expect(err.cause).toBe(failure);
   });
 
   test("returns an empty list when no mp4 rendition exists", async () => {
@@ -116,6 +128,7 @@ describe("getYouTubeFormats", () => {
       fetch: headOk,
       getInfo: () => info([{ height: 720, mime_type: "video/webm", width: 0 }]),
     });
+
     expect(formats).toEqual([]);
   });
 
@@ -127,6 +140,7 @@ describe("getYouTubeFormats", () => {
         title: "Never Gonna Give You Up",
       }),
     });
+
     expect(formats.map((f) => f.title)).toEqual(["Never Gonna Give You Up"]);
   });
 });

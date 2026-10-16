@@ -15,9 +15,17 @@ const ok = (body = "video-bytes", contentType = "video/mp4") =>
   );
 
 const thrown = async (p: Promise<unknown>): Promise<Response> => {
-  const e = await p.catch((error: unknown) => error);
-  expect(e).toBeInstanceOf(Response);
-  return e as Response;
+  let rejection: unknown;
+
+  await p.catch((error) => {
+    rejection = error;
+  });
+
+  if (rejection instanceof Response) {
+    return rejection;
+  }
+
+  throw new Error(`expected a Response, got ${String(rejection)}`);
 };
 
 describe("proxy", () => {
@@ -33,9 +41,11 @@ describe("proxy", () => {
   test("names an X download after the tweet", async () => {
     const twimg =
       "https://video.twimg.com/amplify_video/1/vid/avc1/480x270/x.mp4";
+
     const res = await proxy(twimg, "twitter-2006763209378922836", {
       fetch: ok(),
     });
+
     expect(res.headers.get("content-disposition")).toBe(
       'attachment; filename="twitter-2006763209378922836.mp4"'
     );
@@ -56,6 +66,7 @@ describe("proxy", () => {
           status: 200,
         })
     );
+
     const res = await proxy(CDN, "ABC123", { fetch: sized });
     expect(res.headers.get("content-length")).toBe("11");
   });
@@ -66,17 +77,23 @@ describe("proxy", () => {
   });
 
   test("aborts a stalled upstream past the total bound", async () => {
-    // the stub must stay pending until the abort fires — no awaitable built-in expresses that
-    const hanging = ((_input: unknown, init?: { signal?: AbortSignal }) =>
-      // eslint-disable-next-line promise/avoid-new
-      new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener("abort", () =>
-          reject(new DOMException("aborted", "AbortError"))
-        );
-      })) as unknown as typeof fetch;
+    const hanging = Object.assign(
+      (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> =>
+        // the stub must stay pending until the abort fires — no awaitable built-in expresses that
+        // eslint-disable-next-line promise/avoid-new
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () =>
+            reject(new DOMException("aborted", "AbortError"))
+          );
+        }),
+      // the global fetch's real preconnect, unused by this stub
+      { preconnect: fetch.preconnect }
+    );
+
     const res = await thrown(
       proxy(CDN, "ABC123", { fetch: hanging, maxMs: 50 })
     );
+
     expect(res.status).toBe(502);
   });
 
@@ -84,6 +101,7 @@ describe("proxy", () => {
     const res = await proxy(CDN, "ABC123", {
       fetch: stubFetch(() => new Response("x", { status: 200 })),
     });
+
     expect(res.headers.get("content-type")).toBe("video/mp4");
   });
 
@@ -96,6 +114,7 @@ describe("proxy", () => {
     const res = await proxy("https://cdn.example.com/clips/a.mp4", "direct-a", {
       fetch: ok(),
     });
+
     expect(res.headers.get("content-disposition")).toBe(
       'attachment; filename="direct-a.mp4"'
     );
@@ -117,6 +136,7 @@ describe("proxy", () => {
     const unreachable = stubFetch(() => {
       throw new TypeError("fetch failed");
     });
+
     const res = await thrown(proxy(CDN, "ABC123", { fetch: unreachable }));
     expect(res.status).toBe(502);
     expect(await res.text()).toBe("Upstream unreachable");

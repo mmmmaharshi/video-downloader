@@ -30,11 +30,13 @@ export const nextPreview = (
     case "resolved": {
       return { active: 0, open: true, shown: event.assets };
     }
+
     case "failed":
     case "dismissed": {
       // a no-op transition keeps the same reference, so the route does not re-render
       return state.open ? { ...state, open: false } : state;
     }
+
     case "selected": {
       // only the route's pager sends this, and only with a visible index — anything else is a no-op
       if (
@@ -44,8 +46,10 @@ export const nextPreview = (
       ) {
         return state;
       }
+
       return { ...state, active: event.index };
     }
+
     default: {
       return state;
     }

@@ -25,11 +25,13 @@ export const rememberResolved = (
 ): void => {
   prune(now);
   seen.set(url, now);
+
   // bound memory even if distinct urls flood in faster than they expire
   for (const oldest of seen.keys()) {
     if (seen.size <= MAX_ENTRIES) {
       break;
     }
+
     seen.delete(oldest);
   }
 };
@@ -41,6 +43,8 @@ export const wasResolved = (
   if (!url) {
     return false;
   }
+
   const at = seen.get(url);
+
   return at !== undefined && now - at < FRESH_MS;
 };

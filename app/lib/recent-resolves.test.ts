@@ -36,6 +36,7 @@ describe("wasResolved", () => {
     for (let i = 0; i < 200; i += 1) {
       rememberResolved(`https://video.twimg.com/fill-${i}.mp4`, 5000);
     }
+
     rememberResolved("https://video.twimg.com/one-more.mp4", 5000);
     expect(wasResolved("https://video.twimg.com/fill-0.mp4", 5000)).toBe(false);
     expect(wasResolved("https://video.twimg.com/one-more.mp4", 5000)).toBe(

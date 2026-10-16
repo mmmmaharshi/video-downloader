@@ -33,10 +33,12 @@ describe("nextPreview", () => {
 
   test("reopens when the same link resolves again — equal content, fresh response", () => {
     const again = [asset("1")];
+
     const next = nextPreview(openOn([asset("1")]), {
       assets: again,
       type: "resolved",
     });
+
     expect(next.open).toBe(true);
     expect(next.shown).toBe(again);
     expect(next.active).toBe(0);
@@ -47,6 +49,7 @@ describe("nextPreview", () => {
       assets: [asset("2"), asset("3")],
       type: "resolved",
     });
+
     expect(next).toEqual({
       active: 0,
       open: true,
@@ -83,6 +86,7 @@ describe("nextPreview", () => {
       index: 1,
       type: "selected",
     });
+
     expect(next).toEqual({
       active: 1,
       open: true,

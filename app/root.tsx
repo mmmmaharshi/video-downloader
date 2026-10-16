@@ -44,6 +44,7 @@ const App = () => {
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
     []
   );
+
   return (
     <QueryClientProvider client={queryClient}>
       <Outlet />

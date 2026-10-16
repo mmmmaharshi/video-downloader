@@ -9,11 +9,11 @@ const asset = (
   videoUrl: string,
   label?: string
 ): VideoAsset => ({
+  label,
   platform,
   shortcode,
   sourceUrl: `https://example.com/${shortcode}`,
   videoUrl,
-  ...(label ? { label } : {}),
 });
 
 describe("toDownloadHref", () => {
@@ -49,6 +49,7 @@ describe("toDownloadHref", () => {
         "https://scontent.cdninstagram.com/v.mp4?e=1&v=2"
       ),
     ]);
+
     expect(new URL(href, "https://app.example").searchParams.get("url")).toBe(
       "https://scontent.cdninstagram.com/v.mp4?e=1&v=2"
     );
@@ -59,6 +60,7 @@ describe("toDownloadHref", () => {
       asset("twitter", "99", "https://video.twimg.com/first.mp4"),
       asset("twitter", "99", "https://video.twimg.com/second.mp4"),
     ];
+
     expect(
       new URL(
         toDownloadHref(assets, 0),
@@ -78,6 +80,7 @@ describe("toDownloadHref", () => {
       asset("youtube", "dQw4w9WgXcQ", "https://x/1080.mp4", "1080p"),
       asset("youtube", "dQw4w9WgXcQ", "https://x/720.mp4", "720p"),
     ];
+
     expect(
       new URL(
         toDownloadHref(assets, 0),
@@ -108,6 +111,7 @@ describe("fromDownloadRequest", () => {
       "2006763209378922836",
       "https://video.twimg.com/x.mp4"
     );
+
     expect(
       fromDownloadRequest(`https://app.example${toDownloadHref([a])}`)
     ).toEqual({

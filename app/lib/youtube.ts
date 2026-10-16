@@ -13,12 +13,14 @@ export interface TubeAsset {
   height: number;
   title?: string;
 }
+
 export interface YouTubeDeps {
   getInfo?: (id: string, client: ClientName) => Promise<TubeInfo> | TubeInfo;
   fetch?: typeof fetch;
 }
 
 type ClientName = "IOS" | "ANDROID";
+
 const CLIENTS: ClientName[] = ["IOS", "ANDROID"];
 
 interface TubeFormat {
@@ -27,6 +29,7 @@ interface TubeFormat {
   width?: number;
   height?: number;
 }
+
 export interface TubeInfo {
   playability: string;
   reason?: string;
@@ -36,10 +39,12 @@ export interface TubeInfo {
 
 // one anonymous session per process; a failed creation retries on the next call
 let session: Promise<Innertube> | undefined;
+
 const getSession = async (): Promise<Innertube> => {
   if (!session) {
     // assigned before awaiting so concurrent callers share one creation
     session = Innertube.create();
+
     try {
       await session;
     } catch (error) {
@@ -47,6 +52,7 @@ const getSession = async (): Promise<Innertube> => {
       throw error;
     }
   }
+
   return session;
 };
 
@@ -57,6 +63,7 @@ const liveGetInfo = async (
   const tube = await getSession();
   const info = await tube.getBasicInfo(id, { client });
   const sd = info.streaming_data;
+
   return {
     formats: [...(sd?.formats ?? []), ...(sd?.adaptive_formats ?? [])].map(
       (f) => ({
@@ -75,6 +82,7 @@ const liveGetInfo = async (
 const headOk = async (head: typeof fetch, url: string): Promise<boolean> => {
   try {
     const res = await head(url, { method: "HEAD" });
+
     return res.ok;
   } catch {
     return false;
@@ -102,8 +110,10 @@ export const getYouTubeFormats = async (
   let answered = false;
   let failure: unknown;
   let reason: string | undefined;
+
   for (const client of CLIENTS) {
     let info: TubeInfo;
+
     try {
       // eslint-disable-next-line no-await-in-loop -- ANDROID is the fallback for exactly the videos IOS failed
       info = await getInfo(id, client);
@@ -111,29 +121,37 @@ export const getYouTubeFormats = async (
       failure ??= error;
       continue;
     }
+
     answered = true;
+
     if (info.playability !== "OK") {
       reason ??= info.reason;
       continue;
     }
+
     const mp4s = bestMp4s(info);
+
     if (!mp4s.length) {
       continue;
     }
+
     // eslint-disable-next-line no-await-in-loop -- the HEAD probe gates this client before falling back to the next
     if (await headOk(head, mp4s[0].videoUrl)) {
       return mp4s.map((m) => ({ ...m, title: info.title }));
     }
   }
+
   if (!answered) {
     throw new Error("YouTube is unreachable right now. Try again later.", {
       cause: failure,
     });
   }
+
   if (reason) {
     throw new Error(
       `This video is unavailable${`: ${reason}`}. Private or age-restricted videos need a login, which is not supported.`
     );
   }
+
   return [];
 };

@@ -43,6 +43,7 @@ const Home = () => {
   // the same link reopening the preview.
   const applyResult = (result: ResolveResult) => {
     setData({ ...result });
+
     if ("error" in result) {
       setPreview((p) => nextPreview(p, { type: "failed" }));
       toast.danger("Could not fetch", { description: result.error });
@@ -58,7 +59,9 @@ const Home = () => {
       const form = new FormData();
       form.set("url", url);
       const res = await fetch("/api/resolve", { body: form, method: "POST" });
+      // SAFETY: the route returns Response.json of ResolveResult (app/routes/api.resolve.ts)
       const result = (await res.json()) as ResolveResult;
+
       return result;
     },
     onError: (_e, url) => {
@@ -73,9 +76,11 @@ const Home = () => {
       if ("assets" in result) {
         queryClient.setQueryData(resolveKey(url), result);
       }
+
       applyResult(result);
     },
   });
+
   const isLoading = mutation.isPending;
 
   // A fresh resolution stays cached inside the download gate window, so
@@ -86,9 +91,12 @@ const Home = () => {
     if (mutation.isPending) {
       return;
     }
+
     const key = resolveKey(url);
     const state = queryClient.getQueryState(key);
-    const cached = state?.data as ResolveResult | undefined;
+    // the query only ever holds what onSuccess cached: a ResolveResult
+    const cached = queryClient.getQueryData<ResolveResult>(key);
+
     if (cached && state?.dataUpdatedAt && isFresh(state.dataUpdatedAt)) {
       applyResult(cached);
     } else {
@@ -103,8 +111,10 @@ const Home = () => {
 
   const dismiss = () =>
     setPreview((p) => nextPreview(p, { type: "dismissed" }));
+
   const select = (index: number) =>
     setPreview((p) => nextPreview(p, { index, type: "selected" }));
+
   const download = (index: number) => {
     window.location.href = toDownloadHref(shown, index);
   };

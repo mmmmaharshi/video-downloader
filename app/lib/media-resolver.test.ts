@@ -9,6 +9,26 @@ const CDN = "https://scontent.cdninstagram.com/v/abc.mp4";
 const page = (body: string, init?: ResponseInit) =>
   new Response(`<html><head>${body}</head></html>`, { status: 200, ...init });
 
+// Response.url and .redirected are read-only, so a login-redirect fixture
+// subclasses to supply them. The resolvers read only ok/redirected/status/text/url.
+class LoginRedirectResponse extends Response {
+  private readonly loginUrl: string;
+
+  constructor(loginUrl: string) {
+    super("", { status: 200 });
+    this.loginUrl = loginUrl;
+  }
+
+  // eslint-disable-next-line class-methods-use-this -- instance getter override; a static would not shadow the base property
+  override get redirected(): boolean {
+    return true;
+  }
+
+  override get url(): string {
+    return this.loginUrl;
+  }
+}
+
 describe("resolve", () => {
   test("reads video and thumbnail from the post page", async () => {
     const [asset] = await resolve(REEL, {
@@ -18,6 +38,7 @@ describe("resolve", () => {
         )
       ),
     });
+
     expect(asset).toEqual({
       platform: "instagram",
       shortcode: "ABC123",
@@ -35,6 +56,7 @@ describe("resolve", () => {
         )
       ),
     });
+
     expect(asset.videoUrl).toBe(`${CDN}?e=1&v=2&t=3`);
   });
 
@@ -48,6 +70,7 @@ describe("resolve", () => {
           : page("<p>no player here</p>")
       ),
     });
+
     expect(asset.videoUrl).toBe(
       "https://scontent.cdninstagram.com/v/embed.mp4"
     );
@@ -59,6 +82,7 @@ describe("resolve", () => {
         page(`<meta property="og:video" content="${CDN}">`)
       ),
     });
+
     expect(asset.sourceUrl).toBe(REEL);
   });
 
@@ -71,17 +95,20 @@ describe("resolve", () => {
         ),
       }
     );
+
     expect(asset.shortcode).toBe("DeUJBPLgZeX");
     expect(asset.platform).toBe("instagram");
   });
 
   test("a plural /reels/ url falls back to the singular reel embed", async () => {
     const requested: string[] = [];
+
     const [asset] = await resolve(
       "https://www.instagram.com/reels/DeUJBPLgZeX/",
       {
         fetch: stubFetch((url) => {
           requested.push(url);
+
           return url.includes("/embed/")
             ? page(
                 `"video_url":"https:\\/\\/scontent.cdninstagram.com\\/v\\/embed.mp4"`
@@ -90,6 +117,7 @@ describe("resolve", () => {
         }),
       }
     );
+
     expect(asset.videoUrl).toBe(
       "https://scontent.cdninstagram.com/v/embed.mp4"
     );
@@ -103,6 +131,7 @@ describe("resolve", () => {
     await resolve("https://www.instagram.com/reels/DeUJBPLgZeX/", {
       fetch: stubFetch((url) => {
         requested.push(url);
+
         return page(`<meta property="og:video" content="${CDN}">`);
       }),
     });
@@ -138,14 +167,10 @@ describe("resolve", () => {
   });
 
   test("rejects a login redirect", async () => {
-    // Response.url and .redirected are read-only, so the fixture supplies them directly
-    const redirected = {
-      ok: true,
-      redirected: true,
-      status: 200,
-      text: () => "",
-      url: "https://www.instagram.com/accounts/login/",
-    } as unknown as Response;
+    const redirected = new LoginRedirectResponse(
+      "https://www.instagram.com/accounts/login/"
+    );
+
     await expect(
       resolve(REEL, { fetch: stubFetch(() => redirected) })
     ).rejects.toThrow("Private or login-required post");
@@ -155,6 +180,7 @@ describe("resolve", () => {
     const walled = stubFetch(() =>
       page(`<a href="/accounts/login/">Log in</a>`)
     );
+
     await expect(resolve(REEL, { fetch: walled })).rejects.toThrow(
       "Private post or requires login"
     );
@@ -177,13 +203,16 @@ describe("resolve", () => {
 
 // Fixtures copied from live cdn.syndication.twimg.com responses
 const TWEET = "https://x.com/pressmanc/status/2006763209378922836";
+
 const POSTER =
   "https://pbs.twimg.com/amplify_video_thumb/2006763055372271616/img/N9cPDOrH7L72WaTi.jpg";
+
 const BEST_MP4 =
   "https://video.twimg.com/amplify_video/2006763055372271616/vid/avc1/1920x1080/9LGsQpvaGMJD8_Yp.mp4";
+
 const GIF_MP4 = "https://video.twimg.com/tweet_video/DOo8AEAX2l.mp4";
 
-const syndication = (body: unknown, status = 200) =>
+const syndication = <T>(body: T, status = 200) =>
   Response.json(body, {
     headers: { "content-type": "application/json" },
     status,
@@ -223,6 +252,7 @@ describe("resolve — X/Twitter", () => {
         })
       ),
     });
+
     expect(asset).toEqual({
       platform: "twitter",
       shortcode: "2006763209378922836",
@@ -251,6 +281,7 @@ describe("resolve — X/Twitter", () => {
         ],
       },
     };
+
     const assets = await resolve(TWEET, {
       fetch: stubFetch(() =>
         syndication({
@@ -259,6 +290,7 @@ describe("resolve — X/Twitter", () => {
         })
       ),
     });
+
     expect(assets.map((a) => a.videoUrl)).toEqual([
       BEST_MP4,
       "https://video.twimg.com/second-hi.mp4",
@@ -281,11 +313,13 @@ describe("resolve — X/Twitter", () => {
         ],
       },
     };
+
     const assets = await resolve(TWEET, {
       fetch: stubFetch(() =>
         syndication({ id_str: "1", mediaDetails: [m3u8Only, videoMedia] })
       ),
     });
+
     expect(assets.map((a) => a.videoUrl)).toEqual([BEST_MP4]);
   });
 
@@ -305,6 +339,7 @@ describe("resolve — X/Twitter", () => {
             })
           ),
         });
+
         expect(asset.shortcode).toBe("2006763209378922836");
         expect(asset.platform).toBe("twitter");
       })
@@ -316,6 +351,7 @@ describe("resolve — X/Twitter", () => {
     await resolve(TWEET, {
       fetch: stubFetch((url) => {
         requested = url;
+
         return syndication({
           id_str: "2006763209378922836",
           mediaDetails: [videoMedia],
@@ -335,6 +371,7 @@ describe("resolve — X/Twitter", () => {
       media_url_https: "https://pbs.twimg.com/media/x.jpg",
       type: "photo",
     };
+
     await expect(
       resolve(TWEET, {
         fetch: stubFetch(() =>
@@ -360,6 +397,7 @@ describe("resolve — X/Twitter", () => {
           status: 404,
         })
     );
+
     await expect(resolve(TWEET, { fetch: missing })).rejects.toThrow(
       "Post not found"
     );
@@ -381,6 +419,7 @@ describe("resolve — X/Twitter", () => {
           status: 200,
         })
     );
+
     await expect(resolve(TWEET, { fetch: html })).rejects.toThrow(
       "X returned an unexpected response"
     );
@@ -399,9 +438,11 @@ describe("resolve — X/Twitter", () => {
         variants: [{ bitrate: 0, content_type: "video/mp4", url: GIF_MP4 }],
       },
     };
+
     const [asset] = await resolve(TWEET, {
       fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [gif] })),
     });
+
     expect(asset.videoUrl).toBe(GIF_MP4);
   });
 
@@ -410,11 +451,13 @@ describe("resolve — X/Twitter", () => {
       type: "video",
       video_info: { variants: [{ content_type: "video/mp4", url: GIF_MP4 }] },
     };
+
     const [asset] = await resolve(TWEET, {
       fetch: stubFetch(() =>
         syndication({ id_str: "1", mediaDetails: [video] })
       ),
     });
+
     expect(asset.videoUrl).toBe(GIF_MP4);
   });
 
@@ -437,6 +480,7 @@ const tubeOk =
     if (id !== YT_ID) {
       throw new Error(`unexpected id ${id}`);
     }
+
     return [{ height: 720, videoUrl }];
   };
 
@@ -451,6 +495,7 @@ describe("resolve — YouTube", () => {
     const [asset] = await resolve(`https://www.youtube.com/watch?v=${YT_ID}`, {
       youtube: tubeOk(),
     });
+
     expect(asset).toEqual({
       label: "720p",
       platform: "youtube",
@@ -486,6 +531,7 @@ describe("resolve — YouTube", () => {
         { height: 720, videoUrl: "https://x/720.mp4" },
       ],
     });
+
     expect(assets.map((a) => [a.label, a.videoUrl])).toEqual([
       ["1080p", "https://x/1080.mp4"],
       ["720p", "https://x/720.mp4"],
@@ -498,6 +544,7 @@ describe("resolve — YouTube", () => {
         { height: 720, title: "Never Gonna Give You Up", videoUrl: YT_MP4 },
       ],
     });
+
     expect(asset.title).toBe("Never Gonna Give You Up");
   });
   test("reports no downloadable video when YouTube has no mp4 rendition", async () => {
@@ -543,6 +590,7 @@ describe("resolve — Facebook", () => {
         )
       ),
     });
+
     expect(asset.videoUrl).toBe(FB_HD);
   });
 
@@ -550,6 +598,7 @@ describe("resolve — Facebook", () => {
     const [asset] = await resolve(FB_REEL, {
       fetch: stubFetch(() => page(`{"browser_native_sd_url":"${FB_SD}"}`)),
     });
+
     expect(asset.videoUrl).toBe(FB_SD);
   });
 
@@ -557,6 +606,7 @@ describe("resolve — Facebook", () => {
     const [asset] = await resolve(FB_REEL, {
       fetch: stubFetch(() => page(`"hd_src":"${FB_HD}","sd_src":"${FB_SD}"`)),
     });
+
     expect(asset.videoUrl).toBe(FB_HD);
   });
 
@@ -568,6 +618,7 @@ describe("resolve — Facebook", () => {
         )
       ),
     });
+
     expect(asset).toEqual({
       platform: "facebook",
       shortcode: "1234567890123456",
@@ -594,6 +645,7 @@ describe("resolve — Facebook", () => {
         const [asset] = await resolve(url, {
           fetch: stubFetch(() => page(`{"browser_native_hd_url":"${FB_HD}"}`)),
         });
+
         expect(asset.shortcode).toBe(shortcode);
         expect(asset.platform).toBe("facebook");
       })
@@ -608,17 +660,15 @@ describe("resolve — Facebook", () => {
         )
       ),
     });
+
     expect(asset.videoUrl).toBe(FB_HD);
   });
 
   test("rejects a login redirect", async () => {
-    const redirected = {
-      ok: true,
-      redirected: true,
-      status: 200,
-      text: () => "",
-      url: "https://www.facebook.com/login.php",
-    } as unknown as Response;
+    const redirected = new LoginRedirectResponse(
+      "https://www.facebook.com/login.php"
+    );
+
     await expect(
       resolve(FB_REEL, { fetch: stubFetch(() => redirected) })
     ).rejects.toThrow("Private or login-required post");
@@ -665,6 +715,7 @@ describe("resolve — direct links", () => {
       ),
       lookup: publicHost,
     });
+
     expect(asset).toEqual({
       platform: "direct",
       shortcode: "funny-cat",
@@ -676,6 +727,7 @@ describe("resolve — direct links", () => {
 
   test("resolves a page exposing og:video on an unknown host", async () => {
     const pageUrl = "https://blog.example.com/posts/42";
+
     const [asset] = await resolve(pageUrl, {
       fetch: stubFetch(() =>
         page(
@@ -684,6 +736,7 @@ describe("resolve — direct links", () => {
       ),
       lookup: publicHost,
     });
+
     expect(asset).toEqual({
       platform: "direct",
       shortcode: "42",
@@ -704,6 +757,7 @@ describe("resolve — direct links", () => {
       ),
       lookup: publicHost,
     });
+
     expect(asset.shortcode).toBe("video");
   });
 
@@ -718,6 +772,7 @@ describe("resolve — direct links", () => {
       ),
       lookup: publicHost,
     });
+
     expect(asset.shortcode).toBe("100%");
   });
 
@@ -781,6 +836,7 @@ describe("resolve — direct links", () => {
       ),
       lookup: publicHost,
     });
+
     expect(asset.videoUrl).toBe(MP4_URL);
   });
 

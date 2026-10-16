@@ -24,10 +24,13 @@
     "react-dom": "^19.2.7",
     "react-router": "^8",
     "tailwind-variants": "^3.3.1",
-    "youtubei.js": "^18.1.0"
+    "youtubei.js": "^18.1.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@gdp-ts/core": "^0.1.0",
     "@react-router/dev": "^8",
+    "@shadcn/lint": "^0.2.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/bun": "^1.4.3",
     "@types/node": "^22",

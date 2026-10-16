@@ -16,7 +16,7 @@ import * as React from "react";
 import { toDownloadHref } from "../lib/download-link";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
-import { isFresh, resolveKey } from "../lib/resolve-query";
+import { isFresh, resolveKey, resolveResultSchema } from "../lib/resolve-query";
 import type { ResolveResult } from "../lib/resolve-query";
 
 export const meta = () => [
@@ -59,8 +59,7 @@ const Home = () => {
       const form = new FormData();
       form.set("url", url);
       const res = await fetch("/api/resolve", { body: form, method: "POST" });
-      // SAFETY: the route returns Response.json of ResolveResult (app/routes/api.resolve.ts)
-      const result = (await res.json()) as ResolveResult;
+      const result = resolveResultSchema.parse(await res.json());
 
       return result;
     },

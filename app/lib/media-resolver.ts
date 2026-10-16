@@ -11,12 +11,15 @@ import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
 
-export type Platform =
-  | "instagram"
-  | "twitter"
-  | "youtube"
-  | "facebook"
-  | "direct";
+export const PLATFORMS = [
+  "instagram",
+  "twitter",
+  "youtube",
+  "facebook",
+  "direct",
+] as const;
+
+export type Platform = (typeof PLATFORMS)[number];
 
 export interface VideoAsset {
   videoUrl: string;

@@ -5,8 +5,9 @@
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
 import { CHROME_UA, UA } from "./user-agent";
+import { getYouTubeFormats } from "./youtube";
 
-export type Platform = "instagram" | "twitter";
+export type Platform = "instagram" | "twitter" | "youtube";
 
 export type VideoAsset = {
   videoUrl: string;
@@ -18,6 +19,7 @@ export type VideoAsset = {
 
 export type MediaResolverDeps = {
   fetch?: typeof fetch;
+  youtube?: typeof getYouTubeFormats;
 };
 
 const INSTA_RE = /^https?:\/\/(?:www\.)?instagram\.com\/(p|reel|tv)\/([A-Za-z0-9_-]+)\/?(\?.*)?$/;
@@ -36,11 +38,38 @@ export async function resolve(sourceUrl: string, deps: MediaResolverDeps = {}): 
   const tweet = trimmed.match(TWEET_RE);
   if (tweet) return resolveTwitter(trimmed, tweet[1], doFetch);
 
-  throw new Error("Invalid URL. Use an instagram.com post/reel or an x.com status link.");
+  const ytId = matchYouTubeId(trimmed);
+  if (ytId) return resolveYouTube(trimmed, ytId, deps.youtube ?? getYouTubeFormats);
+
+  throw new Error("Invalid URL. Use an instagram.com post/reel, an x.com status link, or a YouTube video link.");
 }
 
 function normalizeUrl(raw: string): string {
   return raw.replace(/\\u0026/g, "&").replace(/\\\//g, "/").replace(/&amp;/g, "&");
+}
+
+// A watch page is identified by its 11-char id, wherever it sits: watch?v= (any param
+// order), youtu.be, /shorts/, /live/, /embed/. A regex cannot read query params, so parse.
+const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+function matchYouTubeId(sourceUrl: string): string | undefined {
+  let url: URL;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+  const host = url.hostname.toLowerCase();
+  if (host === "youtu.be") {
+    const id = url.pathname.slice(1).split("/")[0];
+    return YT_ID_RE.test(id) ? id : undefined;
+  }
+  if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+    const v = url.searchParams.get("v");
+    if (v && YT_ID_RE.test(v)) return v;
+    const pathId = url.pathname.match(/^\/(?:shorts|live|embed)\/([A-Za-z0-9_-]{11})(?:\/|$)/)?.[1];
+    if (pathId) return pathId;
+  }
+  return undefined;
 }
 
 function extractOgVideo(html: string): string | undefined {
@@ -110,6 +139,26 @@ async function resolveInstagram(sourceUrl: string, shortcode: string, doFetch: t
   if (!videoUrl) throw new Error("No video found. Only video/reel posts are downloadable, or IG changed its page.");
 
   return [{ videoUrl, thumbnail: extractThumbnail(html), shortcode, sourceUrl, platform: "instagram" }];
+}
+
+async function resolveYouTube(
+  sourceUrl: string,
+  id: string,
+  getFormats: typeof getYouTubeFormats,
+): Promise<VideoAsset[]> {
+  // one watch page is one video: the formats are renditions, so only the best ships
+  const best = (await getFormats(id))[0];
+  if (!best) throw new Error("No downloadable video found for this post.");
+
+  return [
+    {
+      videoUrl: best.videoUrl,
+      thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+      shortcode: id,
+      sourceUrl,
+      platform: "youtube",
+    },
+  ];
 }
 
 type SyndicationMedia = {

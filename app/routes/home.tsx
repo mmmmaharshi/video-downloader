@@ -9,7 +9,7 @@ import { rememberResolved } from "../lib/recent-resolves";
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "Video Downloader — Save Online Videos" },
-    { name: "description", content: "Paste a public Instagram or X post URL to preview and download. No login, no storage." },
+    { name: "description", content: "Paste a public Instagram, X, or YouTube URL to preview and download. No login, no storage." },
   ];
 }
 
@@ -87,8 +87,8 @@ export default function Home() {
           <fetcher.Form method="post" className="flex flex-col gap-3 sm:flex-row">
             <input
               name="url"
-              aria-label="Instagram or X post URL"
-              placeholder="Paste an Instagram or X post URL"
+              aria-label="Instagram, X, or YouTube video URL"
+              placeholder="Paste an Instagram, X, or YouTube video URL"
               defaultValue={data?.inputUrl ?? ""}
               autoComplete="off"
               required
@@ -129,7 +129,7 @@ export default function Home() {
         ) : null}
 
         <p className="max-w-[68ch] text-[15px] leading-6 text-secondary">
-          Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect Instagram&apos;s and X&apos;s terms.
+          Only download content you have rights to. No storage &mdash; direct CDN proxy. Respect Instagram&apos;s, X&apos;s, and YouTube&apos;s terms.
         </p>
       </main>
 

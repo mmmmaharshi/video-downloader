@@ -228,3 +228,65 @@ describe("resolve — X/Twitter", () => {
     ).rejects.toThrow("Invalid URL");
   });
 });
+
+// The youtube dep is stubbed: live Innertube traffic belongs in youtube.test.ts, not here.
+const YT_ID = "dQw4w9WgXcQ";
+const YT_MP4 = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1";
+
+const tubeOk = (videoUrl = YT_MP4) => async (id: string) => {
+  if (id !== YT_ID) throw new Error(`unexpected id ${id}`);
+  return [{ videoUrl, height: 720 }];
+};
+
+describe("resolve — YouTube", () => {
+  test("resolves a watch url to its best mp4 and a deterministic thumbnail", async () => {
+    const [asset] = await resolve(`https://www.youtube.com/watch?v=${YT_ID}`, { youtube: tubeOk() });
+    expect(asset).toEqual({
+      videoUrl: YT_MP4,
+      thumbnail: `https://i.ytimg.com/vi/${YT_ID}/hqdefault.jpg`,
+      shortcode: YT_ID,
+      sourceUrl: `https://www.youtube.com/watch?v=${YT_ID}`,
+      platform: "youtube",
+    });
+  });
+
+  test("resolves every supported YouTube url shape to the same id", async () => {
+    for (const url of [
+      `https://youtu.be/${YT_ID}`,
+      `https://www.youtube.com/shorts/${YT_ID}`,
+      `https://www.youtube.com/live/${YT_ID}`,
+      `https://www.youtube.com/embed/${YT_ID}`,
+      `https://m.youtube.com/watch?v=${YT_ID}`,
+      `https://www.youtube.com/watch?list=WL&v=${YT_ID}&index=2`,
+    ]) {
+      const [asset] = await resolve(url, { youtube: tubeOk() });
+      expect(asset.shortcode).toBe(YT_ID);
+      expect(asset.platform).toBe("youtube");
+    }
+  });
+
+  test("reports no downloadable video when YouTube has no mp4 rendition", async () => {
+    await expect(resolve(`https://youtu.be/${YT_ID}`, { youtube: async () => [] })).rejects.toThrow(
+      "No downloadable video found",
+    );
+  });
+
+  test("surfaces YouTube's own failure message", async () => {
+    const unavailable = async () => {
+      throw new Error("This video is unavailable. Private videos need a login, which is not supported.");
+    };
+    await expect(resolve(`https://youtu.be/${YT_ID}`, { youtube: unavailable })).rejects.toThrow("not supported");
+  });
+
+  test("rejects non-video YouTube urls and malformed ids", async () => {
+    for (const url of [
+      "https://www.youtube.com/channel/UC1234567890",
+      "https://www.youtube.com/playlist?list=WL",
+      "https://www.youtube.com/watch?v=short",
+      "https://youtu.be/short",
+      "https://www.youtube.com/watch",
+    ]) {
+      await expect(resolve(url, { youtube: tubeOk() })).rejects.toThrow("Invalid URL");
+    }
+  });
+});

@@ -42,6 +42,12 @@ describe("isAllowedHost", () => {
     expect(isAllowedHost("https://video.twimg.com.evil.com/x.mp4")).toBe(false);
     expect(isAllowedHost("https://pbs.twimg.com/media/x.jpg")).toBe(false);
   });
+
+  test("allows the YouTube media CDN, exact suffix only", () => {
+    expect(isAllowedHost("https://rr1---sn-abc123.googlevideo.com/videoplayback?expire=1")).toBe(true);
+    expect(isAllowedHost("https://googlevideo.com.evil.com/x.mp4")).toBe(false);
+    expect(isAllowedHost("https://evilgooglevideo.com/x.mp4")).toBe(false);
+  });
 });
 
 describe("proxy", () => {

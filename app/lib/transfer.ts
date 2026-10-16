@@ -4,7 +4,7 @@
 
 import { UA } from "./user-agent";
 
-const ALLOWED_HOSTS = ["cdninstagram.com", "fbcdn.net", "scontent.cdninstagram.com", "video.twimg.com"] as const;
+const ALLOWED_HOSTS = ["cdninstagram.com", "fbcdn.net", "scontent.cdninstagram.com", "video.twimg.com", "googlevideo.com"] as const;
 const UPSTREAM_TIMEOUT_MS = 15_000;
 // a 500MB file at modest speed finishes inside this; past it the upstream is stalled or abusive
 const UPSTREAM_MAX_MS = 10 * 60_000;

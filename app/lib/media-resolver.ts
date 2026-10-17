@@ -7,26 +7,16 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
+import type { Platform } from "./platforms";
 import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
 
-export const PLATFORMS = [
-  "instagram",
-  "twitter",
-  "youtube",
-  "facebook",
-  "reddit",
-  "streamable",
-  "vimeo",
-  "tiktok",
-  "threads",
-  "dailymotion",
-  "loom",
-  "direct",
-] as const;
+// the platform vocabulary lives in a client-safe module: client code imports
+// PLATFORMS without dragging this module's node: builtins into the browser
+export { PLATFORMS } from "./platforms";
 
-export type Platform = (typeof PLATFORMS)[number];
+export type { Platform } from "./platforms";
 
 export interface VideoAsset {
   videoUrl: string;

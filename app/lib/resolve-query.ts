@@ -7,7 +7,7 @@
 
 import { z } from "zod";
 
-import { PLATFORMS } from "./media-resolver";
+import { PLATFORMS } from "./platforms";
 
 const videoAssetSchema = z.object({
   label: z.string().optional(),

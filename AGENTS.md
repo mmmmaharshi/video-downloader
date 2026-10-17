@@ -14,6 +14,7 @@
 ## Workflow
 
 - Don't run the dev server. Verify with `bun run verify`.
+- Production deploys from the CI `deploy` job, after `verify` passes — not from the push. `vercel.json` turns Vercel's own git deploy off for `master`, so a red run ships nothing.
 - Don't push without the user's permission. Commit locally; the user pushes.
 
 ## Agent skills

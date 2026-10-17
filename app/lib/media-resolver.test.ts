@@ -212,7 +212,7 @@ const BEST_MP4 =
 
 const GIF_MP4 = "https://video.twimg.com/tweet_video/DOo8AEAX2l.mp4";
 
-const syndication = <T>(body: T, status = 200) =>
+const tweetResult = <T>(body: T, status = 200) =>
   Response.json(body, {
     headers: { "content-type": "application/json" },
     status,
@@ -246,7 +246,7 @@ describe("resolve — X/Twitter", () => {
   test("picks the highest-bitrate mp4 and the poster as thumbnail", async () => {
     const [asset] = await resolve(TWEET, {
       fetch: stubFetch(() =>
-        syndication({
+        tweetResult({
           id_str: "2006763209378922836",
           mediaDetails: [videoMedia],
         })
@@ -284,7 +284,7 @@ describe("resolve — X/Twitter", () => {
 
     const assets = await resolve(TWEET, {
       fetch: stubFetch(() =>
-        syndication({
+        tweetResult({
           id_str: "2006763209378922836",
           mediaDetails: [videoMedia, second],
         })
@@ -316,7 +316,7 @@ describe("resolve — X/Twitter", () => {
 
     const assets = await resolve(TWEET, {
       fetch: stubFetch(() =>
-        syndication({ id_str: "1", mediaDetails: [m3u8Only, videoMedia] })
+        tweetResult({ id_str: "1", mediaDetails: [m3u8Only, videoMedia] })
       ),
     });
 
@@ -333,7 +333,7 @@ describe("resolve — X/Twitter", () => {
       ].map(async (url) => {
         const [asset] = await resolve(url, {
           fetch: stubFetch(() =>
-            syndication({
+            tweetResult({
               id_str: "2006763209378922836",
               mediaDetails: [videoMedia],
             })
@@ -352,7 +352,7 @@ describe("resolve — X/Twitter", () => {
       fetch: stubFetch((url) => {
         requested = url;
 
-        return syndication({
+        return tweetResult({
           id_str: "2006763209378922836",
           mediaDetails: [videoMedia],
         });
@@ -375,7 +375,7 @@ describe("resolve — X/Twitter", () => {
     await expect(
       resolve(TWEET, {
         fetch: stubFetch(() =>
-          syndication({ id_str: "1", mediaDetails: [photo] })
+          tweetResult({ id_str: "1", mediaDetails: [photo] })
         ),
       })
     ).rejects.toThrow("No video found");
@@ -384,7 +384,7 @@ describe("resolve — X/Twitter", () => {
   test("rejects a text-only tweet", async () => {
     await expect(
       resolve(TWEET, {
-        fetch: stubFetch(() => syndication({ id_str: "1", text: "hi" })),
+        fetch: stubFetch(() => tweetResult({ id_str: "1", text: "hi" })),
       })
     ).rejects.toThrow("No video found");
   });
@@ -427,7 +427,7 @@ describe("resolve — X/Twitter", () => {
 
   test("reports an unexpected empty payload", async () => {
     await expect(
-      resolve(TWEET, { fetch: stubFetch(() => syndication({})) })
+      resolve(TWEET, { fetch: stubFetch(() => tweetResult({})) })
     ).rejects.toThrow("X returned an unexpected response");
   });
 
@@ -440,7 +440,7 @@ describe("resolve — X/Twitter", () => {
     };
 
     const [asset] = await resolve(TWEET, {
-      fetch: stubFetch(() => syndication({ id_str: "1", mediaDetails: [gif] })),
+      fetch: stubFetch(() => tweetResult({ id_str: "1", mediaDetails: [gif] })),
     });
 
     expect(asset.videoUrl).toBe(GIF_MP4);
@@ -454,7 +454,7 @@ describe("resolve — X/Twitter", () => {
 
     const [asset] = await resolve(TWEET, {
       fetch: stubFetch(() =>
-        syndication({ id_str: "1", mediaDetails: [video] })
+        tweetResult({ id_str: "1", mediaDetails: [video] })
       ),
     });
 
@@ -464,7 +464,7 @@ describe("resolve — X/Twitter", () => {
   test("rejects a status id with trailing junk instead of resolving the wrong tweet", async () => {
     await expect(
       resolve("https://x.com/pressmanc/status/2006763209378922836junk", {
-        fetch: stubFetch(() => syndication({})),
+        fetch: stubFetch(() => tweetResult({})),
       })
     ).rejects.toThrow("Invalid URL");
   });

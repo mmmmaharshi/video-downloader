@@ -162,8 +162,9 @@ const Home = () => {
         </div>
 
         <Typography color="muted">
-          Paste any video link and hit Fetch to download it from Instagram,
-          Facebook, X (Twitter), or YouTube.
+          Paste any video link and hit Fetch to download it from Instagram, X
+          (Twitter), YouTube, Facebook, Reddit, Streamable, Vimeo, TikTok,
+          Threads, Dailymotion, Loom, and direct video links.
         </Typography>
       </main>
 

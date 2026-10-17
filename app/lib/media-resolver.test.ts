@@ -470,6 +470,95 @@ describe("resolve — X/Twitter", () => {
   });
 });
 
+const REDDIT_POST =
+  "https://www.reddit.com/r/videos/comments/abc123/cool_video/";
+const REDDIT_MP4 = "https://v.redd.it/xyz/DASH_1080.mp4?source=fallback";
+const REDDIT_THUMB = "https://preview.redd.it/thumb.jpg";
+
+const redditListing = (post: Record<string, unknown>) =>
+  Response.json([{ data: { children: [{ data: post }] } }], {
+    headers: { "content-type": "application/json" },
+    status: 200,
+  });
+
+describe("resolve — Reddit", () => {
+  test("reads the fallback mp4 and thumbnail", async () => {
+    const [asset] = await resolve(REDDIT_POST, {
+      fetch: stubFetch(() =>
+        redditListing({
+          id: "abc123",
+          media: { reddit_video: { fallback_url: REDDIT_MP4 } },
+          thumbnail: REDDIT_THUMB,
+          title: "cool",
+        })
+      ),
+    });
+
+    expect(asset).toEqual({
+      platform: "reddit",
+      shortcode: "abc123",
+      sourceUrl: REDDIT_POST,
+      thumbnail: REDDIT_THUMB,
+      title: "cool",
+      videoUrl: REDDIT_MP4,
+    });
+  });
+
+  test("unwraps crosspost_parent_list", async () => {
+    const [asset] = await resolve(REDDIT_POST, {
+      fetch: stubFetch(() =>
+        redditListing({
+          crosspost_parent_list: [
+            {
+              id: "abc123",
+              media: { reddit_video: { fallback_url: REDDIT_MP4 } },
+              thumbnail: REDDIT_THUMB,
+            },
+          ],
+          id: "abc123",
+        })
+      ),
+    });
+
+    expect(asset.videoUrl).toBe(REDDIT_MP4);
+  });
+
+  test("rejects a post with no video", async () => {
+    await expect(
+      resolve(REDDIT_POST, {
+        fetch: stubFetch(() => redditListing({ id: "abc123" })),
+      })
+    ).rejects.toThrow("No video found");
+  });
+
+  test("reports a non-json body", async () => {
+    await expect(
+      resolve(REDDIT_POST, {
+        fetch: stubFetch(
+          () => new Response("<!DOCTYPE html>", { status: 200 })
+        ),
+      })
+    ).rejects.toThrow("Reddit returned an unexpected response");
+  });
+
+  test("reports an error status", async () => {
+    await expect(
+      resolve(REDDIT_POST, {
+        fetch: stubFetch(() => new Response("busy", { status: 503 })),
+      })
+    ).rejects.toThrow("Reddit returned 503");
+  });
+
+  test("rejects a known host with a bad path", async () => {
+    await expect(
+      resolve("https://www.reddit.com/r/videos/", {
+        fetch: stubFetch(() => redditListing({ id: "x" })),
+        lookup: () => ["93.184.216.34"],
+      })
+    ).rejects.toThrow("Invalid URL");
+  });
+});
+
 // The youtube dep is stubbed: live Innertube traffic belongs in youtube.test.ts, not here.
 const YT_ID = "dQw4w9WgXcQ";
 const YT_MP4 = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1";

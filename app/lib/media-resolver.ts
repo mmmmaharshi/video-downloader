@@ -16,6 +16,7 @@ export const PLATFORMS = [
   "twitter",
   "youtube",
   "facebook",
+  "reddit",
   "direct",
 ] as const;
 
@@ -217,6 +218,8 @@ const KNOWN_MEDIA_HOSTS = [
   "fb.watch",
   "twitter.com",
   "x.com",
+  "reddit.com",
+  "redd.it",
   "youtube.com",
   "youtu.be",
 ];
@@ -670,6 +673,120 @@ const resolveTwitter = async (
   return assets;
 };
 
+// Reddit posts with video: the .json endpoint exposes media.reddit_video.fallback_url
+// (the direct mp4) plus a thumbnail. Crossposts carry the media on crosspost_parent_list.
+const matchReddit = (
+  sourceUrl: string
+): { fetchUrl: string; id: string } | undefined => {
+  let url: URL;
+
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (
+    host !== "reddit.com" &&
+    !host.endsWith(".reddit.com") &&
+    host !== "redd.it"
+  ) {
+    return undefined;
+  }
+
+  // redd.it short links: /{id}
+  if (host === "redd.it") {
+    const [id] = url.pathname.slice(1).split("/");
+
+    return id ? { fetchUrl: sourceUrl, id } : undefined;
+  }
+
+  const comments = url.pathname.match(/\/comments\/(?<id>[a-z0-9]+)/iu)?.groups
+    ?.id;
+
+  if (comments) {
+    return { fetchUrl: sourceUrl, id: comments };
+  }
+
+  const rComments = url.pathname.match(
+    /\/r\/[^/]+\/comments\/(?<id>[a-z0-9]+)/iu
+  )?.groups?.id;
+
+  if (rComments) {
+    return { fetchUrl: sourceUrl, id: rComments };
+  }
+
+  return undefined;
+};
+
+interface RedditMedia {
+  reddit_video?: { fallback_url?: string; hls_url?: string };
+}
+
+interface RedditPost {
+  data?: {
+    crosspost_parent_list?: RedditPost["data"][];
+    id?: string;
+    media?: RedditMedia;
+    thumbnail?: string;
+    title?: string;
+  };
+}
+
+interface RedditListing {
+  data?: { children?: { data?: RedditPost["data"] }[] };
+}
+
+const resolveReddit = async (
+  sourceUrl: string,
+  id: string,
+  doFetch: typeof fetch
+): Promise<VideoAsset[]> => {
+  const jsonUrl = `${sourceUrl.split("?")[0].replace(/\/+$/u, "")}.json`;
+
+  const res = await doFetch(jsonUrl, {
+    headers: { Accept: "application/json", "User-Agent": CHROME_UA },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  assertOk(res, "Reddit");
+
+  let listing: RedditListing[];
+
+  try {
+    listing = await res.json();
+  } catch {
+    throw new Error("Reddit returned an unexpected response. Try again later.");
+  }
+
+  const post = listing?.[0]?.data?.children?.[0]?.data;
+  const data = post?.crosspost_parent_list?.[0] ?? post;
+
+  const videoUrl = data?.media?.reddit_video?.fallback_url;
+
+  if (!videoUrl) {
+    throw new Error("No video found. Only video posts are downloadable.");
+  }
+
+  const thumbnail =
+    data?.thumbnail && data.thumbnail.startsWith("http")
+      ? data.thumbnail
+      : undefined;
+
+  return [
+    {
+      platform: "reddit",
+      shortcode: id,
+      sourceUrl,
+      thumbnail,
+      title: data?.title,
+      videoUrl,
+    },
+  ];
+};
+
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
 // eslint-disable-next-line require-await
@@ -703,6 +820,12 @@ export const resolve = async (
     return resolveTwitter(trimmed, tweet, doFetch);
   }
 
+  const reddit = matchReddit(trimmed);
+
+  if (reddit) {
+    return resolveReddit(trimmed, reddit.id, doFetch);
+  }
+
   const ytId = matchYouTubeId(trimmed);
 
   if (ytId) {
@@ -715,7 +838,7 @@ export const resolve = async (
 
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, or a YouTube video link."
+      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, or a reddit.com post."
     );
   }
 

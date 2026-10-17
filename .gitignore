@@ -5,3 +5,12 @@
 # React Router
 /.react-router/
 /build/
+
+# Vendored agent-skill assets and the installer's lockfile: local tooling, never
+# shipped, and already excluded from lint (see oxlint.config.ts). The vendored
+# react-router skill under .agents/ is tracked on purpose and stays tracked.
+/agent/
+/.agents/
+/.claude/
+/.opencode/
+/skills-lock.json

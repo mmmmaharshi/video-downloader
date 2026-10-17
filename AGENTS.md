@@ -28,11 +28,11 @@ Default five-role vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `
 
 ### Domain docs
 
-Single-context: one `GLOSSARY.md` plus `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+Single-context: the domain doc is `CONTEXT.md` at the root — glossary and seams — plus `docs/adr/`. There is no `GLOSSARY.md` (ADR 0002). See `docs/agents/domain.md`.
 
 # Ultracite (oxlint + oxfmt)
 
-- `bun run check` verifies lint + format; `bun run fix` repairs. Run `fix` before committing.
+- `bun run check` verifies lint + format; `bun run fix` repairs.
 - Don't disable rules to make check pass. When a rule conflicts with real semantics, the exception is an inline disable with a stated reason: `// eslint-disable-next-line <rule> -- why`.
 - The vendored anti-slop preset (`ultracite/oxlint/anti-slop`, 18 rules at error) is on: every `as` assertion needs a `SAFETY:` comment stating the checked invariant.
 - The `shadcn` preset (Tailwind design-system class rules) and the `gdp` preset (no type assertions anywhere outside `proofs/`, `as const` excepted — parse at boundaries instead) are also on.

@@ -1,0 +1,9 @@
+#!/bin/sh
+# The fast half of `bun run verify`: lint + format only, no typecheck or build.
+# CI runs the whole thing. Arm this once per clone:
+#   git config core.hooksPath .githooks
+if ! bun run check; then
+  echo "" >&2
+  echo "bun run check failed. Run 'bun run fix', then commit again." >&2
+  exit 1
+fi

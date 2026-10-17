@@ -33,7 +33,9 @@ export const meta = () => [
     property: "og:description",
   },
   { content: "website", property: "og:type" },
-  { content: "summary", name: "twitter:card" },
+  { content: "https://download.maharshi.work/og.svg", property: "og:image" },
+  { content: "summary_large_image", name: "twitter:card" },
+  { content: "https://download.maharshi.work/og.svg", name: "twitter:image" },
   { content: "Video Downloader — Save Online Videos", name: "twitter:title" },
   {
     content: "Paste any public video link to download. No login, no storage.",

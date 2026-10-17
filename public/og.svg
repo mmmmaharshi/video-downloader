@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
-  <rect width="1200" height="630" fill="#ffffff" />
-  <line x1="80" y1="120" x2="1120" y2="120" stroke="rgb(0 0 0 / 10%)" stroke-width="1" />
-  <text x="80" y="300" font-family="Inter, system-ui, sans-serif" font-size="72" font-weight="600" fill="#000000" letter-spacing="-1">Video Downloader</text>
-  <text x="80" y="360" font-family="Inter, system-ui, sans-serif" font-size="28" font-weight="400" fill="rgb(0 0 0 / 64%)">Save public videos. No login. No storage.</text>
-  <line x1="80" y1="510" x2="1120" y2="510" stroke="rgb(0 0 0 / 10%)" stroke-width="1" />
-  <text x="80" y="560" font-family="Inter, system-ui, sans-serif" font-size="20" font-weight="400" fill="rgb(0 0 0 / 44%)">download.maharshi.work</text>
-</svg>

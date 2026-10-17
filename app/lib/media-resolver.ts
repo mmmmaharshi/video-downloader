@@ -21,6 +21,7 @@ export const PLATFORMS = [
   "vimeo",
   "tiktok",
   "threads",
+  "dailymotion",
   "direct",
 ] as const;
 
@@ -225,6 +226,8 @@ const KNOWN_MEDIA_HOSTS = [
   "reddit.com",
   "redd.it",
   "streamable.com",
+  "dai.ly",
+  "dailymotion.com",
   "threads.net",
   "threads.com",
   "tiktok.com",
@@ -1139,6 +1142,121 @@ const resolveThreads = async (
   ];
 };
 
+// Dailymotion: metadata endpoint returns qualities map.
+const matchDailymotion = (sourceUrl: string): { id: string } | undefined => {
+  let url: URL;
+
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (host === "dai.ly") {
+    const [id] = url.pathname.slice(1).split("/");
+
+    return id ? { id } : undefined;
+  }
+
+  if (host !== "dailymotion.com" && !host.endsWith(".dailymotion.com")) {
+    return undefined;
+  }
+
+  const id = url.pathname.match(
+    /\/(?:video|embed\/video)\/(?<id>[A-Za-z0-9]+)/u
+  )?.groups?.id;
+
+  return id ? { id } : undefined;
+};
+
+interface DailymotionQuality {
+  type?: string;
+  url?: string;
+}
+
+interface DailymotionMetadata {
+  poster_url?: string;
+  qualities?: Record<string, DailymotionQuality[]>;
+  thumbnail_url?: string;
+  title?: string;
+}
+
+const resolveDailymotion = async (
+  sourceUrl: string,
+  id: string,
+  doFetch: typeof fetch
+): Promise<VideoAsset[]> => {
+  const res = await doFetch(
+    `https://www.dailymotion.com/player/metadata/video/${id}`,
+    {
+      headers: { Accept: "application/json", "User-Agent": CHROME_UA },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    }
+  );
+
+  assertOk(res, "Dailymotion");
+
+  let data: DailymotionMetadata;
+
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(
+      "Dailymotion returned an unexpected response. Try again later."
+    );
+  }
+
+  const qualities = data.qualities ?? {};
+
+  // pick highest numeric quality, then "auto"
+  const keys = Object.keys(qualities).sort((a, b) => {
+    const an = Number(a);
+    const bn = Number(b);
+
+    if (Number.isNaN(an) || Number.isNaN(bn)) {
+      return a === "auto" ? 1 : -1;
+    }
+
+    return bn - an;
+  });
+
+  let videoUrl: string | undefined;
+
+  for (const key of keys) {
+    const entries = qualities[key] ?? [];
+    const mp4 = entries.find(
+      (e) => e.url && /mp4/iu.test(e.type ?? e.url ?? "")
+    );
+
+    if (mp4?.url) {
+      videoUrl = mp4.url;
+      break;
+    }
+
+    if (entries[0]?.url) {
+      videoUrl = entries[0].url;
+      break;
+    }
+  }
+
+  if (!videoUrl) {
+    throw new Error("No video found. Only public videos are downloadable.");
+  }
+
+  return [
+    {
+      platform: "dailymotion",
+      shortcode: id,
+      sourceUrl,
+      thumbnail: data.poster_url ?? data.thumbnail_url,
+      title: data.title,
+      videoUrl,
+    },
+  ];
+};
+
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
 // eslint-disable-next-line require-await
@@ -1202,6 +1320,12 @@ export const resolve = async (
     return resolveThreads(trimmed, threads.id, doFetch);
   }
 
+  const dailymotion = matchDailymotion(trimmed);
+
+  if (dailymotion) {
+    return resolveDailymotion(trimmed, dailymotion.id, doFetch);
+  }
+
   const ytId = matchYouTubeId(trimmed);
 
   if (ytId) {
@@ -1214,7 +1338,7 @@ export const resolve = async (
 
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, a vimeo.com video, a tiktok.com video, or a threads.net post."
+      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, a vimeo.com video, a tiktok.com video, a threads.net post, or a dailymotion.com video."
     );
   }
 

@@ -814,6 +814,63 @@ describe("resolve — Threads", () => {
   });
 });
 
+const DM_URL = "https://www.dailymotion.com/video/x8abc123";
+const DM_MP4 = "https://cdn.dailymotion.com/v/x8abc123.mp4";
+const DM_MP4_HD = "https://cdn.dailymotion.com/v/x8abc123_hd.mp4";
+
+const dmJson = (
+  qualities: Record<string, { type?: string; url: string }[]>,
+  extra?: Record<string, unknown>
+) =>
+  Response.json(
+    { qualities, ...extra },
+    {
+      headers: { "content-type": "application/json" },
+      status: 200,
+    }
+  );
+
+describe("resolve — Dailymotion", () => {
+  test("picks the highest quality mp4", async () => {
+    const [asset] = await resolve(DM_URL, {
+      fetch: stubFetch(() =>
+        dmJson(
+          {
+            "1080": [{ type: "video/mp4", url: DM_MP4_HD }],
+            "240": [{ type: "video/mp4", url: DM_MP4 }],
+          },
+          { poster_url: "https://cdn.dailymotion.com/thumb.jpg", title: "dt" }
+        )
+      ),
+    });
+
+    expect(asset).toEqual({
+      platform: "dailymotion",
+      shortcode: "x8abc123",
+      sourceUrl: DM_URL,
+      thumbnail: "https://cdn.dailymotion.com/thumb.jpg",
+      title: "dt",
+      videoUrl: DM_MP4_HD,
+    });
+  });
+
+  test("rejects when no video", async () => {
+    await expect(
+      resolve(DM_URL, {
+        fetch: stubFetch(() => dmJson({})),
+      })
+    ).rejects.toThrow("No video found");
+  });
+
+  test("reports an error status", async () => {
+    await expect(
+      resolve(DM_URL, {
+        fetch: stubFetch(() => new Response("busy", { status: 503 })),
+      })
+    ).rejects.toThrow("Dailymotion returned 503");
+  });
+});
+
 // The youtube dep is stubbed: live Innertube traffic belongs in youtube.test.ts, not here.
 const YT_ID = "dQw4w9WgXcQ";
 const YT_MP4 = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1";

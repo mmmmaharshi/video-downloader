@@ -4,6 +4,8 @@
 // only passes urls the resolver produced (public hosts only), inside the
 // remember window enforced at the download route.
 
+import { containerOf, isManifestContainer } from "./container";
+import type { Container } from "./container";
 import { UA } from "./user-agent";
 
 const UPSTREAM_TIMEOUT_MS = 15_000;
@@ -16,11 +18,11 @@ export interface TransferDeps {
   maxMs?: number;
 }
 
-// An m3u8 points at its segments relatively, and a saved playlist has no base
-// url left to resolve them against. Rewrite every reference absolute so the
-// downloaded manifest still plays. `new URL` leaves absolute refs alone.
-// shortcut: DASH (.mpd) is XML and is served untouched — no resolver emits one
-// today; upgrade if a DASH source appears.
+// A manifest points at its media relatively, and a saved playlist has no base
+// url left to resolve them against, so the downloaded file would not play.
+// Rewrite every reference absolute. `new URL` leaves absolute refs alone.
+// `catch` keeps a reference that is not a url at all verbatim: the player fails
+// that one file, rather than us failing the whole download.
 const absolutize = (ref: string, base: string): string => {
   try {
     return new URL(ref, base).href;
@@ -29,7 +31,7 @@ const absolutize = (ref: string, base: string): string => {
   }
 };
 
-const absolutizeManifest = (body: string, base: string): string =>
+const absolutizeM3u8 = (body: string, base: string): string =>
   body
     .split("\n")
     .map((line) => {
@@ -46,6 +48,28 @@ const absolutizeManifest = (body: string, base: string): string =>
       return tagged.startsWith("#") ? tagged : absolutize(tagged.trim(), base);
     })
     .join("\n");
+
+// The DASH refs are BaseURL elements and the attributes that name media
+// (byte ranges — indexRange, mediaRange — are numbers, not urls, so they are
+// left alone). Median templates like `$Number$` survive `new URL` verbatim.
+const absolutizeMpd = (body: string, base: string): string =>
+  body
+    .replaceAll(
+      /<BaseURL>(?<ref>[^<]+)<\/BaseURL>/gu,
+      (_match, ref: string) =>
+        `<BaseURL>${absolutize(ref.trim(), base)}</BaseURL>`
+    )
+    .replaceAll(
+      /(?<attr>\b(?:initialization|media|sourceURL|xlink:href)=")(?<ref>[^"]+)"/gu,
+      (_match, attr: string, ref: string) => `${attr}${absolutize(ref, base)}"`
+    );
+
+const absolutizeManifest = (
+  body: string,
+  base: string,
+  container: Container
+): string =>
+  container === "mpd" ? absolutizeMpd(body, base) : absolutizeM3u8(body, base);
 
 export const proxy = async (
   videoUrl: string | null,
@@ -81,21 +105,10 @@ export const proxy = async (
   }
 
   const contentType = upstream.headers.get("content-type") ?? "video/mp4";
-  // content-type casing varies in the wild (application/x-mpegURL), so compare lowercased
-  const mime = contentType.toLowerCase();
-  // derive the file extension from the upstream content-type (or the url) instead
-  // of assuming mp4 — manifests (m3u8/mpd), webm and mov are downloadable too
-  let ext = "mp4";
 
-  if (mime.includes("mpegurl") || /\.m3u8(?:[?#]|$)/iu.test(videoUrl)) {
-    ext = "m3u8";
-  } else if (mime.includes("dash+xml") || /\.mpd(?:[?#]|$)/iu.test(videoUrl)) {
-    ext = "mpd";
-  } else if (mime.includes("webm") || /\.webm(?:[?#]|$)/iu.test(videoUrl)) {
-    ext = "webm";
-  } else if (mime.includes("quicktime") || /\.mov(?:[?#]|$)/iu.test(videoUrl)) {
-    ext = "mov";
-  }
+  // the container decides the download's extension: one rule, shared with the
+  // preview, so the two can never disagree about what this file is
+  const ext = containerOf(videoUrl, contentType);
 
   // the stem arrives from the query string — keep it out of the header grammar
   const safeName = stem.replaceAll(/[^\w.-]+/gu, "_");
@@ -109,11 +122,12 @@ export const proxy = async (
   // lets the browser show progress; an absent upstream length stays absent
   const length = upstream.headers.get("content-length");
 
-  if (ext === "m3u8") {
+  if (isManifestContainer(ext)) {
     // small text, so buffering costs nothing; the length below no longer applies
-    return new Response(absolutizeManifest(await upstream.text(), videoUrl), {
-      headers: base,
-    });
+    return new Response(
+      absolutizeManifest(await upstream.text(), videoUrl, ext),
+      { headers: base }
+    );
   }
 
   const headers = length ? { ...base, "Content-Length": length } : base;

@@ -41,4 +41,20 @@ describe("platforms", () => {
 
     expect(source).not.toMatch(/media-resolver/u);
   });
+
+  // the guard above is the one that actually broke: browser code may take the
+  // resolver's types (erased at build) but never its runtime, which drags
+  // node:dns into the client bundle
+  test.each(["preview.ts", "download-link.ts", "../routes/home.tsx"])(
+    "%s takes the resolver as types only",
+    async (file) => {
+      const source = await readFile(new URL(file, import.meta.url), {
+        encoding: "utf-8",
+      });
+
+      expect(source).not.toMatch(
+        /import\s+(?!type\b)[^;]*from\s+"[^"]*media-resolver"/u
+      );
+    }
+  );
 });

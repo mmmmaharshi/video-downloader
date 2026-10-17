@@ -128,6 +128,31 @@ describe("proxy", () => {
     );
   });
 
+  test("rewrites a DASH manifest's relative refs absolute", async () => {
+    const mpd = [
+      '<MPD mediaPresentationDuration="PT10S">',
+      "  <BaseURL>../video/</BaseURL>",
+      '  <SegmentTemplate initialization="init-$RepresentationID$.m4s" media="seg-$Number$.m4s" indexRange="100-200" />',
+      "</MPD>",
+    ].join("\n");
+
+    const res = await proxy("https://cdn.example/dash/stream.mpd", "dm-abc", {
+      fetch: ok(mpd, "application/dash+xml"),
+    });
+
+    expect(res.headers.get("content-disposition")).toBe(
+      'attachment; filename="dm-abc.mpd"'
+    );
+    expect(await res.text()).toBe(
+      [
+        '<MPD mediaPresentationDuration="PT10S">',
+        "  <BaseURL>https://cdn.example/video/</BaseURL>",
+        '  <SegmentTemplate initialization="https://cdn.example/dash/init-$RepresentationID$.m4s" media="https://cdn.example/dash/seg-$Number$.m4s" indexRange="100-200" />',
+        "</MPD>",
+      ].join("\n")
+    );
+  });
+
   test("falls back to video/mp4 when upstream sends no content type", async () => {
     const res = await proxy(CDN, "ABC123", {
       fetch: stubFetch(() => new Response("x", { status: 200 })),
@@ -138,9 +163,6 @@ describe("proxy", () => {
 
   test.each([
     // [url, upstream content-type, expected extension]
-    ["https://x/video.m3u8", "application/vnd.apple.mpegurl", "m3u8"],
-    ["https://x/playlist", "application/x-mpegURL", "m3u8"],
-    ["https://x/manifest.mpd", "application/dash+xml", "mpd"],
     ["https://x/clip", "video/webm", "webm"],
     ["https://x/clip", "video/quicktime", "mov"],
     ["https://x/clip", "video/mp4", "mp4"],

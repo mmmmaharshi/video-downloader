@@ -13,6 +13,7 @@ import {
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
+import { containerOf, isManifestContainer } from "../lib/container";
 import { toDownloadHref } from "../lib/download-link";
 import type { VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview } from "../lib/preview";
@@ -54,10 +55,10 @@ export const links: Route.LinksFunction = () => [
 const MEDIA_CLASS =
   "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
 
-// HLS/DASH playlists are manifests, not files: a <video> element cannot play a
-// bare m3u8/mpd without a JS player, so those assets show a download notice
+// the same container rule the download uses, so the preview cannot call a file
+// playable that the proxy names as a playlist
 const isManifestUrl = (url: string): boolean =>
-  /\.(?:m3u8|mpd)(?:[?#]|$)/iu.test(url);
+  isManifestContainer(containerOf(url));
 
 const PreviewMedia = ({ asset }: { asset: VideoAsset }) =>
   isManifestUrl(asset.videoUrl) ? (
@@ -242,84 +243,44 @@ const Home = () => {
                   />
                 )}
                 {!isYouTube && current && <PreviewMedia asset={current} />}
-                {shown.length > 1 && !isYouTube ? (
-                  // fieldset is the native group element; preflight strips its chrome
-                  <fieldset
-                    aria-label="Video options"
-                    className="flex items-center gap-2"
-                  >
-                    {shown.map((a, i) => (
-                      <Button
-                        key={i}
-                        aria-label={`Show video ${i + 1}`}
-                        aria-current={i === preview.active}
-                        size="sm"
-                        variant={i === preview.active ? "primary" : "secondary"}
-                        onPress={() => select(i)}
-                      >
-                        {a.label ?? i + 1}
-                      </Button>
-                    ))}
-                  </fieldset>
-                ) : null}
               </Modal.Body>
               <Modal.Footer>
                 <Button slot="close" variant="tertiary">
                   Close
                 </Button>
-                {isYouTube && (
-                  <>
-                    <Select
-                      aria-label="Video quality"
-                      variant="secondary"
-                      selectedKey={String(preview.active)}
-                      onSelectionChange={(key) => select(Number(key))}
-                    >
-                      <Select.Trigger>
-                        <Select.Value />
-                        <Select.Indicator />
-                      </Select.Trigger>
-                      <Select.Popover>
-                        <ListBox>
-                          {shown.map((a, i) => (
-                            <ListBox.Item
-                              key={i}
-                              id={String(i)}
-                              textValue={a.label ?? `Video ${i + 1}`}
-                            >
-                              {a.label ?? `Video ${i + 1}`}
-                              <ListBox.ItemIndicator />
-                            </ListBox.Item>
-                          ))}
-                        </ListBox>
-                      </Select.Popover>
-                    </Select>
-                    <Button
-                      variant="primary"
-                      onPress={() => download(preview.active)}
-                    >
-                      Download
-                    </Button>
-                  </>
+                {shown.length > 1 && (
+                  <Select
+                    aria-label="Video options"
+                    variant="secondary"
+                    selectedKey={String(preview.active)}
+                    onSelectionChange={(key) => select(Number(key))}
+                  >
+                    <Select.Trigger>
+                      <Select.Value />
+                      <Select.Indicator />
+                    </Select.Trigger>
+                    <Select.Popover>
+                      <ListBox>
+                        {shown.map((a, i) => (
+                          <ListBox.Item
+                            key={i}
+                            id={String(i)}
+                            textValue={a.label ?? `Video ${i + 1}`}
+                          >
+                            {a.label ?? `Video ${i + 1}`}
+                            <ListBox.ItemIndicator />
+                          </ListBox.Item>
+                        ))}
+                      </ListBox>
+                    </Select.Popover>
+                  </Select>
                 )}
-                {!isYouTube && shown.length === 1 && (
-                  <Button variant="primary" onPress={() => download(0)}>
-                    Download
-                  </Button>
-                )}
-                {!isYouTube && shown.length > 1 && (
-                  <div className="flex flex-col gap-2">
-                    {shown.map((a, i) => (
-                      <Button
-                        key={i}
-                        variant="primary"
-                        onPress={() => download(i)}
-                      >
-                        Download {a.label ?? `video ${i + 1}`}
-                      </Button>
-                    ))}
-                  </div>
-                )}
+                <Button
+                  variant="primary"
+                  onPress={() => download(preview.active)}
+                >
+                  Download
+                </Button>
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>

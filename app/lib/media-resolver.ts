@@ -703,8 +703,8 @@ const resolveTwitter = async (
     const variants = video.video_info?.variants ?? [];
     const mp4s = variants.filter((v) => v.content_type === "video/mp4");
 
-    // eslint-disable-next-line unicorn/no-array-sort -- per-tweet filtered copy, nothing shared
-    const sorted = preferMp4(mp4s, variants).sort(
+    // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh copy
+    const sorted = [...preferMp4(mp4s, variants)].sort(
       (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0)
     );
 
@@ -915,16 +915,11 @@ const resolveStreamable = async (
     (f): f is StreamableFile & { url: string } => f.url !== undefined
   );
 
-  // prefer mp4 renditions, fall back to whatever Streamable serves (incl. hls)
+  // prefer mp4 renditions, fall back to whatever Streamable serves (incl. hls);
+  // the guarded files already satisfy Rendition field for field
   const mp4s = files.filter((f) => /mp4/iu.test(f.url));
 
-  const assets = byQuality(
-    preferMp4(mp4s, files).map((f) => ({
-      height: f.height,
-      url: f.url,
-      width: f.width,
-    }))
-  ).map((f) => ({
+  const assets = byQuality(preferMp4(mp4s, files)).map((f) => ({
     label: renditionLabel(f),
     platform: "streamable" as const,
     shortcode: code,

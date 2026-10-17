@@ -871,6 +871,40 @@ describe("resolve — Dailymotion", () => {
   });
 });
 
+const LOOM_URL = "https://www.loom.com/share/abc123xyz";
+
+describe("resolve — Loom", () => {
+  test("reads og:video", async () => {
+    const [asset] = await resolve(LOOM_URL, {
+      fetch: stubFetch(
+        () =>
+          new Response(
+            `<html><head><meta property="og:video" content="https://cdn.loom.com/v.mp4"><meta property="og:image" content="https://cdn.loom.com/img.jpg"></head></html>`,
+            { status: 200 }
+          )
+      ),
+    });
+
+    expect(asset).toEqual({
+      platform: "loom",
+      shortcode: "abc123xyz",
+      sourceUrl: LOOM_URL,
+      thumbnail: "https://cdn.loom.com/img.jpg",
+      videoUrl: "https://cdn.loom.com/v.mp4",
+    });
+  });
+
+  test("rejects when no video", async () => {
+    await expect(
+      resolve(LOOM_URL, {
+        fetch: stubFetch(
+          () => new Response("<html><body></body></html>", { status: 200 })
+        ),
+      })
+    ).rejects.toThrow("No video found");
+  });
+});
+
 // The youtube dep is stubbed: live Innertube traffic belongs in youtube.test.ts, not here.
 const YT_ID = "dQw4w9WgXcQ";
 const YT_MP4 = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1";

@@ -22,6 +22,7 @@ export const PLATFORMS = [
   "tiktok",
   "threads",
   "dailymotion",
+  "loom",
   "direct",
 ] as const;
 
@@ -226,6 +227,7 @@ const KNOWN_MEDIA_HOSTS = [
   "reddit.com",
   "redd.it",
   "streamable.com",
+  "loom.com",
   "dai.ly",
   "dailymotion.com",
   "threads.net",
@@ -1257,6 +1259,56 @@ const resolveDailymotion = async (
   ];
 };
 
+// Loom: og:video carries the signed mp4.
+const matchLoom = (sourceUrl: string): { id: string } | undefined => {
+  let url: URL;
+
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (host !== "loom.com" && !host.endsWith(".loom.com")) {
+    return undefined;
+  }
+
+  const id = url.pathname.match(/\/(?:share|embed)\/(?<id>[A-Za-z0-9]+)/u)
+    ?.groups?.id;
+
+  return id ? { id } : undefined;
+};
+
+const resolveLoom = async (
+  sourceUrl: string,
+  id: string,
+  doFetch: typeof fetch
+): Promise<VideoAsset[]> => {
+  const res = await fetchPage(doFetch, sourceUrl);
+
+  assertOk(res, "Loom");
+
+  const html = await res.text();
+
+  const videoUrl = extractOgVideo(html);
+
+  if (!videoUrl) {
+    throw new Error("No video found. Only public videos are downloadable.");
+  }
+
+  return [
+    {
+      platform: "loom",
+      shortcode: id,
+      sourceUrl,
+      thumbnail: extractThumbnail(html),
+      videoUrl,
+    },
+  ];
+};
+
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
 // eslint-disable-next-line require-await
@@ -1326,6 +1378,12 @@ export const resolve = async (
     return resolveDailymotion(trimmed, dailymotion.id, doFetch);
   }
 
+  const loom = matchLoom(trimmed);
+
+  if (loom) {
+    return resolveLoom(trimmed, loom.id, doFetch);
+  }
+
   const ytId = matchYouTubeId(trimmed);
 
   if (ytId) {
@@ -1338,7 +1396,7 @@ export const resolve = async (
 
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, a vimeo.com video, a tiktok.com video, a threads.net post, or a dailymotion.com video."
+      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, a vimeo.com video, a tiktok.com video, a threads.net post, a dailymotion.com video, or a loom.com video."
     );
   }
 

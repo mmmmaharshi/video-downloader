@@ -14,6 +14,8 @@ export default defineConfig({
     "agent/",
     ".claude/",
     ".agents/",
+    // opencode harness session state, written at runtime — not project code
+    ".opencode/",
   ],
   jsPlugins: shadcn.jsPlugins,
 });

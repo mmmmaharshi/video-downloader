@@ -472,10 +472,19 @@ describe("resolve — X/Twitter", () => {
 
 const REDDIT_POST =
   "https://www.reddit.com/r/videos/comments/abc123/cool_video/";
+
 const REDDIT_MP4 = "https://v.redd.it/xyz/DASH_1080.mp4?source=fallback";
 const REDDIT_THUMB = "https://preview.redd.it/thumb.jpg";
 
-const redditListing = (post: Record<string, unknown>) =>
+interface RedditPostData {
+  crosspost_parent_list?: RedditPostData[];
+  id?: string;
+  media?: { reddit_video?: { fallback_url?: string } };
+  thumbnail?: string;
+  title?: string;
+}
+
+const redditListing = (post: RedditPostData) =>
   Response.json([{ data: { children: [{ data: post }] } }], {
     headers: { "content-type": "application/json" },
     status: 200,
@@ -565,7 +574,7 @@ const STREAMABLE_MP4_HD = "https://cdn.streamable.com/video/mp4/abc123_hd.mp4";
 
 const streamableJson = (
   files: Record<string, { url: string; width?: number }>,
-  extra?: Record<string, unknown>
+  extra?: Record<string, string>
 ) =>
   Response.json(
     { files, ...extra },
@@ -581,8 +590,8 @@ describe("resolve — Streamable", () => {
       fetch: stubFetch(() =>
         streamableJson(
           {
-            "mp4-mobile": { url: STREAMABLE_MP4, width: 480 },
             mp4: { url: STREAMABLE_MP4_HD, width: 1920 },
+            "mp4-mobile": { url: STREAMABLE_MP4, width: 480 },
           },
           { thumbnail_url: "https://cdn.streamable.com/thumb.jpg", title: "hi" }
         )
@@ -630,12 +639,13 @@ describe("resolve — Streamable", () => {
 
 const VIMEO_URL = "https://vimeo.com/123456789";
 const VIMEO_MP4 = "https://player.vimeo.com/progressive_redirect/.../file.mp4";
+
 const VIMEO_MP4_HD =
   "https://player.vimeo.com/progressive_redirect/.../file_hd.mp4";
 
 const vimeoJson = (
   progressive: { url: string; width?: number }[],
-  extra?: Record<string, unknown>
+  extra?: Record<string, string>
 ) =>
   Response.json(
     {
@@ -701,7 +711,11 @@ const TIKTOK_URL = "https://www.tiktok.com/@user/video/7123456789";
 const TIKTOK_MP4 = "https://v16-webapp-prime.tiktok.com/video/tos/.../abc.mp4";
 const TIKTOK_COVER = "https://p16-sign.tiktokcdn-us.com/cover.jpg";
 
-const rehydration = (video: Record<string, unknown>) =>
+const rehydration = (video: {
+  cover?: string;
+  downloadAddr?: string;
+  playAddr?: string;
+}) =>
   `<html><head></head><body><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify(
     {
       __DEFAULT_SCOPE__: {
@@ -820,7 +834,7 @@ const DM_MP4_HD = "https://cdn.dailymotion.com/v/x8abc123_hd.mp4";
 
 const dmJson = (
   qualities: Record<string, { type?: string; url: string }[]>,
-  extra?: Record<string, unknown>
+  extra?: Record<string, string>
 ) =>
   Response.json(
     { qualities, ...extra },

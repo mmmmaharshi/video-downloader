@@ -872,9 +872,10 @@ const resolveStreamable = async (
   );
 
   // pick the largest rendition
-  const best = mp4s.sort(
+  // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy
+  const [best] = mp4s.sort(
     (a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0)
-  )[0];
+  );
 
   if (!best?.url) {
     throw new Error("No video found. Only video posts are downloadable.");
@@ -915,6 +916,7 @@ const matchVimeo = (
   }
 
   const path = url.pathname;
+
   const videoMatch = path.match(
     /\/video\/(?<id>\d+)(?:\/(?<hash>[A-Za-z0-9]+))?/u
   );
@@ -976,16 +978,19 @@ const resolveVimeo = async (
 
   const progressive = data.video?.files?.progressive ?? [];
 
-  const best = progressive
+  const [best] = progressive
     .filter((p): p is VimeoProgressive & { url: string } => p.url !== undefined)
-    .sort((a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0))[0];
+    // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy
+    .sort((a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0));
 
   if (!best?.url) {
     throw new Error("No video found. Only public videos are downloadable.");
   }
 
   const thumbs = data.video?.thumbs;
+
   const thumbnail =
+    // eslint-disable-next-line anti-slop/no-runtime-typeof -- Vimeo thumbs arrive as string or object from JSON; narrowing on the value is the only discriminator available
     typeof thumbs === "string"
       ? thumbs
       : (thumbs?.sizes?.[0]?.link ?? thumbs?.base);
@@ -1049,16 +1054,10 @@ const resolveTikTok = async (
 
   if (rehydration) {
     try {
-      const data = JSON.parse(rehydration) as {
-        __DEFAULT_SCOPE__?: {
-          "webapp.video-detail"?: {
-            itemInfo?: { itemStruct?: { video?: TikTokVideo } };
-          };
-        };
-      };
+      const data = JSON.parse(rehydration);
 
-      const video =
-        data.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo?.itemStruct
+      const video: TikTokVideo | undefined =
+        data?.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo?.itemStruct
           ?.video;
 
       videoUrl = video?.playAddr ?? video?.downloadAddr;
@@ -1111,7 +1110,8 @@ const matchThreads = (sourceUrl: string): { id: string } | undefined => {
 
   const id =
     url.pathname.match(/\/(?:post|t)\/(?<id>[A-Za-z0-9_-]+)/u)?.groups?.id ??
-    url.pathname.split("/").filter(Boolean).pop();
+    // eslint-disable-next-line unicorn/prefer-array-find -- last non-empty path segment, not a filtered first match
+    url.pathname.split("/").filter(Boolean).at(-1);
 
   return id ? { id } : undefined;
 };
@@ -1213,6 +1213,7 @@ const resolveDailymotion = async (
   const qualities = data.qualities ?? {};
 
   // pick highest numeric quality, then "auto"
+  // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array from Object.keys
   const keys = Object.keys(qualities).sort((a, b) => {
     const an = Number(a);
     const bn = Number(b);
@@ -1228,6 +1229,7 @@ const resolveDailymotion = async (
 
   for (const key of keys) {
     const entries = qualities[key] ?? [];
+
     const mp4 = entries.find(
       (e) => e.url && /mp4/iu.test(e.type ?? e.url ?? "")
     );
@@ -1311,7 +1313,7 @@ const resolveLoom = async (
 
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
-// eslint-disable-next-line require-await
+// eslint-disable-next-line require-await, complexity -- dispatch over supported providers; async for uniform await contract
 export const resolve = async (
   sourceUrl: string,
   deps: MediaResolverDeps = {}

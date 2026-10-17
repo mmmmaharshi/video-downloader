@@ -198,6 +198,7 @@ const Home = () => {
               <Input autoComplete="off" placeholder="Paste any video link" />
             </TextField>
             <Button
+              className="w-full sm:w-auto"
               isDisabled={isLoading}
               isPending={isLoading}
               type="submit"

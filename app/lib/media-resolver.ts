@@ -945,9 +945,12 @@ interface VimeoProgressive {
 }
 
 interface VimeoConfig {
+  request?: {
+    files?: { progressive?: VimeoProgressive[]; hls?: { url?: string } };
+  };
   video?: {
     files?: { progressive?: VimeoProgressive[] };
-    thumbs?: { base?: string; sizes?: { link?: string }[] } | string;
+    thumbnail_url?: string;
     title?: string;
   };
 }
@@ -965,7 +968,11 @@ const resolveVimeo = async (
   }
 
   const res = await doFetch(configUrl.href, {
-    headers: { Accept: "application/json", "User-Agent": CHROME_UA },
+    headers: {
+      Accept: "application/json",
+      Referer: `https://player.vimeo.com/video/${id}`,
+      "User-Agent": CHROME_UA,
+    },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
@@ -979,24 +986,25 @@ const resolveVimeo = async (
     throw new Error("Vimeo returned an unexpected response. Try again later.");
   }
 
-  const progressive = data.video?.files?.progressive ?? [];
+  const progressive =
+    data.video?.files?.progressive ?? data.request?.files?.progressive ?? [];
 
   const [best] = progressive
     .filter((p): p is VimeoProgressive & { url: string } => p.url !== undefined)
     // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy
     .sort((a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0));
 
-  if (!best?.url) {
+  let videoUrl: string | undefined = best?.url;
+
+  if (!videoUrl) {
+    videoUrl = data.request?.files?.hls?.url;
+  }
+
+  if (!videoUrl) {
     throw new Error("No video found. Only public videos are downloadable.");
   }
 
-  const thumbs = data.video?.thumbs;
-
-  const thumbnail =
-    // eslint-disable-next-line anti-slop/no-runtime-typeof -- Vimeo thumbs arrive as string or object from JSON; narrowing on the value is the only discriminator available
-    typeof thumbs === "string"
-      ? thumbs
-      : (thumbs?.sizes?.[0]?.link ?? thumbs?.base);
+  const thumbnail = data.video?.thumbnail_url;
 
   return [
     {
@@ -1005,7 +1013,7 @@ const resolveVimeo = async (
       sourceUrl,
       thumbnail,
       title: data.video?.title,
-      videoUrl: best.url,
+      videoUrl,
     },
   ];
 };

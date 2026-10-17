@@ -651,7 +651,7 @@ const vimeoJson = (
     {
       video: {
         files: { progressive },
-        thumbs: { sizes: [{ link: "https://i.vimeocdn.com/thumb.jpg" }] },
+        thumbnail_url: "https://i.vimeocdn.com/thumb.jpg",
         title: "vtitle",
         ...extra,
       },

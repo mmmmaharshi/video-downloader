@@ -576,7 +576,7 @@ const STREAMABLE_MP4 = "https://cdn.streamable.com/video/mp4/abc123.mp4";
 const STREAMABLE_MP4_HD = "https://cdn.streamable.com/video/mp4/abc123_hd.mp4";
 
 const streamableJson = (
-  files: Record<string, { url: string; width?: number }>,
+  files: Record<string, { height?: number; url: string; width?: number }>,
   extra?: Record<string, string>
 ) =>
   Response.json(
@@ -588,27 +588,44 @@ const streamableJson = (
   );
 
 describe("resolve — Streamable", () => {
-  test("picks the largest mp4 rendition and thumbnail", async () => {
-    const [asset] = await resolve(STREAMABLE_URL, {
+  test("offers every mp4 rendition, largest first", async () => {
+    const assets = await resolve(STREAMABLE_URL, {
       fetch: stubFetch(() =>
         streamableJson(
           {
-            mp4: { url: STREAMABLE_MP4_HD, width: 1920 },
-            "mp4-mobile": { url: STREAMABLE_MP4, width: 480 },
+            mp4: { height: 1080, url: STREAMABLE_MP4_HD, width: 1920 },
+            "mp4-mobile": { height: 480, url: STREAMABLE_MP4, width: 480 },
           },
           { thumbnail_url: "https://cdn.streamable.com/thumb.jpg", title: "hi" }
         )
       ),
     });
 
-    expect(asset).toEqual({
+    expect(assets.map((a) => [a.label, a.videoUrl])).toEqual([
+      ["1080p", STREAMABLE_MP4_HD],
+      ["480p", STREAMABLE_MP4],
+    ]);
+
+    expect(assets[0]).toMatchObject({
       platform: "streamable",
       shortcode: "abc123",
       sourceUrl: STREAMABLE_URL,
       thumbnail: "https://cdn.streamable.com/thumb.jpg",
       title: "hi",
-      videoUrl: STREAMABLE_MP4_HD,
     });
+  });
+
+  test("collapses renditions that report the same height", async () => {
+    const assets = await resolve(STREAMABLE_URL, {
+      fetch: stubFetch(() =>
+        streamableJson({
+          mp4: { height: 720, url: STREAMABLE_MP4_HD, width: 1280 },
+          "mp4-hls": { height: 720, url: STREAMABLE_MP4, width: 1280 },
+        })
+      ),
+    });
+
+    expect(assets.map((a) => a.videoUrl)).toEqual([STREAMABLE_MP4_HD]);
   });
 
   test("rejects a post with no files at all", async () => {
@@ -645,7 +662,12 @@ const VIMEO_MP4_HD =
   "https://player.vimeo.com/progressive_redirect/.../file_hd.mp4";
 
 const vimeoJson = (
-  progressive: { url: string; width?: number }[],
+  progressive: {
+    height?: number;
+    quality?: string;
+    url: string;
+    width?: number;
+  }[],
   extra?: Record<string, string>
 ) =>
   Response.json(
@@ -661,24 +683,41 @@ const vimeoJson = (
   );
 
 describe("resolve — Vimeo", () => {
-  test("picks the largest progressive mp4", async () => {
-    const [asset] = await resolve(VIMEO_URL, {
+  test("offers every progressive rendition, widest first", async () => {
+    const assets = await resolve(VIMEO_URL, {
       fetch: stubFetch(() =>
         vimeoJson([
-          { url: VIMEO_MP4, width: 640 },
-          { url: VIMEO_MP4_HD, width: 1920 },
+          { height: 360, url: VIMEO_MP4, width: 640 },
+          { height: 1080, url: VIMEO_MP4_HD, width: 1920 },
         ])
       ),
     });
 
-    expect(asset).toEqual({
+    expect(assets.map((a) => [a.label, a.videoUrl])).toEqual([
+      ["1080p", VIMEO_MP4_HD],
+      ["360p", VIMEO_MP4],
+    ]);
+
+    expect(assets[0]).toMatchObject({
       platform: "vimeo",
       shortcode: "123456789",
       sourceUrl: VIMEO_URL,
       thumbnail: "https://i.vimeocdn.com/thumb.jpg",
       title: "vtitle",
-      videoUrl: VIMEO_MP4_HD,
     });
+  });
+
+  test("falls back to the hls manifest when no progressive file exists", async () => {
+    const [asset] = await resolve(VIMEO_URL, {
+      fetch: stubFetch(() =>
+        Response.json(
+          { request: { files: { hls: { url: "https://x/master.m3u8" } } } },
+          { headers: { "content-type": "application/json" }, status: 200 }
+        )
+      ),
+    });
+
+    expect(asset.videoUrl).toBe("https://x/master.m3u8");
   });
 
   test("rejects a video with no progressive mp4", async () => {
@@ -832,6 +871,7 @@ describe("resolve — Threads", () => {
 const DM_URL = "https://www.dailymotion.com/video/x8abc123";
 const DM_MP4 = "https://cdn.dailymotion.com/v/x8abc123.mp4";
 const DM_MP4_HD = "https://cdn.dailymotion.com/v/x8abc123_hd.mp4";
+const DM_HLS = "https://cdn.dailymotion.com/v/x8abc123.m3u8";
 
 const dmJson = (
   qualities: Record<string, { type?: string; url: string }[]>,
@@ -846,26 +886,32 @@ const dmJson = (
   );
 
 describe("resolve — Dailymotion", () => {
-  test("picks the highest quality mp4", async () => {
-    const [asset] = await resolve(DM_URL, {
+  test("offers every quality rung, highest first, with auto last", async () => {
+    const assets = await resolve(DM_URL, {
       fetch: stubFetch(() =>
         dmJson(
           {
             "1080": [{ type: "video/mp4", url: DM_MP4_HD }],
             "240": [{ type: "video/mp4", url: DM_MP4 }],
+            auto: [{ type: "application/x-mpegURL", url: DM_HLS }],
           },
           { poster_url: "https://cdn.dailymotion.com/thumb.jpg", title: "dt" }
         )
       ),
     });
 
-    expect(asset).toEqual({
+    expect(assets.map((a) => [a.label, a.videoUrl])).toEqual([
+      ["1080p", DM_MP4_HD],
+      ["240p", DM_MP4],
+      ["auto", DM_HLS],
+    ]);
+
+    expect(assets[0]).toMatchObject({
       platform: "dailymotion",
       shortcode: "x8abc123",
       sourceUrl: DM_URL,
       thumbnail: "https://cdn.dailymotion.com/thumb.jpg",
       title: "dt",
-      videoUrl: DM_MP4_HD,
     });
   });
 
@@ -1044,6 +1090,21 @@ describe("resolve — Facebook", () => {
     expect(asset.videoUrl).toBe(FB_HD);
   });
 
+  test("offers the hd and sd rungs when the page carries both", async () => {
+    const assets = await resolve(FB_REEL, {
+      fetch: stubFetch(() =>
+        page(
+          `{"browser_native_hd_url":"${FB_HD}","browser_native_sd_url":"${FB_SD}"}`
+        )
+      ),
+    });
+
+    expect(assets.map((a) => [a.label, a.videoUrl])).toEqual([
+      ["HD", FB_HD],
+      ["SD", FB_SD],
+    ]);
+  });
+
   test("falls back to browser_native_sd_url without hd", async () => {
     const [asset] = await resolve(FB_REEL, {
       fetch: stubFetch(() => page(`{"browser_native_sd_url":"${FB_SD}"}`)),
@@ -1070,6 +1131,7 @@ describe("resolve — Facebook", () => {
     });
 
     expect(asset).toEqual({
+      label: "HD",
       platform: "facebook",
       shortcode: "1234567890123456",
       sourceUrl: FB_REEL,

@@ -246,6 +246,49 @@ const normalizeUrl = (raw: string): string =>
 const preferMp4 = <T>(mp4s: T[], all: T[]): T[] =>
   mp4s.length > 0 ? mp4s : all;
 
+interface Rendition {
+  height?: number;
+  /** the provider's own name for this rung when it carries no resolution (Dailymotion's "auto", Facebook's "HD") */
+  label?: string;
+  url: string;
+  width?: number;
+}
+
+// The option name a person reads: the resolution when the provider states one,
+// else the provider's own name for the rung.
+const renditionLabel = (r: Rendition): string | undefined =>
+  r.height && r.height > 0 ? `${r.height}p` : r.label;
+
+// Providers that hand us a quality ladder (YouTube, Vimeo, Streamable,
+// Dailymotion, Facebook) become one selectable option per rung, best first —
+// the same picker YouTube gets, so nothing is silently thrown away and the
+// caller's next step just gets more links. Rungs sharing a label collapse into
+// the first, leaving the container preference applied upstream to decide.
+const byQuality = <T extends Rendition>(renditions: T[]): T[] => {
+  const seen = new Set<string>();
+
+  const unique = renditions.filter((r) => {
+    const label = renditionLabel(r);
+
+    if (label === undefined) {
+      return true;
+    }
+
+    if (seen.has(label)) {
+      return false;
+    }
+
+    seen.add(label);
+
+    return true;
+  });
+
+  // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy
+  return unique.sort(
+    (a, b) => (b.height ?? b.width ?? 0) - (a.height ?? a.width ?? 0)
+  );
+};
+
 // A watch page is identified by its 11-char id, wherever it sits: watch?v= (any param
 // order), youtu.be, /shorts/, /live/, /embed/. A regex cannot read query params, so parse.
 const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/u;
@@ -471,28 +514,42 @@ const resolveFacebook = async (
 
   const html = await res.text();
 
-  const videoUrl =
+  // Facebook names two rungs of the same video; og:video is the sd-grade last
+  // resort when neither stream url is in the page
+  const hd =
     extractFbFile(html, "browser_native_hd_url") ??
-    extractOgVideo(html) ??
-    extractFbFile(html, "browser_native_sd_url") ??
-    extractFbFile(html, "hd_src") ??
-    extractFbFile(html, "sd_src");
+    extractFbFile(html, "hd_src");
 
-  if (!videoUrl) {
+  const sd =
+    extractFbFile(html, "browser_native_sd_url") ??
+    extractFbFile(html, "sd_src") ??
+    extractOgVideo(html);
+
+  const renditions: Rendition[] = [];
+
+  if (hd) {
+    renditions.push({ label: "HD", url: hd });
+  }
+
+  // the page usually repeats the same url for both rungs — one option then
+  if (sd && sd !== hd) {
+    renditions.push({ label: hd ? "SD" : undefined, url: sd });
+  }
+
+  if (!renditions.length) {
     throw new Error(
       "No downloadable video found. Only public video/reel posts work, and Facebook limits anonymous access to some of them."
     );
   }
 
-  return [
-    {
-      platform: "facebook",
-      shortcode: id,
-      sourceUrl,
-      thumbnail: extractThumbnail(html),
-      videoUrl,
-    },
-  ];
+  return renditions.map((r) => ({
+    label: r.label,
+    platform: "facebook" as const,
+    shortcode: id,
+    sourceUrl,
+    thumbnail: extractThumbnail(html),
+    videoUrl: r.url,
+  }));
 };
 
 // Catch-all for any other link: a video content-type resolves the link
@@ -562,28 +619,19 @@ const resolveYouTube = async (
   ) => Promise<TubeAsset[]> | TubeAsset[]
 ): Promise<VideoAsset[]> => {
   // renditions of one video, not separate videos: one labeled asset per distinct quality
-  const seen = new Set<number>();
   const formats = await getFormats(id);
 
-  const assets = formats
-    .filter((f) => {
-      if (seen.has(f.height)) {
-        return false;
-      }
-
-      seen.add(f.height);
-
-      return true;
-    })
-    .map((f) => ({
-      label: f.height > 0 ? `${f.height}p` : undefined,
-      platform: "youtube" as const,
-      shortcode: id,
-      sourceUrl,
-      thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-      title: f.title,
-      videoUrl: f.videoUrl,
-    }));
+  const assets = byQuality(
+    formats.map((f) => ({ height: f.height, title: f.title, url: f.videoUrl }))
+  ).map((f) => ({
+    label: renditionLabel(f),
+    platform: "youtube" as const,
+    shortcode: id,
+    sourceUrl,
+    thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+    title: f.title,
+    videoUrl: f.url,
+  }));
 
   if (!assets.length) {
     throw new Error("No downloadable video found for this post.");
@@ -870,31 +918,28 @@ const resolveStreamable = async (
   // prefer mp4 renditions, fall back to whatever Streamable serves (incl. hls)
   const mp4s = files.filter((f) => /mp4/iu.test(f.url));
 
-  const candidates = preferMp4(mp4s, files);
+  const assets = byQuality(
+    preferMp4(mp4s, files).map((f) => ({
+      height: f.height,
+      url: f.url,
+      width: f.width,
+    }))
+  ).map((f) => ({
+    label: renditionLabel(f),
+    platform: "streamable" as const,
+    shortcode: code,
+    sourceUrl,
+    thumbnail: data.thumbnail_url,
+    title: data.title,
+    // Streamable serves the url with a doubled scheme ("https:https://..."); collapse it.
+    videoUrl: f.url.replace(/^https?:https:\/\//u, "https://"),
+  }));
 
-  // pick the largest rendition
-  // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy
-  const [best] = candidates.sort(
-    (a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0)
-  );
-
-  if (!best?.url) {
+  if (!assets.length) {
     throw new Error("No video found. Only video posts are downloadable.");
   }
 
-  // Streamable serves the url with a doubled scheme ("https:https://..."); collapse it.
-  const videoUrl = best.url.replace(/^https?:https:\/\//u, "https://");
-
-  return [
-    {
-      platform: "streamable",
-      shortcode: code,
-      sourceUrl,
-      thumbnail: data.thumbnail_url,
-      title: data.title,
-      videoUrl,
-    },
-  ];
+  return assets;
 };
 
 // Vimeo: player config endpoint returns progressive mp4s + thumbs.
@@ -987,36 +1032,41 @@ const resolveVimeo = async (
     throw new Error("Vimeo returned an unexpected response. Try again later.");
   }
 
-  const progressive =
-    data.video?.files?.progressive ?? data.request?.files?.progressive ?? [];
+  const progressive = (
+    data.video?.files?.progressive ??
+    data.request?.files?.progressive ??
+    []
+  ).filter((p): p is VimeoProgressive & { url: string } => p.url !== undefined);
 
-  const [best] = progressive
-    .filter((p): p is VimeoProgressive & { url: string } => p.url !== undefined)
-    // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy
-    .sort((a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0));
+  const hls = data.request?.files?.hls?.url;
 
-  let videoUrl: string | undefined = best?.url;
+  const renditions: Rendition[] = progressive.map((p) => ({
+    height: p.height,
+    label: p.quality,
+    url: p.url,
+    width: p.width,
+  }));
 
-  if (!videoUrl) {
-    videoUrl = data.request?.files?.hls?.url;
+  // Vimeo only ships HLS where no progressive file exists
+  if (renditions.length === 0 && hls) {
+    renditions.push({ url: hls });
   }
 
-  if (!videoUrl) {
+  const assets = byQuality(renditions).map((r) => ({
+    label: renditionLabel(r),
+    platform: "vimeo" as const,
+    shortcode: id,
+    sourceUrl,
+    thumbnail: data.video?.thumbnail_url,
+    title: data.video?.title,
+    videoUrl: r.url,
+  }));
+
+  if (!assets.length) {
     throw new Error("No video found. Only public videos are downloadable.");
   }
 
-  const thumbnail = data.video?.thumbnail_url;
-
-  return [
-    {
-      platform: "vimeo",
-      shortcode: id,
-      sourceUrl,
-      thumbnail,
-      title: data.video?.title,
-      videoUrl,
-    },
-  ];
+  return assets;
 };
 
 // TikTok: the rehydration JSON carries playAddr (direct mp4); og:video is the fallback.
@@ -1224,53 +1274,41 @@ const resolveDailymotion = async (
 
   const qualities = data.qualities ?? {};
 
-  // pick highest numeric quality, then "auto"
-  // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh array from Object.keys
-  const keys = Object.keys(qualities).sort((a, b) => {
-    const an = Number(a);
-    const bn = Number(b);
+  // one option per quality rung: the mp4 entry of that rung when it has one,
+  // else its first url (a rung may be manifest-only)
+  const renditions: Rendition[] = Object.entries(qualities).flatMap(
+    ([key, entries]): Rendition[] => {
+      const mp4 = entries?.find(
+        (e) => e.url && /mp4/iu.test(e.type ?? e.url ?? "")
+      );
 
-    if (Number.isNaN(an) || Number.isNaN(bn)) {
-      return a === "auto" ? 1 : -1;
+      const url = mp4?.url ?? entries?.find((e) => e.url)?.url;
+
+      if (!url) {
+        return [];
+      }
+
+      const height = Number(key);
+
+      return Number.isNaN(height) ? [{ label: key, url }] : [{ height, url }];
     }
+  );
 
-    return bn - an;
-  });
+  const assets = byQuality(renditions).map((r) => ({
+    label: renditionLabel(r),
+    platform: "dailymotion" as const,
+    shortcode: id,
+    sourceUrl,
+    thumbnail: data.poster_url ?? data.thumbnail_url,
+    title: data.title,
+    videoUrl: r.url,
+  }));
 
-  let videoUrl: string | undefined;
-
-  for (const key of keys) {
-    const entries = qualities[key] ?? [];
-
-    const mp4 = entries.find(
-      (e) => e.url && /mp4/iu.test(e.type ?? e.url ?? "")
-    );
-
-    if (mp4?.url) {
-      videoUrl = mp4.url;
-      break;
-    }
-
-    if (entries[0]?.url) {
-      videoUrl = entries[0].url;
-      break;
-    }
-  }
-
-  if (!videoUrl) {
+  if (!assets.length) {
     throw new Error("No video found. Only public videos are downloadable.");
   }
 
-  return [
-    {
-      platform: "dailymotion",
-      shortcode: id,
-      sourceUrl,
-      thumbnail: data.poster_url ?? data.thumbnail_url,
-      title: data.title,
-      videoUrl,
-    },
-  ];
+  return assets;
 };
 
 // Loom: og:video carries the signed mp4.

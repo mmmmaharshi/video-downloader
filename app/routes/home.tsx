@@ -245,7 +245,7 @@ const Home = () => {
                 {shown.length > 1 && !isYouTube ? (
                   // fieldset is the native group element; preflight strips its chrome
                   <fieldset
-                    aria-label="Videos in this post"
+                    aria-label="Video options"
                     className="flex items-center gap-2"
                   >
                     {shown.map((a, i) => (

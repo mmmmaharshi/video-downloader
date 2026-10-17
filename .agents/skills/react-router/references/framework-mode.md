@@ -82,19 +82,19 @@ react-router/docs/start/framework/route-module.md
 
 Common exports include:
 
-| Export                            | Use                                                                 |
-| --------------------------------- | ------------------------------------------------------------------- |
-| `default`                         | Route component rendered for the match                              |
-| `loader`                          | Server data loading for SSR/pre-rendering/server data requests      |
-| `clientLoader`                    | Browser-only data loading or supplementing server loader data       |
-| `action`                          | Server mutation called by `<Form>`, `useSubmit`, or fetchers        |
-| `clientAction`                    | Browser-only mutation or client-side wrapper around a server action |
-| `ErrorBoundary`                   | UI for errors thrown by this route's loaders/actions/component      |
-| `HydrateFallback`                 | Initial fallback while client loader hydration runs                 |
-| `links` / `meta`                  | Route document links and metadata                                   |
-| `handle`                          | Arbitrary route metadata consumed via `useMatches`                  |
-| `shouldRevalidate`                | Overrides default loader revalidation behavior                      |
-| `middleware` / `clientMiddleware` | Server/client request pipeline hooks when enabled                   |
+| Export | Use |
+| --- | --- |
+| `default` | Route component rendered for the match |
+| `loader` | Server data loading for SSR/pre-rendering/server data requests |
+| `clientLoader` | Browser-only data loading or supplementing server loader data |
+| `action` | Server mutation called by `<Form>`, `useSubmit`, or fetchers |
+| `clientAction` | Browser-only mutation or client-side wrapper around a server action |
+| `ErrorBoundary` | UI for errors thrown by this route's loaders/actions/component |
+| `HydrateFallback` | Initial fallback while client loader hydration runs |
+| `links` / `meta` | Route document links and metadata |
+| `handle` | Arbitrary route metadata consumed via `useMatches` |
+| `shouldRevalidate` | Overrides default loader revalidation behavior |
+| `middleware` / `clientMiddleware` | Server/client request pipeline hooks when enabled |
 
 Use generated `Route.*` types from `./+types/<route>` for route module args and props.
 

@@ -20,6 +20,7 @@ export const PLATFORMS = [
   "streamable",
   "vimeo",
   "tiktok",
+  "threads",
   "direct",
 ] as const;
 
@@ -224,6 +225,8 @@ const KNOWN_MEDIA_HOSTS = [
   "reddit.com",
   "redd.it",
   "streamable.com",
+  "threads.net",
+  "threads.com",
   "tiktok.com",
   "vimeo.com",
   "player.vimeo.com",
@@ -1080,6 +1083,62 @@ const resolveTikTok = async (
   ];
 };
 
+// Threads: Meta sibling of IG; og:video is the reliable signal.
+const matchThreads = (sourceUrl: string): { id: string } | undefined => {
+  let url: URL;
+
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (
+    host !== "threads.net" &&
+    host !== "threads.com" &&
+    !host.endsWith(".threads.net") &&
+    !host.endsWith(".threads.com")
+  ) {
+    return undefined;
+  }
+
+  const id =
+    url.pathname.match(/\/(?:post|t)\/(?<id>[A-Za-z0-9_-]+)/u)?.groups?.id ??
+    url.pathname.split("/").filter(Boolean).pop();
+
+  return id ? { id } : undefined;
+};
+
+const resolveThreads = async (
+  sourceUrl: string,
+  id: string,
+  doFetch: typeof fetch
+): Promise<VideoAsset[]> => {
+  const res = await fetchPage(doFetch, sourceUrl);
+
+  assertOk(res, "Threads");
+
+  const html = await res.text();
+
+  const videoUrl = extractOgVideo(html);
+
+  if (!videoUrl) {
+    throw new Error("No video found. Only video posts are downloadable.");
+  }
+
+  return [
+    {
+      platform: "threads",
+      shortcode: id,
+      sourceUrl,
+      thumbnail: extractThumbnail(html),
+      videoUrl,
+    },
+  ];
+};
+
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
 // eslint-disable-next-line require-await
@@ -1137,6 +1196,12 @@ export const resolve = async (
     return resolveTikTok(trimmed, tiktok.id, doFetch);
   }
 
+  const threads = matchThreads(trimmed);
+
+  if (threads) {
+    return resolveThreads(trimmed, threads.id, doFetch);
+  }
+
   const ytId = matchYouTubeId(trimmed);
 
   if (ytId) {
@@ -1149,7 +1214,7 @@ export const resolve = async (
 
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, a vimeo.com video, or a tiktok.com video."
+      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, a vimeo.com video, a tiktok.com video, or a threads.net post."
     );
   }
 

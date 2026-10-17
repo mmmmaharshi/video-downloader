@@ -780,6 +780,40 @@ describe("resolve — TikTok", () => {
   });
 });
 
+const THREADS_URL = "https://www.threads.net/@user/post/ABC123";
+
+describe("resolve — Threads", () => {
+  test("reads og:video", async () => {
+    const [asset] = await resolve(THREADS_URL, {
+      fetch: stubFetch(
+        () =>
+          new Response(
+            `<html><head><meta property="og:video" content="https://cdn.threads.com/v.mp4"><meta property="og:image" content="https://cdn.threads.com/img.jpg"></head></html>`,
+            { status: 200 }
+          )
+      ),
+    });
+
+    expect(asset).toEqual({
+      platform: "threads",
+      shortcode: "ABC123",
+      sourceUrl: THREADS_URL,
+      thumbnail: "https://cdn.threads.com/img.jpg",
+      videoUrl: "https://cdn.threads.com/v.mp4",
+    });
+  });
+
+  test("rejects when no video", async () => {
+    await expect(
+      resolve(THREADS_URL, {
+        fetch: stubFetch(
+          () => new Response("<html><body></body></html>", { status: 200 })
+        ),
+      })
+    ).rejects.toThrow("No video found");
+  });
+});
+
 // The youtube dep is stubbed: live Innertube traffic belongs in youtube.test.ts, not here.
 const YT_ID = "dQw4w9WgXcQ";
 const YT_MP4 = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1";

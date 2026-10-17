@@ -18,6 +18,7 @@ import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
 import { isFresh, resolveKey, resolveResultSchema } from "../lib/resolve-query";
 import type { ResolveResult } from "../lib/resolve-query";
+import type { Route } from "./+types/home";
 
 export const meta = () => [
   { title: "Video Downloader — Save Online Videos" },
@@ -25,6 +26,23 @@ export const meta = () => [
     content: "Paste any public video link to download. No login, no storage.",
     name: "description",
   },
+  { content: "https://download.maharshi.work/", property: "og:url" },
+  { content: "Video Downloader — Save Online Videos", property: "og:title" },
+  {
+    content: "Paste any public video link to download. No login, no storage.",
+    property: "og:description",
+  },
+  { content: "website", property: "og:type" },
+  { content: "summary", name: "twitter:card" },
+  { content: "Video Downloader — Save Online Videos", name: "twitter:title" },
+  {
+    content: "Paste any public video link to download. No login, no storage.",
+    name: "twitter:description",
+  },
+];
+
+export const links: Route.LinksFunction = () => [
+  { href: "https://download.maharshi.work/", rel: "canonical" },
 ];
 
 // The media never overflows the dialog: 70vh keeps landscape videos width-bound

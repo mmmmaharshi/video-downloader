@@ -697,6 +697,89 @@ describe("resolve — Vimeo", () => {
   });
 });
 
+const TIKTOK_URL = "https://www.tiktok.com/@user/video/7123456789";
+const TIKTOK_MP4 = "https://v16-webapp-prime.tiktok.com/video/tos/.../abc.mp4";
+const TIKTOK_COVER = "https://p16-sign.tiktokcdn-us.com/cover.jpg";
+
+const rehydration = (video: Record<string, unknown>) =>
+  `<html><head></head><body><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">${JSON.stringify(
+    {
+      __DEFAULT_SCOPE__: {
+        "webapp.video-detail": { itemInfo: { itemStruct: { video } } },
+      },
+    }
+  )}</script></body></html>`;
+
+describe("resolve — TikTok", () => {
+  test("reads playAddr and cover from rehydration json", async () => {
+    const [asset] = await resolve(TIKTOK_URL, {
+      fetch: stubFetch(
+        () =>
+          new Response(
+            rehydration({ cover: TIKTOK_COVER, playAddr: TIKTOK_MP4 }),
+            {
+              status: 200,
+            }
+          )
+      ),
+    });
+
+    expect(asset).toEqual({
+      platform: "tiktok",
+      shortcode: "7123456789",
+      sourceUrl: TIKTOK_URL,
+      thumbnail: TIKTOK_COVER,
+      videoUrl: TIKTOK_MP4,
+    });
+  });
+
+  test("falls back to downloadAddr", async () => {
+    const [asset] = await resolve(TIKTOK_URL, {
+      fetch: stubFetch(
+        () =>
+          new Response(rehydration({ downloadAddr: TIKTOK_MP4 }), {
+            status: 200,
+          })
+      ),
+    });
+
+    expect(asset.videoUrl).toBe(TIKTOK_MP4);
+  });
+
+  test("falls back to og:video when rehydration is missing", async () => {
+    const [asset] = await resolve(TIKTOK_URL, {
+      fetch: stubFetch(
+        () =>
+          new Response(
+            `<html><head><meta property="og:video" content="${TIKTOK_MP4}"><meta property="og:image" content="${TIKTOK_COVER}"></head></html>`,
+            { status: 200 }
+          )
+      ),
+    });
+
+    expect(asset.videoUrl).toBe(TIKTOK_MP4);
+    expect(asset.thumbnail).toBe(TIKTOK_COVER);
+  });
+
+  test("rejects when no video found", async () => {
+    await expect(
+      resolve(TIKTOK_URL, {
+        fetch: stubFetch(
+          () => new Response("<html><body></body></html>", { status: 200 })
+        ),
+      })
+    ).rejects.toThrow("No video found");
+  });
+
+  test("reports an error status", async () => {
+    await expect(
+      resolve(TIKTOK_URL, {
+        fetch: stubFetch(() => new Response("busy", { status: 503 })),
+      })
+    ).rejects.toThrow("TikTok returned 503");
+  });
+});
+
 // The youtube dep is stubbed: live Innertube traffic belongs in youtube.test.ts, not here.
 const YT_ID = "dQw4w9WgXcQ";
 const YT_MP4 = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1";

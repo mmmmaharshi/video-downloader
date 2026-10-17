@@ -19,6 +19,7 @@ export const PLATFORMS = [
   "reddit",
   "streamable",
   "vimeo",
+  "tiktok",
   "direct",
 ] as const;
 
@@ -223,6 +224,7 @@ const KNOWN_MEDIA_HOSTS = [
   "reddit.com",
   "redd.it",
   "streamable.com",
+  "tiktok.com",
   "vimeo.com",
   "player.vimeo.com",
   "youtube.com",
@@ -992,6 +994,92 @@ const resolveVimeo = async (
   ];
 };
 
+// TikTok: the rehydration JSON carries playAddr (direct mp4); og:video is the fallback.
+const matchTikTok = (sourceUrl: string): { id: string } | undefined => {
+  let url: URL;
+
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (host !== "tiktok.com" && !host.endsWith(".tiktok.com")) {
+    return undefined;
+  }
+
+  const id = url.pathname.match(/\/video\/(?<id>\d+)/u)?.groups?.id;
+
+  return id ? { id } : undefined;
+};
+
+interface TikTokVideo {
+  cover?: string;
+  downloadAddr?: string;
+  playAddr?: string;
+}
+
+const resolveTikTok = async (
+  sourceUrl: string,
+  id: string,
+  doFetch: typeof fetch
+): Promise<VideoAsset[]> => {
+  const res = await fetchPage(doFetch, sourceUrl);
+
+  assertOk(res, "TikTok");
+
+  const html = await res.text();
+
+  let videoUrl: string | undefined;
+  let thumbnail: string | undefined;
+
+  const rehydration = html.match(
+    /<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(?<json>.*?)<\/script>/su
+  )?.groups?.json;
+
+  if (rehydration) {
+    try {
+      const data = JSON.parse(rehydration) as {
+        __DEFAULT_SCOPE__?: {
+          "webapp.video-detail"?: {
+            itemInfo?: { itemStruct?: { video?: TikTokVideo } };
+          };
+        };
+      };
+
+      const video =
+        data.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo?.itemStruct
+          ?.video;
+
+      videoUrl = video?.playAddr ?? video?.downloadAddr;
+      thumbnail = video?.cover;
+    } catch {
+      // fall through to og:video
+    }
+  }
+
+  videoUrl ??= extractOgVideo(html);
+  thumbnail ??= extractThumbnail(html);
+
+  if (!videoUrl) {
+    throw new Error(
+      "No video found. Only public videos are downloadable, and TikTok limits anonymous access."
+    );
+  }
+
+  return [
+    {
+      platform: "tiktok",
+      shortcode: id,
+      sourceUrl,
+      thumbnail,
+      videoUrl,
+    },
+  ];
+};
+
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
 // eslint-disable-next-line require-await
@@ -1043,6 +1131,12 @@ export const resolve = async (
     return resolveVimeo(trimmed, vimeo.id, vimeo.hash, doFetch);
   }
 
+  const tiktok = matchTikTok(trimmed);
+
+  if (tiktok) {
+    return resolveTikTok(trimmed, tiktok.id, doFetch);
+  }
+
   const ytId = matchYouTubeId(trimmed);
 
   if (ytId) {
@@ -1055,7 +1149,7 @@ export const resolve = async (
 
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, or a vimeo.com video."
+      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, a vimeo.com video, or a tiktok.com video."
     );
   }
 

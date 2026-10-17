@@ -881,6 +881,9 @@ const resolveStreamable = async (
     throw new Error("No video found. Only video posts are downloadable.");
   }
 
+  // Streamable serves the url with a doubled scheme ("https:https://..."); collapse it.
+  const videoUrl = best.url.replace(/^https?:https:\/\//u, "https://");
+
   return [
     {
       platform: "streamable",
@@ -888,7 +891,7 @@ const resolveStreamable = async (
       sourceUrl,
       thumbnail: data.thumbnail_url,
       title: data.title,
-      videoUrl: best.url,
+      videoUrl,
     },
   ];
 };

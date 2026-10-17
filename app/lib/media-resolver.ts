@@ -17,6 +17,7 @@ export const PLATFORMS = [
   "youtube",
   "facebook",
   "reddit",
+  "streamable",
   "direct",
 ] as const;
 
@@ -220,6 +221,7 @@ const KNOWN_MEDIA_HOSTS = [
   "x.com",
   "reddit.com",
   "redd.it",
+  "streamable.com",
   "youtube.com",
   "youtu.be",
 ];
@@ -787,6 +789,96 @@ const resolveReddit = async (
   ];
 };
 
+// Streamable: the API returns a files map with mp4 renditions + a thumbnail.
+const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
+  let url: URL;
+
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (host !== "streamable.com" && !host.endsWith(".streamable.com")) {
+    return undefined;
+  }
+
+  const code = url.pathname.match(
+    /^\/(?:o|s|e)?\/?(?<code>[A-Za-z0-9]+)(?:\/|$)/u
+  )?.groups?.code;
+
+  if (!code) {
+    // bare /{code}
+    const [first] = url.pathname.slice(1).split("/");
+
+    return first ? { code: first } : undefined;
+  }
+
+  return { code };
+};
+
+interface StreamableFile {
+  height?: number;
+  url?: string;
+  width?: number;
+}
+
+interface StreamableResponse {
+  files?: Record<string, StreamableFile>;
+  thumbnail_url?: string;
+  title?: string;
+}
+
+const resolveStreamable = async (
+  sourceUrl: string,
+  code: string,
+  doFetch: typeof fetch
+): Promise<VideoAsset[]> => {
+  const res = await doFetch(`https://api.streamable.com/videos/${code}`, {
+    headers: { Accept: "application/json", "User-Agent": CHROME_UA },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  assertOk(res, "Streamable");
+
+  let data: StreamableResponse;
+
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error(
+      "Streamable returned an unexpected response. Try again later."
+    );
+  }
+
+  const mp4s = Object.values(data.files ?? {}).filter(
+    (f): f is StreamableFile & { url: string } =>
+      f.url !== undefined && /mp4/iu.test(f.url)
+  );
+
+  // pick the largest rendition
+  const best = mp4s.sort(
+    (a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0)
+  )[0];
+
+  if (!best?.url) {
+    throw new Error("No video found. Only video posts are downloadable.");
+  }
+
+  return [
+    {
+      platform: "streamable",
+      shortcode: code,
+      sourceUrl,
+      thumbnail: data.thumbnail_url,
+      title: data.title,
+      videoUrl: best.url,
+    },
+  ];
+};
+
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
 // eslint-disable-next-line require-await
@@ -826,6 +918,12 @@ export const resolve = async (
     return resolveReddit(trimmed, reddit.id, doFetch);
   }
 
+  const streamable = matchStreamable(trimmed);
+
+  if (streamable) {
+    return resolveStreamable(trimmed, streamable.code, doFetch);
+  }
+
   const ytId = matchYouTubeId(trimmed);
 
   if (ytId) {
@@ -838,7 +936,7 @@ export const resolve = async (
 
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, or a reddit.com post."
+      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, or a streamable.com link."
     );
   }
 

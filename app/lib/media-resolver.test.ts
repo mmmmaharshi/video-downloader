@@ -559,6 +559,75 @@ describe("resolve — Reddit", () => {
   });
 });
 
+const STREAMABLE_URL = "https://streamable.com/abc123";
+const STREAMABLE_MP4 = "https://cdn.streamable.com/video/mp4/abc123.mp4";
+const STREAMABLE_MP4_HD = "https://cdn.streamable.com/video/mp4/abc123_hd.mp4";
+
+const streamableJson = (
+  files: Record<string, { url: string; width?: number }>,
+  extra?: Record<string, unknown>
+) =>
+  Response.json(
+    { files, ...extra },
+    {
+      headers: { "content-type": "application/json" },
+      status: 200,
+    }
+  );
+
+describe("resolve — Streamable", () => {
+  test("picks the largest mp4 rendition and thumbnail", async () => {
+    const [asset] = await resolve(STREAMABLE_URL, {
+      fetch: stubFetch(() =>
+        streamableJson(
+          {
+            "mp4-mobile": { url: STREAMABLE_MP4, width: 480 },
+            mp4: { url: STREAMABLE_MP4_HD, width: 1920 },
+          },
+          { thumbnail_url: "https://cdn.streamable.com/thumb.jpg", title: "hi" }
+        )
+      ),
+    });
+
+    expect(asset).toEqual({
+      platform: "streamable",
+      shortcode: "abc123",
+      sourceUrl: STREAMABLE_URL,
+      thumbnail: "https://cdn.streamable.com/thumb.jpg",
+      title: "hi",
+      videoUrl: STREAMABLE_MP4_HD,
+    });
+  });
+
+  test("rejects a post with no mp4", async () => {
+    await expect(
+      resolve(STREAMABLE_URL, {
+        fetch: stubFetch(() =>
+          streamableJson({ webm: { url: "https://x/y.webm" } })
+        ),
+      })
+    ).rejects.toThrow("No video found");
+  });
+
+  test("reports an error status", async () => {
+    await expect(
+      resolve(STREAMABLE_URL, {
+        fetch: stubFetch(() => new Response("busy", { status: 503 })),
+      })
+    ).rejects.toThrow("Streamable returned 503");
+  });
+
+  test("reports a non-json body", async () => {
+    await expect(
+      resolve(STREAMABLE_URL, {
+        fetch: stubFetch(
+          () => new Response("<!DOCTYPE html>", { status: 200 })
+        ),
+      })
+    ).rejects.toThrow("Streamable returned an unexpected response");
+  });
+});
+
 // The youtube dep is stubbed: live Innertube traffic belongs in youtube.test.ts, not here.
 const YT_ID = "dQw4w9WgXcQ";
 const YT_MP4 = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1";

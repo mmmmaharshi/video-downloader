@@ -135,6 +135,14 @@ const Home = () => {
       return;
     }
 
+    // an empty field is answered here rather than by the action, so no round
+    // trip and no spinner; the message mirrors resolve() in media-resolver
+    if (!url.trim()) {
+      applyResult({ error: "Paste a video link", inputUrl: "" });
+
+      return;
+    }
+
     const key = resolveKey(url);
     const state = queryClient.getQueryState(key);
     // the query only ever holds what onSuccess cached: a ResolveResult
@@ -183,8 +191,8 @@ const Home = () => {
               fullWidth
               isRequired
               name="url"
-              // aria validation lets empty submits reach the action, so the
-              // failure surfaces as a toast instead of a native bubble
+              // aria validation keeps the native bubble out of it: submit()
+              // rejects an empty field as a toast, like every other failure
               validationBehavior="aria"
             >
               <Input autoComplete="off" placeholder="Paste any video link" />

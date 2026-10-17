@@ -628,6 +628,75 @@ describe("resolve — Streamable", () => {
   });
 });
 
+const VIMEO_URL = "https://vimeo.com/123456789";
+const VIMEO_MP4 = "https://player.vimeo.com/progressive_redirect/.../file.mp4";
+const VIMEO_MP4_HD =
+  "https://player.vimeo.com/progressive_redirect/.../file_hd.mp4";
+
+const vimeoJson = (
+  progressive: { url: string; width?: number }[],
+  extra?: Record<string, unknown>
+) =>
+  Response.json(
+    {
+      video: {
+        files: { progressive },
+        thumbs: { sizes: [{ link: "https://i.vimeocdn.com/thumb.jpg" }] },
+        title: "vtitle",
+        ...extra,
+      },
+    },
+    { headers: { "content-type": "application/json" }, status: 200 }
+  );
+
+describe("resolve — Vimeo", () => {
+  test("picks the largest progressive mp4", async () => {
+    const [asset] = await resolve(VIMEO_URL, {
+      fetch: stubFetch(() =>
+        vimeoJson([
+          { url: VIMEO_MP4, width: 640 },
+          { url: VIMEO_MP4_HD, width: 1920 },
+        ])
+      ),
+    });
+
+    expect(asset).toEqual({
+      platform: "vimeo",
+      shortcode: "123456789",
+      sourceUrl: VIMEO_URL,
+      thumbnail: "https://i.vimeocdn.com/thumb.jpg",
+      title: "vtitle",
+      videoUrl: VIMEO_MP4_HD,
+    });
+  });
+
+  test("rejects a video with no progressive mp4", async () => {
+    await expect(
+      resolve(VIMEO_URL, {
+        fetch: stubFetch(() => vimeoJson([])),
+      })
+    ).rejects.toThrow("No video found");
+  });
+
+  test("reports an error status", async () => {
+    await expect(
+      resolve(VIMEO_URL, {
+        fetch: stubFetch(() => new Response("busy", { status: 503 })),
+      })
+    ).rejects.toThrow("Vimeo returned 503");
+  });
+
+  test("reports a non-json body", async () => {
+    await expect(
+      resolve(VIMEO_URL, {
+        fetch: stubFetch(
+          () => new Response("<!DOCTYPE html>", { status: 200 })
+        ),
+      })
+    ).rejects.toThrow("Vimeo returned an unexpected response");
+  });
+});
+
 // The youtube dep is stubbed: live Innertube traffic belongs in youtube.test.ts, not here.
 const YT_ID = "dQw4w9WgXcQ";
 const YT_MP4 = "https://rr1---sn-x.googlevideo.com/videoplayback?expire=1";

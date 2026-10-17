@@ -18,6 +18,7 @@ export const PLATFORMS = [
   "facebook",
   "reddit",
   "streamable",
+  "vimeo",
   "direct",
 ] as const;
 
@@ -222,6 +223,8 @@ const KNOWN_MEDIA_HOSTS = [
   "reddit.com",
   "redd.it",
   "streamable.com",
+  "vimeo.com",
+  "player.vimeo.com",
   "youtube.com",
   "youtu.be",
 ];
@@ -879,6 +882,116 @@ const resolveStreamable = async (
   ];
 };
 
+// Vimeo: player config endpoint returns progressive mp4s + thumbs.
+const matchVimeo = (
+  sourceUrl: string
+): { hash?: string; id: string } | undefined => {
+  let url: URL;
+
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+
+  const host = url.hostname.toLowerCase();
+
+  if (
+    host !== "vimeo.com" &&
+    host !== "player.vimeo.com" &&
+    !host.endsWith(".vimeo.com")
+  ) {
+    return undefined;
+  }
+
+  const path = url.pathname;
+  const videoMatch = path.match(
+    /\/video\/(?<id>\d+)(?:\/(?<hash>[A-Za-z0-9]+))?/u
+  );
+
+  if (videoMatch?.groups?.id) {
+    return { hash: videoMatch.groups.hash, id: videoMatch.groups.id };
+  }
+
+  const direct = path.match(/^\/(?<id>\d+)(?:\/(?<hash>[A-Za-z0-9]+))?/u);
+
+  if (direct?.groups?.id) {
+    return { hash: direct.groups.hash, id: direct.groups.id };
+  }
+
+  return undefined;
+};
+
+interface VimeoProgressive {
+  height?: number;
+  quality?: string;
+  url?: string;
+  width?: number;
+}
+
+interface VimeoConfig {
+  video?: {
+    files?: { progressive?: VimeoProgressive[] };
+    thumbs?: { base?: string; sizes?: { link?: string }[] } | string;
+    title?: string;
+  };
+}
+
+const resolveVimeo = async (
+  sourceUrl: string,
+  id: string,
+  hash: string | undefined,
+  doFetch: typeof fetch
+): Promise<VideoAsset[]> => {
+  const configUrl = new URL(`https://player.vimeo.com/video/${id}/config`);
+
+  if (hash) {
+    configUrl.searchParams.set("h", hash);
+  }
+
+  const res = await doFetch(configUrl.href, {
+    headers: { Accept: "application/json", "User-Agent": CHROME_UA },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
+
+  assertOk(res, "Vimeo");
+
+  let data: VimeoConfig;
+
+  try {
+    data = await res.json();
+  } catch {
+    throw new Error("Vimeo returned an unexpected response. Try again later.");
+  }
+
+  const progressive = data.video?.files?.progressive ?? [];
+
+  const best = progressive
+    .filter((p): p is VimeoProgressive & { url: string } => p.url !== undefined)
+    .sort((a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0))[0];
+
+  if (!best?.url) {
+    throw new Error("No video found. Only public videos are downloadable.");
+  }
+
+  const thumbs = data.video?.thumbs;
+  const thumbnail =
+    typeof thumbs === "string"
+      ? thumbs
+      : (thumbs?.sizes?.[0]?.link ?? thumbs?.base);
+
+  return [
+    {
+      platform: "vimeo",
+      shortcode: id,
+      sourceUrl,
+      thumbnail,
+      title: data.video?.title,
+      videoUrl: best.url,
+    },
+  ];
+};
+
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
 // eslint-disable-next-line require-await
@@ -924,6 +1037,12 @@ export const resolve = async (
     return resolveStreamable(trimmed, streamable.code, doFetch);
   }
 
+  const vimeo = matchVimeo(trimmed);
+
+  if (vimeo) {
+    return resolveVimeo(trimmed, vimeo.id, vimeo.hash, doFetch);
+  }
+
   const ytId = matchYouTubeId(trimmed);
 
   if (ytId) {
@@ -936,7 +1055,7 @@ export const resolve = async (
 
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, or a streamable.com link."
+      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, or a vimeo.com video."
     );
   }
 

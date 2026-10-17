@@ -97,6 +97,37 @@ describe("proxy", () => {
     expect(res.status).toBe(502);
   });
 
+  test("rewrites an m3u8 playlist's relative segment refs absolute", async () => {
+    const playlist = [
+      "#EXTM3U",
+      "#EXT-X-VERSION:3",
+      "seg-1.ts",
+      "",
+      '#EXT-X-KEY:METHOD=AES-128,URI="key.bin"',
+      "../seg/seg-2.ts?token=abc",
+      "https://cdn.example/seg-3.ts",
+    ].join("\n");
+
+    const res = await proxy("https://cdn.example/hls/master.m3u8?x=1", "abc", {
+      fetch: ok(playlist, "application/vnd.apple.mpegurl"),
+    });
+
+    expect(res.headers.get("content-disposition")).toBe(
+      'attachment; filename="abc.m3u8"'
+    );
+    expect(await res.text()).toBe(
+      [
+        "#EXTM3U",
+        "#EXT-X-VERSION:3",
+        "https://cdn.example/hls/seg-1.ts",
+        "",
+        '#EXT-X-KEY:METHOD=AES-128,URI="https://cdn.example/hls/key.bin"',
+        "https://cdn.example/seg/seg-2.ts?token=abc",
+        "https://cdn.example/seg-3.ts",
+      ].join("\n")
+    );
+  });
+
   test("falls back to video/mp4 when upstream sends no content type", async () => {
     const res = await proxy(CDN, "ABC123", {
       fetch: stubFetch(() => new Response("x", { status: 200 })),
@@ -104,6 +135,27 @@ describe("proxy", () => {
 
     expect(res.headers.get("content-type")).toBe("video/mp4");
   });
+
+  test.each([
+    // [url, upstream content-type, expected extension]
+    ["https://x/video.m3u8", "application/vnd.apple.mpegurl", "m3u8"],
+    ["https://x/playlist", "application/x-mpegURL", "m3u8"],
+    ["https://x/manifest.mpd", "application/dash+xml", "mpd"],
+    ["https://x/clip", "video/webm", "webm"],
+    ["https://x/clip", "video/quicktime", "mov"],
+    ["https://x/clip", "video/mp4", "mp4"],
+  ])(
+    "names the %s (%s) download with a .%s extension",
+    async (url, contentType, ext) => {
+      const res = await proxy(url, "reddit-abc123", {
+        fetch: ok("bytes", contentType),
+      });
+
+      expect(res.headers.get("content-disposition")).toBe(
+        `attachment; filename="reddit-abc123.${ext}"`
+      );
+    }
+  );
 
   test("rejects a missing url with 400", async () => {
     const res = await thrown(proxy("", "ABC123", { fetch: ok() }));

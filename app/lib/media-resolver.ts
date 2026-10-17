@@ -12,12 +12,6 @@ import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
 
-// the platform vocabulary lives in a client-safe module: client code imports
-// PLATFORMS without dragging this module's node: builtins into the browser
-export { PLATFORMS } from "./platforms";
-
-export type { Platform } from "./platforms";
-
 export interface VideoAsset {
   videoUrl: string;
   thumbnail?: string;
@@ -245,6 +239,12 @@ const normalizeUrl = (raw: string): string =>
     .replaceAll("\\u0026", "&")
     .replaceAll("\\/", "/")
     .replaceAll("&amp;", "&");
+
+// mp4 is the one container every browser plays: prefer those renditions, but
+// fall back to whatever the host offers (HLS/DASH manifests, webm) rather than
+// dropping the post — one definition so the policy changes in one place
+const preferMp4 = <T>(mp4s: T[], all: T[]): T[] =>
+  mp4s.length > 0 ? mp4s : all;
 
 // A watch page is identified by its 11-char id, wherever it sits: watch?v= (any param
 // order), youtu.be, /shorts/, /live/, /embed/. A regex cannot read query params, so parse.
@@ -656,7 +656,7 @@ const resolveTwitter = async (
     const mp4s = variants.filter((v) => v.content_type === "video/mp4");
 
     // eslint-disable-next-line unicorn/no-array-sort -- per-tweet filtered copy, nothing shared
-    const sorted = (mp4s.length ? mp4s : variants).sort(
+    const sorted = preferMp4(mp4s, variants).sort(
       (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0)
     );
 
@@ -870,7 +870,7 @@ const resolveStreamable = async (
   // prefer mp4 renditions, fall back to whatever Streamable serves (incl. hls)
   const mp4s = files.filter((f) => /mp4/iu.test(f.url));
 
-  const candidates = mp4s.length ? mp4s : files;
+  const candidates = preferMp4(mp4s, files);
 
   // pick the largest rendition
   // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy

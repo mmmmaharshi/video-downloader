@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Platform } from "./media-resolver";
 import { resolve } from "./media-resolver";
+import type { Platform } from "./platforms";
 
 // Live integration checks against real public links. Network-dependent and flaky,
 // so they are skipped unless LIVE_LINKS=1 is set.

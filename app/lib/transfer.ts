@@ -16,6 +16,37 @@ export interface TransferDeps {
   maxMs?: number;
 }
 
+// An m3u8 points at its segments relatively, and a saved playlist has no base
+// url left to resolve them against. Rewrite every reference absolute so the
+// downloaded manifest still plays. `new URL` leaves absolute refs alone.
+// shortcut: DASH (.mpd) is XML and is served untouched — no resolver emits one
+// today; upgrade if a DASH source appears.
+const absolutize = (ref: string, base: string): string => {
+  try {
+    return new URL(ref, base).href;
+  } catch {
+    return ref;
+  }
+};
+
+const absolutizeManifest = (body: string, base: string): string =>
+  body
+    .split("\n")
+    .map((line) => {
+      if (line.trim() === "") {
+        return line;
+      }
+
+      // tags carry their own refs in URI="…" attributes (key, init map, renditions)
+      const tagged = line.replaceAll(
+        /URI="(?<ref>[^"]+)"/gu,
+        (_match, ref: string) => `URI="${absolutize(ref, base)}"`
+      );
+
+      return tagged.startsWith("#") ? tagged : absolutize(tagged.trim(), base);
+    })
+    .join("\n");
+
 export const proxy = async (
   videoUrl: string | null,
   stem: string,
@@ -50,22 +81,20 @@ export const proxy = async (
   }
 
   const contentType = upstream.headers.get("content-type") ?? "video/mp4";
+  // content-type casing varies in the wild (application/x-mpegURL), so compare lowercased
+  const mime = contentType.toLowerCase();
   // derive the file extension from the upstream content-type (or the url) instead
-  // of assuming mp4 — manifests (m3u8/mpd) and webm are downloadable too
+  // of assuming mp4 — manifests (m3u8/mpd), webm and mov are downloadable too
   let ext = "mp4";
 
-  if (contentType.includes("mpegurl") || /\.m3u8(?:[?#]|$)/iu.test(videoUrl)) {
+  if (mime.includes("mpegurl") || /\.m3u8(?:[?#]|$)/iu.test(videoUrl)) {
     ext = "m3u8";
-  } else if (
-    contentType.includes("dash+xml") ||
-    /\.mpd(?:[?#]|$)/iu.test(videoUrl)
-  ) {
+  } else if (mime.includes("dash+xml") || /\.mpd(?:[?#]|$)/iu.test(videoUrl)) {
     ext = "mpd";
-  } else if (
-    contentType.includes("webm") ||
-    /\.webm(?:[?#]|$)/iu.test(videoUrl)
-  ) {
+  } else if (mime.includes("webm") || /\.webm(?:[?#]|$)/iu.test(videoUrl)) {
     ext = "webm";
+  } else if (mime.includes("quicktime") || /\.mov(?:[?#]|$)/iu.test(videoUrl)) {
+    ext = "mov";
   }
 
   // the stem arrives from the query string — keep it out of the header grammar
@@ -79,6 +108,13 @@ export const proxy = async (
 
   // lets the browser show progress; an absent upstream length stays absent
   const length = upstream.headers.get("content-length");
+
+  if (ext === "m3u8") {
+    // small text, so buffering costs nothing; the length below no longer applies
+    return new Response(absolutizeManifest(await upstream.text(), videoUrl), {
+      headers: base,
+    });
+  }
 
   const headers = length ? { ...base, "Content-Length": length } : base;
 

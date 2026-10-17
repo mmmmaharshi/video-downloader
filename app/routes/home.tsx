@@ -14,6 +14,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
 import { toDownloadHref } from "../lib/download-link";
+import type { VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
 import { isFresh, resolveKey, resolveResultSchema } from "../lib/resolve-query";
@@ -52,6 +53,28 @@ export const links: Route.LinksFunction = () => [
 // shrinks portrait videos into the visible body instead of scrolling it.
 const MEDIA_CLASS =
   "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
+
+// HLS/DASH playlists are manifests, not files: a <video> element cannot play a
+// bare m3u8/mpd without a JS player, so those assets show a download notice
+const isManifestUrl = (url: string): boolean =>
+  /\.(?:m3u8|mpd)(?:[?#]|$)/iu.test(url);
+
+const PreviewMedia = ({ asset }: { asset: VideoAsset }) =>
+  isManifestUrl(asset.videoUrl) ? (
+    <Typography color="muted" type="body-sm">
+      This post serves a streaming playlist, which the player cannot preview.
+      Download it to get the file.
+    </Typography>
+  ) : (
+    // remote posts ship no caption track — a placeholder <track> would claim accessibility that does not exist
+    // eslint-disable-next-line jsx-a11y/media-has-caption
+    <video
+      src={asset.videoUrl}
+      controls
+      poster={asset.thumbnail}
+      className={MEDIA_CLASS}
+    />
+  );
 
 const Home = () => {
   const queryClient = useQueryClient();
@@ -218,16 +241,7 @@ const Home = () => {
                     className={MEDIA_CLASS}
                   />
                 )}
-                {!isYouTube && current && (
-                  // remote posts ship no caption track — a placeholder <track> would claim accessibility that does not exist
-                  // eslint-disable-next-line jsx-a11y/media-has-caption
-                  <video
-                    src={current.videoUrl}
-                    controls
-                    poster={current.thumbnail}
-                    className={MEDIA_CLASS}
-                  />
-                )}
+                {!isYouTube && current && <PreviewMedia asset={current} />}
                 {shown.length > 1 && !isYouTube ? (
                   // fieldset is the native group element; preflight strips its chrome
                   <fieldset

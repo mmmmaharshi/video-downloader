@@ -301,7 +301,7 @@ describe("resolve — X/Twitter", () => {
     ]);
   });
 
-  test("skips a video entry with no mp4 variant", async () => {
+  test("falls back to m3u8 when a video entry has no mp4 variant", async () => {
     const m3u8Only = {
       type: "video",
       video_info: {
@@ -320,7 +320,10 @@ describe("resolve — X/Twitter", () => {
       ),
     });
 
-    expect(assets.map((a) => a.videoUrl)).toEqual([BEST_MP4]);
+    expect(assets.map((a) => a.videoUrl)).toEqual([
+      "https://video.twimg.com/x.m3u8",
+      BEST_MP4,
+    ]);
   });
 
   test("resolves every supported X url shape", async () => {
@@ -608,12 +611,10 @@ describe("resolve — Streamable", () => {
     });
   });
 
-  test("rejects a post with no mp4", async () => {
+  test("rejects a post with no files at all", async () => {
     await expect(
       resolve(STREAMABLE_URL, {
-        fetch: stubFetch(() =>
-          streamableJson({ webm: { url: "https://x/y.webm" } })
-        ),
+        fetch: stubFetch(() => streamableJson({})),
       })
     ).rejects.toThrow("No video found");
   });

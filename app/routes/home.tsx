@@ -284,13 +284,13 @@ const Home = () => {
                       variant="primary"
                       onPress={() => download(preview.active)}
                     >
-                      Download .mp4
+                      Download
                     </Button>
                   </>
                 )}
                 {!isYouTube && shown.length === 1 && (
                   <Button variant="primary" onPress={() => download(0)}>
-                    Download .mp4
+                    Download
                   </Button>
                 )}
                 {!isYouTube && shown.length > 1 && (

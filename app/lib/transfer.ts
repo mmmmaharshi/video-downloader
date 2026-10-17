@@ -50,12 +50,30 @@ export const proxy = async (
   }
 
   const contentType = upstream.headers.get("content-type") ?? "video/mp4";
+  // derive the file extension from the upstream content-type (or the url) instead
+  // of assuming mp4 — manifests (m3u8/mpd) and webm are downloadable too
+  let ext = "mp4";
+
+  if (contentType.includes("mpegurl") || /\.m3u8(?:[?#]|$)/iu.test(videoUrl)) {
+    ext = "m3u8";
+  } else if (
+    contentType.includes("dash+xml") ||
+    /\.mpd(?:[?#]|$)/iu.test(videoUrl)
+  ) {
+    ext = "mpd";
+  } else if (
+    contentType.includes("webm") ||
+    /\.webm(?:[?#]|$)/iu.test(videoUrl)
+  ) {
+    ext = "webm";
+  }
+
   // the stem arrives from the query string — keep it out of the header grammar
   const safeName = stem.replaceAll(/[^\w.-]+/gu, "_");
 
   const base = {
     "Cache-Control": "private, max-age=60",
-    "Content-Disposition": `attachment; filename="${safeName}.mp4"`,
+    "Content-Disposition": `attachment; filename="${safeName}.${ext}"`,
     "Content-Type": contentType,
   };
 

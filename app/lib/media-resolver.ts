@@ -657,26 +657,28 @@ const resolveTwitter = async (
     throw new Error("No video found. Only video posts are downloadable.");
   }
 
-  // a tweet can hold several videos: keep the best mp4 of each, in post order
-  // (sort runs on the filtered copy, so nothing shared is mutated — toSorted
-  // needs ES2023 lib, which this project does not target)
+  // a tweet can hold several videos: keep the best variant of each, in post order.
+  // prefer mp4; fall back to m3u8 (hls) manifests when no mp4 is offered.
   const assets: VideoAsset[] = [];
 
-  // (the sort runs on the per-tweet filtered copy — toSorted needs ES2023 lib)
-  // (sort runs on the per-tweet filtered copy: toSorted needs ES2023 lib)
   for (const video of videos) {
-    const [mp4] = (video.video_info?.variants ?? [])
-      .filter((v) => v.content_type === "video/mp4")
-      // eslint-disable-next-line unicorn/no-array-sort -- per-tweet filtered copy, nothing shared
-      .sort((a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0));
+    const variants = video.video_info?.variants ?? [];
+    const mp4s = variants.filter((v) => v.content_type === "video/mp4");
 
-    if (mp4) {
+    // eslint-disable-next-line unicorn/no-array-sort -- per-tweet filtered copy, nothing shared
+    const sorted = (mp4s.length ? mp4s : variants).sort(
+      (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0)
+    );
+
+    const [pick] = sorted;
+
+    if (pick?.url) {
       assets.push({
         platform: "twitter",
         shortcode: id,
         sourceUrl,
         thumbnail: video.media_url_https,
-        videoUrl: mp4.url,
+        videoUrl: pick.url,
       });
     }
   }
@@ -754,6 +756,7 @@ interface RedditListing {
   data?: { children?: { data?: RedditPost["data"] }[] };
 }
 
+// eslint-disable-next-line complexity -- dispatch over reddit post shapes (crosspost, media, embeds); splitting would scatter the same data flow
 const resolveReddit = async (
   sourceUrl: string,
   id: string,
@@ -779,7 +782,11 @@ const resolveReddit = async (
   const post = listing?.[0]?.data?.children?.[0]?.data;
   const data = post?.crosspost_parent_list?.[0] ?? post;
 
-  const videoUrl = data?.media?.reddit_video?.fallback_url;
+  // prefer the direct mp4 (fallback_url); fall back to the hls manifest when
+  // reddit only ships a playlist for this post
+  const videoUrl =
+    data?.media?.reddit_video?.fallback_url ??
+    data?.media?.reddit_video?.hls_url;
 
   if (!videoUrl) {
     throw new Error("No video found. Only video posts are downloadable.");
@@ -866,14 +873,18 @@ const resolveStreamable = async (
     );
   }
 
-  const mp4s = Object.values(data.files ?? {}).filter(
-    (f): f is StreamableFile & { url: string } =>
-      f.url !== undefined && /mp4/iu.test(f.url)
+  const files = Object.values(data.files ?? {}).filter(
+    (f): f is StreamableFile & { url: string } => f.url !== undefined
   );
+
+  // prefer mp4 renditions, fall back to whatever Streamable serves (incl. hls)
+  const mp4s = files.filter((f) => /mp4/iu.test(f.url));
+
+  const candidates = mp4s.length ? mp4s : files;
 
   // pick the largest rendition
   // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy
-  const [best] = mp4s.sort(
+  const [best] = candidates.sort(
     (a, b) => (b.width ?? b.height ?? 0) - (a.width ?? a.height ?? 0)
   );
 

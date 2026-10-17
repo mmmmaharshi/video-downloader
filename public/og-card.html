@@ -1,54 +1,112 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<style>
-  @font-face {
-    font-family: 'Geist Pixel';
-    src: url('fonts/geist-pixel.woff2') format('woff2');
-    font-weight: 400 700;
-    font-style: normal;
-    font-display: block;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 1200px; height: 630px; overflow: hidden; background: #0A0A0A; }
-  body {
-    font-family: 'Geist Pixel', system-ui, sans-serif;
-    color: #fff;
-    padding: 80px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    position: relative;
-  }
-  .watermark { position: absolute; right: -80px; top: 50%; transform: translateY(-50%); }
-  .brand { display: flex; align-items: center; gap: 16px; font-size: 30px; letter-spacing: -.01em; }
-  h1 { font-size: 72px; font-weight: 500; line-height: 1.08; letter-spacing: -.02em; }
-  p { margin-top: 24px; font-size: 27px; line-height: 1.4; color: rgb(255 255 255 / 56%); }
-  .url { font-size: 22px; color: rgb(255 255 255 / 46%); }
-</style>
-</head>
-<body>
-  <svg class="watermark" width="440" height="440" viewBox="0 0 32 32" fill="none" stroke="rgb(255 255 255 / 4%)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d="M16 9 L16 20"/>
-    <path d="M12 16 L16 20 L20 16"/>
-    <path d="M11 24 L21 24"/>
-  </svg>
-
-  <div class="brand">
-    <svg width="30" height="30" viewBox="0 0 32 32" fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M16 9 L16 20"/>
-      <path d="M12 16 L16 20 L20 16"/>
-      <path d="M11 24 L21 24"/>
+  <head>
+    <meta charset="UTF-8" />
+    <style>
+      @font-face {
+        font-family: "Geist Pixel";
+        src: url("fonts/geist-pixel.woff2") format("woff2");
+        font-weight: 400 700;
+        font-style: normal;
+        font-display: block;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #0a0a0a;
+      }
+      body {
+        font-family: "Geist Pixel", system-ui, sans-serif;
+        color: #fff;
+        padding: 80px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        position: relative;
+      }
+      .watermark {
+        position: absolute;
+        right: -80px;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        font-size: 30px;
+        letter-spacing: -0.01em;
+      }
+      h1 {
+        font-size: 72px;
+        font-weight: 500;
+        line-height: 1.08;
+        letter-spacing: -0.02em;
+      }
+      p {
+        margin-top: 24px;
+        font-size: 27px;
+        line-height: 1.4;
+        color: rgb(255 255 255 / 56%);
+      }
+      .url {
+        font-size: 22px;
+        color: rgb(255 255 255 / 46%);
+      }
+    </style>
+  </head>
+  <body>
+    <svg
+      class="watermark"
+      width="440"
+      height="440"
+      viewBox="0 0 32 32"
+      fill="none"
+      stroke="rgb(255 255 255 / 4%)"
+      stroke-width="1.5"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M16 9 L16 20" />
+      <path d="M12 16 L16 20 L20 16" />
+      <path d="M11 24 L21 24" />
     </svg>
-    Video Downloader
-  </div>
 
-  <div>
-    <h1>Save videos from<br>any public link</h1>
-    <p>Paste a link from Instagram, X, YouTube, TikTok<br>and more — get the file in one click.</p>
-  </div>
+    <div class="brand">
+      <svg
+        width="30"
+        height="30"
+        viewBox="0 0 32 32"
+        fill="none"
+        stroke="white"
+        stroke-width="1.5"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M16 9 L16 20" />
+        <path d="M12 16 L16 20 L20 16" />
+        <path d="M11 24 L21 24" />
+      </svg>
+      Video Downloader
+    </div>
 
-  <div class="url">download.maharshi.work</div>
-</body>
+    <div>
+      <h1>Save videos from<br />any public link</h1>
+      <p>
+        Paste a link from Instagram, X, YouTube, TikTok<br />and more — get the
+        file in one click.
+      </p>
+    </div>
+
+    <div class="url">download.maharshi.work</div>
+  </body>
 </html>

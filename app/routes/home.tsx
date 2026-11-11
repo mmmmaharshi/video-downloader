@@ -269,10 +269,12 @@ const Home = () => {
         description: "The GIF is in your downloads.",
       });
     } catch (error) {
+      // the mp4 always downloads: convert failure must not strand the file
       console.error("convert gif failed:", error);
-      toast.danger("Couldn't convert", {
-        description: "Download the MP4 instead.",
+      toast.success("Downloading MP4", {
+        description: "Conversion failed, getting the original instead.",
       });
+      window.location.href = asset.downloadHref;
     }
 
     setConverting(false);

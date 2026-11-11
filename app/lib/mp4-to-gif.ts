@@ -44,6 +44,21 @@ export const encodeFrames = async (
 const MAX_SECONDS = 6;
 const FPS = 10;
 const MAX_WIDTH = 480;
+const LOAD_TIMEOUT_MS = 15_000;
+const SEEK_TIMEOUT_MS = 10_000;
+
+export const withTimeout = <T>(
+  promise: Promise<T>,
+  ms: number,
+  what: string
+): Promise<T> =>
+  Promise.race([
+    promise,
+    // eslint-disable-next-line promise/avoid-new -- a timeout race has no awaitable form; the promise only bridges setTimeout
+    new Promise<T>((_resolve, reject) => {
+      setTimeout(() => reject(new Error(`${what} timed out`)), ms);
+    }),
+  ]);
 
 const loadVideo = (src: string): Promise<HTMLVideoElement> =>
   // eslint-disable-next-line promise/avoid-new -- media events have no awaitable form; the promise only bridges them
@@ -85,7 +100,12 @@ const grabFrame = (
   });
 
 export const convertMp4ToGif = async (src: string): Promise<Blob> => {
-  const video = await loadVideo(src);
+  const video = await withTimeout(
+    loadVideo(src),
+    LOAD_TIMEOUT_MS,
+    "video metadata"
+  );
+
   const duration = Math.min(video.duration || 0, MAX_SECONDS);
 
   if (!(duration > 0)) {
@@ -110,7 +130,11 @@ export const convertMp4ToGif = async (src: string): Promise<Blob> => {
 
   for (let at = 0; at < duration; at += 1 / FPS) {
     // eslint-disable-next-line no-await-in-loop -- frames must come out in time order
-    const image = await grabFrame(video, ctx, at);
+    const image = await withTimeout(
+      grabFrame(video, ctx, at),
+      SEEK_TIMEOUT_MS,
+      `seek to ${at.toFixed(1)}s`
+    );
 
     frames.push({
       data: image.data,

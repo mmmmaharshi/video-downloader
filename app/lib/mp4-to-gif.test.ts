@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { blobToDataUrl, encodeFrames } from "./mp4-to-gif";
+import { blobToDataUrl, encodeFrames, withTimeout } from "./mp4-to-gif";
 import type { GifFrame } from "./mp4-to-gif";
 
 const frame = (pixels: [number, number, number][]): GifFrame => {
@@ -54,6 +54,21 @@ describe("encodeFrames", () => {
   test("encodes a blob as a data url", async () => {
     expect(await blobToDataUrl(new Blob(["abc"], { type: "image/gif" }))).toBe(
       "data:image/gif;base64,YWJj"
+    );
+  });
+
+  test("withTimeout passes through fast work", async () => {
+    await expect(
+      withTimeout(Promise.resolve("done"), 1000, "work")
+    ).resolves.toBe("done");
+  });
+
+  test("withTimeout rejects stalled work instead of hanging", async () => {
+    // eslint-disable-next-line promise/avoid-new -- a never-settling promise is the stall itself
+    const stalled = new Promise<string>(() => {});
+
+    await expect(withTimeout(stalled, 10, "seek")).rejects.toThrow(
+      "seek timed out"
     );
   });
 });

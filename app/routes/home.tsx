@@ -60,10 +60,24 @@ const isGifAsset = (asset: VideoAsset): boolean =>
   asset.gif === true || containerOf(asset.videoUrl) === "gif";
 
 const PreviewMedia = ({ asset }: { asset: VideoAsset }) => {
-  // GIFs animate in an image element; no video element plays them
-  if (isGifAsset(asset)) {
+  // a real gif file animates in an image element; an X gif is an mp4, which
+  // plays in a video element — autoplaying and looping, like a gif
+  if (containerOf(asset.videoUrl) === "gif") {
     return (
       <img src={asset.videoUrl} alt="GIF preview" className={MEDIA_CLASS} />
+    );
+  }
+
+  if (asset.gif === true) {
+    return (
+      <video
+        src={asset.videoUrl}
+        autoPlay
+        loop
+        muted
+        playsInline
+        className={MEDIA_CLASS}
+      />
     );
   }
 
@@ -86,6 +100,17 @@ const PreviewMedia = ({ asset }: { asset: VideoAsset }) => {
   );
 };
 
+// the clipboard takes images, not video: an mp4 gif falls back to its link
+const copyImage = async (blob: Blob): Promise<boolean> => {
+  try {
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 // the signed download href is same-origin, so this fetch dodges the
 // cross-origin limits that block reading the file from its host
 const copyGif = async (asset: ResolvedAsset): Promise<void> => {
@@ -98,10 +123,16 @@ const copyGif = async (asset: ResolvedAsset): Promise<void> => {
 
     const blob = await res.blob();
 
-    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-    toast.success("Copied", {
-      description: "The GIF is on your clipboard.",
-    });
+    if (await copyImage(blob)) {
+      toast.success("Copied", {
+        description: "The GIF is on your clipboard.",
+      });
+    } else {
+      await navigator.clipboard.writeText(asset.videoUrl);
+      toast.success("Copied link", {
+        description: "Paste it anywhere to share the GIF.",
+      });
+    }
   } catch {
     toast.danger("Copy failed", {
       description: "Download the file instead.",

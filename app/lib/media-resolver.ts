@@ -657,6 +657,7 @@ const resolveTwitter = async (
 
     if (pick?.url) {
       assets.push({
+        gif: video.type === "animated_gif",
         platform: "twitter",
         shortcode: id,
         sourceUrl,

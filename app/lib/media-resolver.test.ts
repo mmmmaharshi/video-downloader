@@ -254,6 +254,7 @@ describe("resolve — X/Twitter", () => {
     });
 
     expect(asset).toEqual({
+      gif: false,
       platform: "twitter",
       shortcode: "2006763209378922836",
       sourceUrl: TWEET,
@@ -447,6 +448,7 @@ describe("resolve — X/Twitter", () => {
     });
 
     expect(asset.videoUrl).toBe(GIF_MP4);
+    expect(asset.gif).toBe(true);
   });
 
   test("accepts the sole mp4 when the variant omits bitrate", async () => {
@@ -462,6 +464,7 @@ describe("resolve — X/Twitter", () => {
     });
 
     expect(asset.videoUrl).toBe(GIF_MP4);
+    expect(asset.gif).toBe(false);
   });
 
   test("rejects a status id with trailing junk instead of resolving the wrong tweet", async () => {

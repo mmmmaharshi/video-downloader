@@ -19,3 +19,23 @@ export const PLATFORMS = [
 ] as const;
 
 export type Platform = (typeof PLATFORMS)[number];
+
+// Every host a platform resolves from. The resolver's matchers implement the
+// same list as logic; this copy feeds the fail-fast for known hosts with
+// unrecognized paths. One entry per platform is compiler-enforced, so adding
+// a platform without its hosts is a type error, not a silent miss. `direct`
+// has no hosts: it is the catch-all for everything else.
+export const PLATFORM_HOSTS: Record<Platform, readonly string[]> = {
+  dailymotion: ["dai.ly", "dailymotion.com"],
+  direct: [],
+  facebook: ["facebook.com", "fb.watch"],
+  instagram: ["instagram.com"],
+  loom: ["loom.com"],
+  reddit: ["reddit.com", "redd.it"],
+  streamable: ["streamable.com"],
+  threads: ["threads.com", "threads.net"],
+  tiktok: ["tiktok.com"],
+  twitter: ["twitter.com", "x.com"],
+  vimeo: ["player.vimeo.com", "vimeo.com"],
+  youtube: ["youtu.be", "youtube.com"],
+};

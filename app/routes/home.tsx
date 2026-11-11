@@ -54,13 +54,10 @@ export const links: Route.LinksFunction = () => [
 const MEDIA_CLASS =
   "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
 
-// the same container rule the download uses, so the preview cannot call a file
-// playable that the proxy names as a playlist
-const isManifestUrl = (url: string): boolean =>
-  isManifestContainer(containerOf(url));
-
 const PreviewMedia = ({ asset }: { asset: VideoAsset }) =>
-  isManifestUrl(asset.videoUrl) ? (
+  // the same container rule the download uses, so the preview cannot call a
+  // file playable that the proxy names as a playlist
+  isManifestContainer(containerOf(asset.videoUrl)) ? (
     <Typography color="muted" type="body-sm">
       This post serves a streaming playlist, which the player cannot preview.
       Download it to get the file.

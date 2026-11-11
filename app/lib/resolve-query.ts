@@ -22,7 +22,6 @@ const videoAssetSchema = z.object({
   videoUrl: z.string(),
 });
 
-// the wire shape: the domain asset plus the signed href the client follows
 export type ResolvedAsset = VideoAsset & { downloadHref: string };
 
 export const resolveResultSchema = z.union([

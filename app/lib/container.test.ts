@@ -4,7 +4,6 @@ import { readFile } from "node:fs/promises";
 import { containerOf, isManifestContainer } from "./container";
 import type { Container } from "./container";
 
-// [url, upstream content-type, expected container]
 const CASES: [string, string | undefined, Container][] = [
   ["https://x/video.m3u8", undefined, "m3u8"],
   ["https://x/playlist", "application/x-mpegURL", "m3u8"],

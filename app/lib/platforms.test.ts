@@ -7,17 +7,21 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { PLATFORMS } from "./platforms";
-
 const APP_DIR = fileURLToPath(new URL("..", import.meta.url));
 
-// Modules a browser cannot evaluate: they reach node:dns or youtubei.js. A value
-// import drags them into the client graph, which kills hydration in dev while
-// typecheck and the prod build stay green.
-const SERVER_ONLY_MODULES = ["media-resolver", "transfer", "youtube"];
+// Modules a browser cannot evaluate: they reach node:dns, node:crypto or
+// youtubei.js. A value import drags them into the client graph, which kills
+// hydration in dev while typecheck and the prod build stay green.
+const SERVER_ONLY_MODULES = [
+  "download-link",
+  "media-resolver",
+  "public-host",
+  "transfer",
+  "youtube",
+];
 
 const SERVER_ONLY_FILE =
-  /(?<lead>^|\/)(?<name>api\.|media-resolver\.|transfer\.|youtube\.)/u;
+  /(?<lead>^|\/)(?<name>api\.|download-link\.|media-resolver\.|public-host\.|transfer\.|youtube\.)/u;
 
 /** every file under app/ a browser may load, as posix-joined relative paths */
 const clientFiles = async () => {
@@ -34,23 +38,6 @@ const clientFiles = async () => {
 };
 
 describe("platforms", () => {
-  test("carries the full platform vocabulary in one place", () => {
-    expect([...PLATFORMS]).toEqual([
-      "instagram",
-      "twitter",
-      "youtube",
-      "facebook",
-      "reddit",
-      "streamable",
-      "vimeo",
-      "tiktok",
-      "threads",
-      "dailymotion",
-      "loom",
-      "direct",
-    ]);
-  });
-
   test("stays dependency-free so the client can import it", async () => {
     const source = await readFile(new URL("platforms.ts", import.meta.url), {
       encoding: "utf-8",

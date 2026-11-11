@@ -5,6 +5,7 @@
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
 import type { Platform } from "./platforms";
+import { PLATFORM_HOSTS } from "./platforms";
 import { assertPublicHost, defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
 import { CHROME_UA, UA } from "./user-agent";
@@ -131,7 +132,6 @@ const fetchPublic = async (
 
 // a supported host with an unrecognized path is a mistyped platform link,
 // not a generic page — fail fast instead of fetching it
-// last path segment without its extension, for download filenames
 const slugOf = (sourceUrl: string): string => {
   const segments = new URL(sourceUrl).pathname.split("/");
   let last = "";
@@ -153,26 +153,7 @@ const slugOf = (sourceUrl: string): string => {
   return stem || "video";
 };
 
-const KNOWN_MEDIA_HOSTS = [
-  "instagram.com",
-  "facebook.com",
-  "fb.watch",
-  "twitter.com",
-  "x.com",
-  "reddit.com",
-  "redd.it",
-  "streamable.com",
-  "loom.com",
-  "dai.ly",
-  "dailymotion.com",
-  "threads.net",
-  "threads.com",
-  "tiktok.com",
-  "vimeo.com",
-  "player.vimeo.com",
-  "youtube.com",
-  "youtu.be",
-];
+const KNOWN_MEDIA_HOSTS = Object.values(PLATFORM_HOSTS).flat();
 
 const isKnownMediaHost = (sourceUrl: string): boolean => {
   const host = new URL(sourceUrl).hostname.toLowerCase();
@@ -205,8 +186,6 @@ interface Rendition {
   width?: number;
 }
 
-// The option name a person reads: the resolution when the provider states one,
-// else the provider's own name for the rung.
 const renditionLabel = (r: Rendition): string | undefined =>
   r.height && r.height > 0 ? `${r.height}p` : r.label;
 
@@ -298,7 +277,6 @@ const extractThumbnail = (html: string): string | undefined =>
     .match(/<meta\s+property="og:image"\s+content="(?<url>[^"]+)"/u)
     ?.groups?.url?.replaceAll("&amp;", "&");
 
-// both resolvers diagnose a failed upstream the same way
 const assertOk = (res: Response, upstream: string): void => {
   if (res.status === 404) {
     throw new Error("Post not found. Check the URL.");
@@ -660,8 +638,6 @@ const resolveTwitter = async (
     throw new Error("No video found. Only video posts are downloadable.");
   }
 
-  // a tweet can hold several videos: keep the best variant of each, in post order.
-  // prefer mp4; fall back to m3u8 (hls) manifests when no mp4 is offered.
   const assets: VideoAsset[] = [];
 
   for (const video of videos) {
@@ -716,7 +692,7 @@ const matchReddit = (
     return undefined;
   }
 
-  // redd.it short links: /{id}
+  // redd.it short links carry the id as the whole path
   if (host === "redd.it") {
     const [id] = url.pathname.slice(1).split("/");
 
@@ -785,8 +761,6 @@ const resolveReddit = async (
   const post = listing?.[0]?.data?.children?.[0]?.data;
   const data = post?.crosspost_parent_list?.[0] ?? post;
 
-  // prefer the direct mp4 (fallback_url); fall back to the hls manifest when
-  // reddit only ships a playlist for this post
   const videoUrl =
     data?.media?.reddit_video?.fallback_url ??
     data?.media?.reddit_video?.hls_url;
@@ -812,7 +786,6 @@ const resolveReddit = async (
   ];
 };
 
-// Streamable: the API returns a files map with mp4 renditions + a thumbnail.
 const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
   let url: URL;
 
@@ -833,7 +806,6 @@ const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
   )?.groups?.code;
 
   if (!code) {
-    // bare /{code}
     const [first] = url.pathname.slice(1).split("/");
 
     return first ? { code: first } : undefined;
@@ -880,8 +852,6 @@ const resolveStreamable = async (
     (f): f is StreamableFile & { url: string } => f.url !== undefined
   );
 
-  // prefer mp4 renditions, fall back to whatever Streamable serves (incl. hls);
-  // the guarded files already satisfy Rendition field for field
   const mp4s = files.filter((f) => /mp4/iu.test(f.url));
 
   const assets = byQuality(preferMp4(mp4s, files)).map((f) => ({
@@ -902,7 +872,6 @@ const resolveStreamable = async (
   return assets;
 };
 
-// Vimeo: player config endpoint returns progressive mp4s + thumbs.
 const matchVimeo = (
   sourceUrl: string
 ): { hash?: string; id: string } | undefined => {
@@ -1029,7 +998,6 @@ const resolveVimeo = async (
   return assets;
 };
 
-// TikTok: the rehydration JSON carries playAddr (direct mp4); og:video is the fallback.
 const matchTikTok = (sourceUrl: string): { id: string } | undefined => {
   let url: URL;
 
@@ -1056,6 +1024,27 @@ interface TikTokVideo {
   playAddr?: string;
 }
 
+// Broken rehydration JSON falls through to og:video below, so a bad parse is
+// undefined here rather than an error.
+const parseTikTokVideo = (html: string): TikTokVideo | undefined => {
+  const rehydration = html.match(
+    /<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(?<json>.*?)<\/script>/su
+  )?.groups?.json;
+
+  if (!rehydration) {
+    return undefined;
+  }
+
+  try {
+    const data = JSON.parse(rehydration);
+
+    return data?.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo
+      ?.itemStruct?.video;
+  } catch {
+    return undefined;
+  }
+};
+
 const resolveTikTok = async (
   sourceUrl: string,
   id: string,
@@ -1067,27 +1056,10 @@ const resolveTikTok = async (
 
   const html = await res.text();
 
-  let videoUrl: string | undefined;
-  let thumbnail: string | undefined;
+  const video = parseTikTokVideo(html);
 
-  const rehydration = html.match(
-    /<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(?<json>.*?)<\/script>/su
-  )?.groups?.json;
-
-  if (rehydration) {
-    try {
-      const data = JSON.parse(rehydration);
-
-      const video: TikTokVideo | undefined =
-        data?.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo?.itemStruct
-          ?.video;
-
-      videoUrl = video?.playAddr ?? video?.downloadAddr;
-      thumbnail = video?.cover;
-    } catch {
-      // fall through to og:video
-    }
-  }
+  let videoUrl = video?.playAddr ?? video?.downloadAddr;
+  let thumbnail = video?.cover;
 
   videoUrl ??= extractOgVideo(html);
   thumbnail ??= extractThumbnail(html);
@@ -1109,7 +1081,6 @@ const resolveTikTok = async (
   ];
 };
 
-// Threads: Meta sibling of IG; og:video is the reliable signal.
 const matchThreads = (sourceUrl: string): { id: string } | undefined => {
   let url: URL;
 
@@ -1166,7 +1137,6 @@ const resolveThreads = async (
   ];
 };
 
-// Dailymotion: metadata endpoint returns qualities map.
 const matchDailymotion = (sourceUrl: string): { id: string } | undefined => {
   let url: URL;
 
@@ -1234,8 +1204,6 @@ const resolveDailymotion = async (
 
   const qualities = data.qualities ?? {};
 
-  // one option per quality rung: the mp4 entry of that rung when it has one,
-  // else its first url (a rung may be manifest-only)
   const renditions: Rendition[] = Object.entries(qualities).flatMap(
     ([key, entries]): Rendition[] => {
       const mp4 = entries?.find(
@@ -1271,7 +1239,6 @@ const resolveDailymotion = async (
   return assets;
 };
 
-// Loom: og:video carries the signed mp4.
 const matchLoom = (sourceUrl: string): { id: string } | undefined => {
   let url: URL;
 

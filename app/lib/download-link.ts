@@ -50,7 +50,6 @@ export const toDownloadHref = (
     throw new Error("No video at this position");
   }
 
-  // a lone video keeps the plain stem; siblings get a tag — position for X multi, quality for YouTube renditions
   const tag = asset.label ?? String(index + 1);
 
   const stem =

@@ -169,7 +169,6 @@ describe("proxy", () => {
   });
 
   test.each([
-    // [url, upstream content-type, expected extension]
     ["https://x/clip", "video/webm", "webm"],
     ["https://x/clip", "video/quicktime", "mov"],
     ["https://x/clip", "video/mp4", "mp4"],

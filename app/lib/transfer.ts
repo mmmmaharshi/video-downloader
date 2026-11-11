@@ -128,7 +128,6 @@ export const proxy = async (
     "Content-Type": contentType,
   };
 
-  // lets the browser show progress; an absent upstream length stays absent
   const length = upstream.headers.get("content-length");
 
   if (length && Number(length) > MAX_DOWNLOAD_BYTES) {

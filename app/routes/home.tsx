@@ -242,41 +242,48 @@ const Home = () => {
   const select = (index: number) =>
     setPreview((p) => nextPreview(p, { index, type: "selected" }));
 
-  const download = (index: number) => {
-    const href = shown[index]?.downloadHref;
+  const download = async (index: number) => {
+    const asset = shown[index];
 
-    if (href) {
-      window.location.href = href;
-    }
-  };
-
-  // the stem rides in the signed href; parsing it keeps the naming rule in download-link
-  const downloadGif = async (asset: ResolvedAsset) => {
-    const stem =
-      new URL(asset.downloadHref, window.location.origin).searchParams.get(
-        "name"
-      ) ?? "video";
-
-    setConverting(true);
-
-    try {
-      const blob = await convertMp4ToGif(asset.downloadHref);
-      const href = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = href;
-      anchor.download = `${stem}.gif`;
-      anchor.click();
-      URL.revokeObjectURL(href);
-      toast.success("Saved", {
-        description: "The GIF is in your downloads.",
-      });
-    } catch {
-      toast.danger("Couldn't convert", {
-        description: "Download the MP4 instead.",
-      });
+    if (!asset) {
+      return;
     }
 
-    setConverting(false);
+    // an X gif is an mp4 wearing the flag: download a converted gif file, not the mp4
+    if (needsConverting(asset)) {
+      // the stem rides in the signed href; parsing it keeps the naming rule in download-link
+      const stem =
+        new URL(asset.downloadHref, window.location.origin).searchParams.get(
+          "name"
+        ) ?? "video";
+
+      setConverting(true);
+
+      try {
+        const blob = await convertMp4ToGif(asset.downloadHref);
+        const href = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = href;
+        anchor.download = `${stem}.gif`;
+        anchor.click();
+        URL.revokeObjectURL(href);
+        toast.success("Saved", {
+          description: "The GIF is in your downloads.",
+        });
+      } catch {
+        toast.danger("Couldn't convert", {
+          description: "Download the MP4 instead.",
+        });
+      }
+
+      setConverting(false);
+
+      return;
+    }
+
+    if (asset.downloadHref) {
+      window.location.href = asset.downloadHref;
+    }
   };
 
   return (
@@ -394,30 +401,20 @@ const Home = () => {
                 )}
                 <Button
                   variant="primary"
+                  isDisabled={converting}
+                  isPending={converting}
                   onPress={() => download(preview.active)}
                 >
-                  Download
+                  {({ isPending }) => (
+                    <>
+                      {isPending ? <Spinner color="current" size="sm" /> : null}
+                      {isPending ? "Making GIF…" : "Download"}
+                    </>
+                  )}
                 </Button>
                 {isGif && current && (
                   <Button variant="secondary" onPress={() => copyGif(current)}>
                     {isGifFile(current) ? "Copy GIF" : "Copy link"}
-                  </Button>
-                )}
-                {isGif && current && needsConverting(current) && (
-                  <Button
-                    variant="secondary"
-                    isDisabled={converting}
-                    isPending={converting}
-                    onPress={() => downloadGif(current)}
-                  >
-                    {({ isPending }) => (
-                      <>
-                        {isPending ? (
-                          <Spinner color="current" size="sm" />
-                        ) : null}
-                        {isPending ? "Making GIF…" : "Download GIF"}
-                      </>
-                    )}
                   </Button>
                 )}
               </Modal.Footer>

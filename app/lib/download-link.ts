@@ -1,15 +1,49 @@
 // Module: DownloadLink — the VideoAsset → download-file round trip, owned in one place.
-// Interface: toDownloadHref(assets, index?) → string, fromDownloadRequest(url) → { videoUrl, stem }.
-// Both routes cross this seam instead of reconstructing videoUrl + shortcode at call sites.
+// Interface: toDownloadHref(assets, index?, deps?) → string, fromDownloadRequest(url, deps?) → { videoUrl, stem }.
+// The href carries its own expiry and an HMAC of url + name + expiry, so the
+// download route needs no shared state: any instance can verify what another
+// signed. Server-only (node:crypto) — the client just follows the href.
 
+import { createHmac, timingSafeEqual } from "node:crypto";
+
+import { FRESH_MS } from "./freshness";
 import type { VideoAsset } from "./media-resolver";
 
 export interface DownloadRequest {
-  videoUrl: string | null;
+  videoUrl: string;
   stem: string;
 }
 
-export const toDownloadHref = (assets: VideoAsset[], index = 0): string => {
+export interface DownloadLinkDeps {
+  now?: number;
+  secret?: string;
+}
+
+const secretOf = (deps: DownloadLinkDeps): string => {
+  const secret = deps.secret ?? process.env.DOWNLOAD_SECRET;
+
+  if (!secret) {
+    throw new Error("DOWNLOAD_SECRET is not set");
+  }
+
+  return secret;
+};
+
+const sign = (payload: string, deps: DownloadLinkDeps): string =>
+  createHmac("sha256", secretOf(deps)).update(payload).digest("base64url");
+
+const payloadOf = (videoUrl: string, stem: string, exp: number): string =>
+  `${videoUrl}\n${stem}\n${exp}`;
+
+const reject = (): never => {
+  throw new Response("Resolve the link in the form first", { status: 403 });
+};
+
+export const toDownloadHref = (
+  assets: VideoAsset[],
+  index = 0,
+  deps: DownloadLinkDeps = {}
+): string => {
   const asset = assets[index];
 
   if (!asset) {
@@ -24,11 +58,33 @@ export const toDownloadHref = (assets: VideoAsset[], index = 0): string => {
       ? `${asset.platform}-${asset.shortcode}-${tag}`
       : `${asset.platform}-${asset.shortcode}`;
 
-  return `/api/download?url=${encodeURIComponent(asset.videoUrl)}&name=${encodeURIComponent(stem)}`;
+  const exp = (deps.now ?? Date.now()) + FRESH_MS;
+  const signature = sign(payloadOf(asset.videoUrl, stem, exp), deps);
+
+  return `/api/download?url=${encodeURIComponent(asset.videoUrl)}&name=${encodeURIComponent(stem)}&e=${exp}&s=${signature}`;
 };
 
-export const fromDownloadRequest = (url: string): DownloadRequest => {
+export const fromDownloadRequest = (
+  url: string,
+  deps: DownloadLinkDeps = {}
+): DownloadRequest => {
   const params = new URL(url).searchParams;
+  const videoUrl = params.get("url");
+  const stem = params.get("name") ?? "video";
+  const exp = Number(params.get("e") ?? 0);
+  const signature = params.get("s");
 
-  return { stem: params.get("name") ?? "video", videoUrl: params.get("url") };
+  if (!videoUrl || !signature || !(exp > (deps.now ?? Date.now()))) {
+    return reject();
+  }
+
+  const expected = sign(payloadOf(videoUrl, stem, exp), deps);
+  const given = Buffer.from(signature);
+  const wanted = Buffer.from(expected);
+
+  if (given.length !== wanted.length || !timingSafeEqual(given, wanted)) {
+    return reject();
+  }
+
+  return { stem, videoUrl };
 };

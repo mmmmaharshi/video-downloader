@@ -4,10 +4,9 @@
 // exposes at most one, so IG resolves to a one-element list.
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
-import { lookup as dnsLookup } from "node:dns/promises";
-import { isIP } from "node:net";
-
 import type { Platform } from "./platforms";
+import { assertPublicHost, defaultLookup } from "./public-host";
+import type { HostLookup } from "./public-host";
 import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
@@ -30,16 +29,6 @@ export interface MediaResolverDeps {
   ) => Promise<TubeAsset[]> | TubeAsset[];
   lookup?: HostLookup;
 }
-
-// DNS seam: production resolves for real, tests inject addresses.
-// Both sync and async doubles work — every use site awaits.
-export type HostLookup = (hostname: string) => Promise<string[]> | string[];
-
-const defaultLookup: HostLookup = async (hostname) => {
-  const records = await dnsLookup(hostname, { all: true });
-
-  return records.map((r) => r.address);
-};
 
 const INSTA_RE =
   /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reels?|tv)\/(?<shortcode>[A-Za-z0-9_-]+)\/?(?:\?.*)?$/u;
@@ -68,74 +57,36 @@ const fetchPage = (
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
 
-// Server-side fetch of a user-supplied link must never reach the private
-// network: every hop (redirects included) resolves against a blocklist first.
-// (Explicit range checks — Bun's net.BlockList mishandles IPv6.)
-const isBlockedIPV4 = (addr: string): boolean => {
-  const [a, b] = addr.split(".").map(Number);
+// A page carrying og:video is small; a mislabelled binary is not. Read only the
+// head of the body, so a 1GB file cannot be decoded into a string.
+const MAX_PAGE_BYTES = 512 * 1024;
 
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    a >= 224 ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 169 && b === 254) ||
-    (a === 192 && b === 168)
-  );
-};
+const readCapped = async (res: Response, cap: number): Promise<string> => {
+  const reader = res.body?.getReader();
 
-const isBlockedIPV6 = (addr: string): boolean => {
-  const n = addr.toLowerCase();
-  // mapped-in-v6 IPv4 (e.g. ::ffff:127.0.0.1) judges by the embedded address
-  const mapped = n.match(/^::ffff:(?<ipv4>\d+\.\d+\.\d+\.\d+)$/u)?.groups?.ipv4;
-
-  if (mapped) {
-    return isBlockedIPV4(mapped);
+  if (!reader) {
+    return "";
   }
 
-  const [first] = n.split(":");
+  const decoder = new TextDecoder();
+  let text = "";
+  let read = 0;
 
-  // fe80 split
-  // fe80::/10: first hextet fe80–febf, i.e. second hex digit 8–b
-  return (
-    n === "::" ||
-    n === "::1" ||
-    /^0(?::0){6,7}(?::1)?$/u.test(n) ||
-    first.startsWith("fc") ||
-    first.startsWith("fd") ||
-    first.startsWith("ff") ||
-    /^fe[89ab]/u.test(first)
-  );
-};
+  while (read < cap) {
+    // eslint-disable-next-line no-await-in-loop -- the cap is checked between reads
+    const { done, value } = await reader.read();
 
-const isBlockedAddress = (addr: string): boolean => {
-  if (isIP(addr) === 4) {
-    return isBlockedIPV4(addr);
+    if (done) {
+      break;
+    }
+
+    read += value.length;
+    text += decoder.decode(value, { stream: true });
   }
 
-  if (isIP(addr) === 6) {
-    return isBlockedIPV6(addr);
-  }
+  await reader.cancel();
 
-  return true;
-};
-
-const assertPublicHost = async (
-  url: string,
-  lookup: HostLookup
-): Promise<void> => {
-  let addresses: string[];
-
-  try {
-    addresses = await lookup(new URL(url).hostname);
-  } catch {
-    throw new Error("Could not resolve this link. Check the URL.");
-  }
-
-  if (!addresses.length || addresses.some(isBlockedAddress)) {
-    throw new Error("Only public links are supported.");
-  }
+  return text;
 };
 
 const MAX_REDIRECTS = 4;
@@ -579,6 +530,9 @@ const resolveGeneric = async (
   const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
 
   if (contentType.startsWith("video/")) {
+    // headers were all this branch needed — release the upstream connection
+    await res.body?.cancel();
+
     return [
       {
         platform: "direct",
@@ -590,7 +544,18 @@ const resolveGeneric = async (
     ];
   }
 
-  const html = await res.text();
+  // only a page carries og:video; anything else is a file or an API body
+  const isPage =
+    contentType === "" ||
+    /^(?:text\/|application\/(?:xhtml\+xml|xml))/u.test(contentType);
+
+  if (!isPage) {
+    throw new Error(
+      "No video found at this link. Only pages and files that serve video are downloadable."
+    );
+  }
+
+  const html = await readCapped(res, MAX_PAGE_BYTES);
   const videoUrl = extractOgVideo(html);
 
   if (!videoUrl) {
@@ -1443,7 +1408,7 @@ export const resolve = async (
 
   if (isKnownMediaHost(trimmed)) {
     throw new Error(
-      "Invalid URL. Use an instagram.com post/reel, a facebook.com reel/video, an x.com status link, a YouTube video link, a reddit.com post, a streamable.com link, a vimeo.com video, a tiktok.com video, a threads.net post, a dailymotion.com video, or a loom.com video."
+      "Invalid URL. On this host only a video post or file link is downloadable."
     );
   }
 

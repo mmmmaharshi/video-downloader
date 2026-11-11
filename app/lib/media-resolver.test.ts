@@ -1258,6 +1258,36 @@ describe("resolve — direct links", () => {
     });
   });
 
+  test("refuses a binary response instead of decoding it as a page", async () => {
+    await expect(
+      resolve("https://cdn.example.com/big.mp4", {
+        // what S3 and most object stores send for a video file
+        fetch: stubFetch(
+          () =>
+            new Response("bytes", {
+              headers: { "content-type": "binary/octet-stream" },
+              status: 200,
+            })
+        ),
+        lookup: publicHost,
+      })
+    ).rejects.toThrow("No video found at this link");
+  });
+
+  test("reads only the head of a very long page", async () => {
+    const pageUrl = "https://blog.example.com/posts/42";
+    const tail = "x".repeat(2 * 1024 * 1024);
+
+    const [asset] = await resolve(pageUrl, {
+      fetch: stubFetch(() =>
+        page(`<meta property="og:video" content="${MP4_URL}">${tail}`)
+      ),
+      lookup: publicHost,
+    });
+
+    expect(asset.videoUrl).toBe(MP4_URL);
+  });
+
   test("falls back to a safe name when the path has no slug", async () => {
     const [asset] = await resolve("https://cdn.example.com/", {
       fetch: stubFetch(
@@ -1304,21 +1334,29 @@ describe("resolve — direct links", () => {
 
   test("refuses a link resolving to a private address", async () => {
     await Promise.all(
-      ["127.0.0.1", "10.0.0.5", "192.168.1.20", "169.254.169.254", "::1"].map(
-        async (ip) => {
-          await expect(
-            resolve(`http://internal.example/${ip}`, {
-              fetch: stubFetch(
-                () =>
-                  new Response("bytes", {
-                    headers: { "content-type": "video/mp4" },
-                  })
-              ),
-              lookup: () => [ip],
-            })
-          ).rejects.toThrow("Only public links");
-        }
-      )
+      [
+        "127.0.0.1",
+        "10.0.0.5",
+        "192.168.1.20",
+        "169.254.169.254",
+        "::1",
+        // the same loopback and metadata addresses in the hex form a resolver hands back
+        "::ffff:7f00:1",
+        "::ffff:a9fe:a9fe",
+        "0:0:0:0:0:ffff:127.0.0.1",
+      ].map(async (ip) => {
+        await expect(
+          resolve(`http://internal.example/${ip}`, {
+            fetch: stubFetch(
+              () =>
+                new Response("bytes", {
+                  headers: { "content-type": "video/mp4" },
+                })
+            ),
+            lookup: () => [ip],
+          })
+        ).rejects.toThrow("Only public links");
+      })
     );
   });
 

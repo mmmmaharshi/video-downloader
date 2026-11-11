@@ -1,5 +1,5 @@
+import { toDownloadHref } from "../lib/download-link";
 import { resolve } from "../lib/media-resolver";
-import { rememberResolved } from "../lib/recent-resolves";
 import type { ResolveResult } from "../lib/resolve-query";
 import type { Route } from "./+types/api.resolve";
 
@@ -12,15 +12,20 @@ export const action = async ({
   try {
     const assets = await resolve(url);
 
-    for (const a of assets) {
-      rememberResolved(a.videoUrl);
-    }
+    // signed here, where the secret lives: the client only follows the href
+    const resolved = assets.map((asset, index) => ({
+      ...asset,
+      downloadHref: toDownloadHref(assets, index),
+    }));
 
-    return Response.json({ assets, inputUrl: url } satisfies ResolveResult);
+    return Response.json({ assets: resolved } satisfies ResolveResult);
   } catch (error) {
+    // an unexpected error is a bug, not a message for the user: keep it in the log
+    console.error(error);
+
     const msg =
       error instanceof Error ? error.message : "Failed to extract video";
 
-    return Response.json({ error: msg, inputUrl: url } satisfies ResolveResult);
+    return Response.json({ error: msg } satisfies ResolveResult);
   }
 };

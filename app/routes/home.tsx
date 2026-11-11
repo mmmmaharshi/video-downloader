@@ -14,7 +14,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
 import { containerOf, isManifestContainer } from "../lib/container";
-import { toDownloadHref } from "../lib/download-link";
 import type { VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
@@ -79,15 +78,12 @@ const PreviewMedia = ({ asset }: { asset: VideoAsset }) =>
 
 const Home = () => {
   const queryClient = useQueryClient();
-  const [data, setData] = React.useState<ResolveResult | undefined>();
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
 
   // One transition per resolved submit, whether the answer came from the
   // network or the cache. A fresh object per submit keeps repeat submits of
   // the same link reopening the preview.
   const applyResult = (result: ResolveResult) => {
-    setData({ ...result });
-
     if ("error" in result) {
       setPreview((p) => nextPreview(p, { type: "failed" }));
       toast.danger("Could not fetch", { description: result.error });
@@ -107,10 +103,9 @@ const Home = () => {
 
       return result;
     },
-    onError: (_e, url) => {
+    onError: () => {
       applyResult({
         error: "Network error. Check your connection and try again.",
-        inputUrl: url,
       });
     },
     onSuccess: (result, url) => {
@@ -138,7 +133,7 @@ const Home = () => {
     // an empty field is answered here rather than by the action, so no round
     // trip and no spinner; the message mirrors resolve() in media-resolver
     if (!url.trim()) {
-      applyResult({ error: "Paste a video link", inputUrl: "" });
+      applyResult({ error: "Paste a video link" });
 
       return;
     }
@@ -167,7 +162,11 @@ const Home = () => {
     setPreview((p) => nextPreview(p, { index, type: "selected" }));
 
   const download = (index: number) => {
-    window.location.href = toDownloadHref(shown, index);
+    const href = shown[index]?.downloadHref;
+
+    if (href) {
+      window.location.href = href;
+    }
   };
 
   return (
@@ -187,7 +186,6 @@ const Home = () => {
           >
             <TextField
               aria-label="Video link"
-              defaultValue={data?.inputUrl ?? ""}
               fullWidth
               isRequired
               name="url"

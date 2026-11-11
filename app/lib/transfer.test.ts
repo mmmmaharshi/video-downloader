@@ -1,7 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import { stubFetch } from "./fake-fetch";
-import { proxy } from "./transfer";
+import { proxy as proxyRaw } from "./transfer";
+import type { TransferDeps } from "./transfer";
+
+// deterministic DNS: every proxy call runs the public-host guard
+const publicHost = () => ["93.184.216.34"];
+
+const proxy = (videoUrl: string, stem: string, deps: TransferDeps = {}) =>
+  proxyRaw(videoUrl, stem, { lookup: publicHost, ...deps });
 
 const CDN = "https://scontent.cdninstagram.com/v/abc.mp4";
 
@@ -179,19 +186,32 @@ describe("proxy", () => {
     }
   );
 
-  test("rejects a missing url with 400", async () => {
-    const res = await thrown(proxy("", "ABC123", { fetch: ok() }));
-    expect(res.status).toBe(400);
+  test("refuses a url that resolves to a private address", async () => {
+    const res = await thrown(
+      proxy(CDN, "ABC123", {
+        fetch: ok(),
+        lookup: () => ["127.0.0.1"],
+      })
+    );
+
+    expect(res.status).toBe(403);
+    expect(await res.text()).toBe("Only public links are supported");
   });
 
-  test("proxies an arbitrary remembered url — access control is the caller's gate", async () => {
-    const res = await proxy("https://cdn.example.com/clips/a.mp4", "direct-a", {
-      fetch: ok(),
-    });
-
-    expect(res.headers.get("content-disposition")).toBe(
-      'attachment; filename="direct-a.mp4"'
+  test("refuses a file larger than one download's worth", async () => {
+    const huge = stubFetch(
+      () =>
+        new Response("video-bytes", {
+          headers: {
+            "content-length": String(2 * 1024 ** 3),
+            "content-type": "video/mp4",
+          },
+          status: 200,
+        })
     );
+
+    const res = await thrown(proxy(CDN, "ABC123", { fetch: huge }));
+    expect(res.status).toBe(413);
   });
 
   test("maps an upstream error status to 502", async () => {

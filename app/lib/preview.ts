@@ -2,16 +2,16 @@
 // Interface: nextPreview(state, event) → PreviewState. The route keeps rendering and the
 // effects that apply the rule; the rule itself is drivable in-process through this seam.
 
-import type { VideoAsset } from "./media-resolver";
+import type { ResolvedAsset } from "./resolve-query";
 
 export interface PreviewState {
   open: boolean;
-  shown: VideoAsset[];
+  shown: ResolvedAsset[];
   active: number;
 }
 
 export type PreviewEvent =
-  | { type: "resolved"; assets: VideoAsset[] }
+  | { type: "resolved"; assets: ResolvedAsset[] }
   | { type: "failed" }
   | { type: "dismissed" }
   | { type: "selected"; index: number };

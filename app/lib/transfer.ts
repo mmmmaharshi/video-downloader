@@ -1,20 +1,26 @@
 // Module: Transfer — deep module per CONTEXT.md
 // Interface: proxy(videoUrl, stem, deps?) → Response
-// Owns streaming + download naming. Access control lives upstream: the caller
-// only passes urls the resolver produced (public hosts only), inside the
-// remember window enforced at the download route.
+// Owns streaming + download naming. The caller proves the url came from the
+// resolver (a signed href); the url itself is re-checked against the private
+// network here, because the resolver can hand us an address it read out of a page.
 
 import { containerOf, isManifestContainer } from "./container";
 import type { Container } from "./container";
+import type { HostLookup } from "./public-host";
+import { assertPublicHost, defaultLookup } from "./public-host";
 import { UA } from "./user-agent";
 
 const UPSTREAM_TIMEOUT_MS = 15_000;
 
-// a 500MB file at modest speed finishes inside this; past it the upstream is stalled or abusive
-const UPSTREAM_MAX_MS = 10 * 60_000;
+// stays inside the function's own wall clock; the platform still cuts a stream that overruns it
+const UPSTREAM_MAX_MS = 4 * 60_000;
+
+// one download through the function, not a bulk mirror
+const MAX_DOWNLOAD_BYTES = 1024 ** 3;
 
 export interface TransferDeps {
   fetch?: typeof fetch;
+  lookup?: HostLookup;
   maxMs?: number;
 }
 
@@ -72,12 +78,15 @@ const absolutizeManifest = (
   container === "mpd" ? absolutizeMpd(body, base) : absolutizeM3u8(body, base);
 
 export const proxy = async (
-  videoUrl: string | null,
+  videoUrl: string,
   stem: string,
   deps: TransferDeps = {}
 ): Promise<Response> => {
-  if (!videoUrl) {
-    throw new Response("Missing url", { status: 400 });
+  // a page can name an internal host as its video; the proxy must not fetch it
+  try {
+    await assertPublicHost(videoUrl, deps.lookup ?? defaultLookup);
+  } catch {
+    throw new Response("Only public links are supported", { status: 403 });
   }
 
   const doFetch = deps.fetch ?? fetch;
@@ -121,6 +130,14 @@ export const proxy = async (
 
   // lets the browser show progress; an absent upstream length stays absent
   const length = upstream.headers.get("content-length");
+
+  if (length && Number(length) > MAX_DOWNLOAD_BYTES) {
+    await upstream.body.cancel();
+
+    throw new Response("This file is too large to download here", {
+      status: 413,
+    });
+  }
 
   if (isManifestContainer(ext)) {
     // small text, so buffering costs nothing; the length below no longer applies

@@ -1,13 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import type { VideoAsset } from "./media-resolver";
 import { closedPreview, nextPreview } from "./preview";
 import type { PreviewState } from "./preview";
+import type { ResolvedAsset } from "./resolve-query";
 
 const asset = (
   shortcode: string,
   videoUrl = `https://video.twimg.com/${shortcode}.mp4`
-): VideoAsset => ({
+): ResolvedAsset => ({
+  downloadHref: `/api/download?url=${encodeURIComponent(videoUrl)}`,
   platform: "twitter",
   shortcode,
   sourceUrl: `https://x.com/u/status/${shortcode}`,
@@ -15,7 +16,7 @@ const asset = (
   videoUrl,
 });
 
-const openOn = (shown: VideoAsset[], active = 0): PreviewState => ({
+const openOn = (shown: ResolvedAsset[], active = 0): PreviewState => ({
   active,
   open: true,
   shown,

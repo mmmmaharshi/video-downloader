@@ -123,7 +123,7 @@ const gifReps = async (
   // the url comes from a remote page: keep it inside the attribute
   const html = `<img src="${asset.videoUrl.replaceAll('"', "%22")}" alt="GIF">`;
 
-  if (ClipboardItem.supports("image/gif")) {
+  if (isGifFile(asset) && ClipboardItem.supports?.("image/gif")) {
     const res = await fetch(asset.downloadHref);
 
     if (!res.ok) {
@@ -144,7 +144,14 @@ const gifReps = async (
 // cross-origin limits that block reading the file from its host
 const copyGif = async (asset: ResolvedAsset): Promise<void> => {
   try {
-    await navigator.clipboard.write([new ClipboardItem(await gifReps(asset))]);
+    try {
+      await navigator.clipboard.write([
+        new ClipboardItem(await gifReps(asset)),
+      ]);
+    } catch {
+      // one rejected type fails the whole write: the link still pastes everywhere
+      await navigator.clipboard.writeText(asset.videoUrl);
+    }
 
     if (isGifFile(asset)) {
       toast.success("Copied", {
@@ -273,8 +280,12 @@ const Home = () => {
         const anchor = document.createElement("a");
         anchor.href = href;
         anchor.download = `${stem}.gif`;
+        // some browsers only honor clicks on attached nodes; revoke late so
+        // the download can grab the blob first
+        document.body.append(anchor);
         anchor.click();
-        URL.revokeObjectURL(href);
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(href), 1000);
         toast.success("Saved", {
           description: "The GIF is in your downloads.",
         });

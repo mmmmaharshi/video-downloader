@@ -11,6 +11,12 @@ export interface GifFrame {
   width: number;
 }
 
+// one copy, every app picks the rep it understands
+export type ClipboardReps = Record<string, string | Blob>;
+
+// gif holds 256 colors at most: fewer posterizes, more is not encodable
+const MAX_GIF_COLORS = 256;
+
 export const encodeFrames = async (
   frames: GifFrame[]
 ): Promise<Uint8Array<ArrayBuffer>> => {
@@ -20,7 +26,7 @@ export const encodeFrames = async (
   const gif = GIFEncoder();
 
   for (const frame of frames) {
-    const palette = quantize(frame.data, 256);
+    const palette = quantize(frame.data, MAX_GIF_COLORS);
     const index = applyPalette(frame.data, palette);
 
     gif.writeFrame(index, frame.width, frame.height, {

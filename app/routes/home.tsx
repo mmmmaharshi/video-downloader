@@ -16,6 +16,7 @@ import * as React from "react";
 import { containerOf, isManifestContainer } from "../lib/container";
 import type { VideoAsset } from "../lib/media-resolver";
 import { convertMp4ToGif } from "../lib/mp4-to-gif";
+import type { ClipboardReps } from "../lib/mp4-to-gif";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
 import { isFresh, resolveKey, resolveResultSchema } from "../lib/resolve-query";
@@ -112,9 +113,7 @@ const PreviewMedia = ({ asset }: { asset: VideoAsset }) => {
 
 // one copy, every app gets its best form: bytes where the clipboard takes
 // them, an html image for rich-text apps, the link for chats (which unfurl it)
-const gifReps = async (
-  asset: ResolvedAsset
-): Promise<Record<string, string | Blob>> => {
+const gifReps = async (asset: ResolvedAsset): Promise<ClipboardReps> => {
   // an X gif has no gif file to point an <img> at: link only
   if (!isGifFile(asset)) {
     return { "text/plain": asset.videoUrl };

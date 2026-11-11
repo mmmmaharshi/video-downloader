@@ -19,7 +19,12 @@ import { blobToDataUrl, convertMp4ToGif } from "../lib/mp4-to-gif";
 import type { ClipboardReps } from "../lib/mp4-to-gif";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
-import { isFresh, resolveKey, resolveResultSchema } from "../lib/resolve-query";
+import {
+  isFresh,
+  resolveKey,
+  resolveResultSchema,
+  stemOf,
+} from "../lib/resolve-query";
 import type { ResolveResult, ResolvedAsset } from "../lib/resolve-query";
 import type { Route } from "./+types/home";
 
@@ -122,7 +127,7 @@ const gifReps = async (asset: ResolvedAsset): Promise<ClipboardReps> => {
   // the url comes from a remote page: keep it inside the attribute
   const html = `<img src="${asset.videoUrl.replaceAll('"', "%22")}" alt="GIF">`;
 
-  if (isGifFile(asset) && ClipboardItem.supports?.("image/gif")) {
+  if (ClipboardItem.supports?.("image/gif")) {
     const res = await fetch(asset.downloadHref);
 
     if (!res.ok) {
@@ -245,11 +250,7 @@ const Home = () => {
 
   // an X gif is an mp4 wearing the flag: download a converted gif file, not the mp4
   const downloadConvertedGif = async (asset: ResolvedAsset) => {
-    // the stem rides in the signed href; parsing it keeps the naming rule in download-link
-    const stem =
-      new URL(asset.downloadHref, window.location.origin).searchParams.get(
-        "name"
-      ) ?? "video";
+    const stem = stemOf(asset.downloadHref);
 
     setConverting(true);
 

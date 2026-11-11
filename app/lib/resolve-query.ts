@@ -35,6 +35,12 @@ export type ResolveResult = z.infer<typeof resolveResultSchema>;
 export const resolveKey = (url: string): readonly ["resolve", string] =>
   ["resolve", url.trim()] as const;
 
+// the download href is same-origin relative; the base only resolves it for
+// parsing. The stem is read back here (not rebuilt) so the naming rule stays
+// in download-link, which is server-only and cannot be imported by the route.
+export const stemOf = (href: string): string =>
+  new URL(href, "http://localhost").searchParams.get("name") ?? "video";
+
 export const isFresh = (
   dataUpdatedAt: number,
   now: number = Date.now()

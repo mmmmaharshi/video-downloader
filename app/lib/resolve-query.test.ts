@@ -3,7 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { toDownloadHref } from "./download-link";
 import { stubFetch } from "./fake-fetch";
 import { resolve } from "./media-resolver";
-import { isFresh, resolveKey, resolveResultSchema } from "./resolve-query";
+import {
+  isFresh,
+  resolveKey,
+  resolveResultSchema,
+  stemOf,
+} from "./resolve-query";
 
 describe("resolve-query", () => {
   test("keys a resolution by its trimmed url", () => {
@@ -44,5 +49,12 @@ describe("resolve-query", () => {
     expect(resolveResultSchema.parse({ assets: withHref })).toEqual({
       assets: withHref,
     });
+  });
+
+  test("reads the download stem back out of the href", () => {
+    expect(
+      stemOf("/api/download?url=https%3A%2F%2Fx.mp4&name=twitter-99&e=1&s=2")
+    ).toBe("twitter-99");
+    expect(stemOf("/api/download?url=https%3A%2F%2Fx.mp4")).toBe("video");
   });
 });

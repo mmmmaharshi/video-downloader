@@ -1,5 +1,6 @@
 # Agent Instructions
 
+- Always respond to the user with `$simple-english` `$i-have-adhd`.
 - Follow all guidelines defined in @CODING_STANDARDS.md for every code change, review, and architectural decision in this repository.
 - Use Bun (https://bun.sh/llms.txt) as the runtime and package manager for this project.
 

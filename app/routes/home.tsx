@@ -59,6 +59,11 @@ const MEDIA_CLASS =
 const isGifAsset = (asset: VideoAsset): boolean =>
   asset.gif === true || containerOf(asset.videoUrl) === "gif";
 
+// only a real gif file can go on the clipboard as bytes — an X mp4 cannot,
+// so it skips the fetch and copies its link at once
+const isGifFile = (asset: VideoAsset): boolean =>
+  containerOf(asset.videoUrl) === "gif";
+
 const PreviewMedia = ({ asset }: { asset: VideoAsset }) => {
   // a real gif file animates in an image element; an X gif is an mp4, which
   // plays in a video element — autoplaying and looping, like a gif
@@ -115,24 +120,28 @@ const copyImage = async (blob: Blob): Promise<boolean> => {
 // cross-origin limits that block reading the file from its host
 const copyGif = async (asset: ResolvedAsset): Promise<void> => {
   try {
-    const res = await fetch(asset.downloadHref);
+    if (isGifFile(asset)) {
+      const res = await fetch(asset.downloadHref);
 
-    if (!res.ok) {
-      throw new Error(`downloadHref returned ${res.status}`);
+      if (!res.ok) {
+        throw new Error(`downloadHref returned ${res.status}`);
+      }
+
+      const blob = await res.blob();
+
+      if (await copyImage(blob)) {
+        toast.success("Copied", {
+          description: "The GIF is on your clipboard.",
+        });
+
+        return;
+      }
     }
 
-    const blob = await res.blob();
-
-    if (await copyImage(blob)) {
-      toast.success("Copied", {
-        description: "The GIF is on your clipboard.",
-      });
-    } else {
-      await navigator.clipboard.writeText(asset.videoUrl);
-      toast.success("Copied link", {
-        description: "Paste it anywhere to share the GIF.",
-      });
-    }
+    await navigator.clipboard.writeText(asset.videoUrl);
+    toast.success("Copied link", {
+      description: "Paste it anywhere to share the GIF.",
+    });
   } catch {
     toast.danger("Copy failed", {
       description: "Download the file instead.",
@@ -356,7 +365,7 @@ const Home = () => {
                 </Button>
                 {isGif && current && (
                   <Button variant="secondary" onPress={() => copyGif(current)}>
-                    Copy GIF
+                    {isGifFile(current) ? "Copy GIF" : "Copy link"}
                   </Button>
                 )}
               </Modal.Footer>

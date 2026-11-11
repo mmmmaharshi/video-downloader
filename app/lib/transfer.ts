@@ -22,6 +22,8 @@ export interface TransferDeps {
   fetch?: typeof fetch;
   lookup?: HostLookup;
   maxMs?: number;
+  /** the client's byte-range request, forwarded so video seeking works */
+  range?: string | null;
 }
 
 // A manifest points at its media relatively, and a saved playlist has no base
@@ -97,9 +99,17 @@ export const proxy = async (
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   let upstream: Response;
 
+  const upstreamHeaders = new Headers({ "User-Agent": UA });
+
+  // a seeking video asks for byte ranges; the upstream answers 206 and the
+  // proxy passes that answer through instead of rebuffering the whole file
+  if (deps.range) {
+    upstreamHeaders.set("Range", deps.range);
+  }
+
   try {
     upstream = await doFetch(videoUrl, {
-      headers: { "User-Agent": UA },
+      headers: upstreamHeaders,
       // the overall bound outlives this block: a trickling upstream must not hold the connection forever
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(maxMs)]),
     });
@@ -138,6 +148,25 @@ export const proxy = async (
     });
   }
 
+  // a 206 is a byte slice, not a file: stream it through untouched, naming
+  // nothing and rewriting nothing
+  if (upstream.status === 206) {
+    const rangeHeaders = new Headers({
+      "Cache-Control": "private, max-age=60",
+      "Content-Type": contentType,
+    });
+
+    for (const name of ["Accept-Ranges", "Content-Length", "Content-Range"]) {
+      const value = upstream.headers.get(name);
+
+      if (value) {
+        rangeHeaders.set(name, value);
+      }
+    }
+
+    return new Response(upstream.body, { headers: rangeHeaders, status: 206 });
+  }
+
   if (isManifestContainer(ext)) {
     // small text, so buffering costs nothing; the length below no longer applies
     return new Response(
@@ -148,5 +177,8 @@ export const proxy = async (
 
   const headers = length ? { ...base, "Content-Length": length } : base;
 
-  return new Response(upstream.body, { headers });
+  // seeking works when the client knows ranges are served
+  return new Response(upstream.body, {
+    headers: { ...headers, "Accept-Ranges": "bytes" },
+  });
 };

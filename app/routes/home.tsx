@@ -268,7 +268,8 @@ const Home = () => {
       toast.success("Saved", {
         description: "The GIF is in your downloads.",
       });
-    } catch {
+    } catch (error) {
+      console.error("convert gif failed:", error);
       toast.danger("Couldn't convert", {
         description: "Download the MP4 instead.",
       });
@@ -328,7 +329,10 @@ const Home = () => {
       toast.success("Copied", {
         description: "Paste it anywhere — chats and mail show the GIF.",
       });
-    } catch {
+    } catch (error) {
+      // silent here means undebuggable there: the toast stays plain so the
+      // log carries the reason
+      console.error("copy gif failed:", error);
       await copyLinkFallback(asset);
     }
 

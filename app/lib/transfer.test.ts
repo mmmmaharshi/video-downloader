@@ -214,6 +214,52 @@ describe("proxy", () => {
     expect(res.status).toBe(413);
   });
 
+  test("forwards a range request and passes the partial answer through", async () => {
+    let seenRange: string | null = null;
+
+    const ranged = stubFetch((_url, init) => {
+      seenRange =
+        init instanceof Request
+          ? init.headers.get("range")
+          : new Headers(init?.headers).get("range");
+
+      return new Response("middle-bytes", {
+        headers: {
+          "accept-ranges": "bytes",
+          "content-length": "12",
+          "content-range": "bytes 100-111/500",
+          "content-type": "video/mp4",
+        },
+        status: 206,
+      });
+    });
+
+    const res = await proxy(CDN, "ABC123", {
+      fetch: ranged,
+      lookup: publicHost,
+      range: "bytes=100-111",
+    });
+
+    expect(seenRange ?? "").toBe("bytes=100-111");
+    expect(res.status).toBe(206);
+    expect(res.headers.get("content-range")).toBe("bytes 100-111/500");
+    expect(res.headers.get("content-disposition")).toBeNull();
+    expect(await res.text()).toBe("middle-bytes");
+  });
+
+  test("falls back to the full file when the upstream ignores the range", async () => {
+    const res = await proxy(CDN, "ABC123", {
+      fetch: ok(),
+      lookup: publicHost,
+      range: "bytes=100-111",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-disposition")).toBe(
+      'attachment; filename="ABC123.mp4"'
+    );
+  });
+
   test("maps an upstream error status to 502", async () => {
     const failing = stubFetch(() => new Response("nope", { status: 500 }));
     const res = await thrown(proxy(CDN, "ABC123", { fetch: failing }));

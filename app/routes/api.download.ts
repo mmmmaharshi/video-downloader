@@ -7,5 +7,5 @@ export const loader = ({ request }: LoaderFunctionArgs) => {
   // a bad, altered or expired signature answers 403 before anything is fetched
   const { videoUrl, stem } = fromDownloadRequest(request.url);
 
-  return proxy(videoUrl, stem);
+  return proxy(videoUrl, stem, { range: request.headers.get("range") });
 };

@@ -172,6 +172,7 @@ describe("proxy", () => {
     ["https://x/clip", "video/webm", "webm"],
     ["https://x/clip", "video/quicktime", "mov"],
     ["https://x/clip", "video/mp4", "mp4"],
+    ["https://x/funny", "image/gif", "gif"],
   ])(
     "names the %s (%s) download with a .%s extension",
     async (url, contentType, ext) => {

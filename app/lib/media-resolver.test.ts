@@ -1229,12 +1229,55 @@ describe("resolve — direct links", () => {
     });
 
     expect(asset).toEqual({
+      gif: false,
       platform: "direct",
       shortcode: "funny-cat",
       sourceUrl: MP4_URL,
       thumbnail: undefined,
       videoUrl: MP4_URL,
     });
+  });
+
+  test("resolves a link that serves a gif", async () => {
+    const gif = "https://cdn.example.com/funny.gif";
+
+    const [asset] = await resolve(gif, {
+      fetch: stubFetch(
+        () =>
+          new Response("gif-bytes", {
+            headers: { "content-type": "image/gif" },
+            status: 200,
+          })
+      ),
+      lookup: publicHost,
+    });
+
+    expect(asset).toEqual({
+      gif: true,
+      platform: "direct",
+      shortcode: "funny",
+      sourceUrl: gif,
+      thumbnail: undefined,
+      videoUrl: gif,
+    });
+  });
+
+  test("marks a gif served from a pathless url", async () => {
+    const pageUrl = "https://cdn.example.com/abc123?token=xyz";
+
+    const [asset] = await resolve(pageUrl, {
+      fetch: stubFetch(
+        () =>
+          new Response("gif-bytes", {
+            headers: { "content-type": "image/gif" },
+            status: 200,
+          })
+      ),
+      lookup: publicHost,
+    });
+
+    expect(asset.gif).toBe(true);
+    expect(asset.videoUrl).toBe(pageUrl);
   });
 
   test("resolves a page exposing og:video on an unknown host", async () => {
@@ -1250,6 +1293,7 @@ describe("resolve — direct links", () => {
     });
 
     expect(asset).toEqual({
+      gif: false,
       platform: "direct",
       shortcode: "42",
       sourceUrl: pageUrl,

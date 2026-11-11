@@ -12,6 +12,8 @@ const CASES: [string, string | undefined, Container][] = [
   ["https://x/clip", "video/webm", "webm"],
   ["https://x/clip", "video/quicktime", "mov"],
   ["https://x/clip.mp4?sig=abc", "video/mp4", "mp4"],
+  ["https://x/funny.gif", undefined, "gif"],
+  ["https://x/funny", "image/gif", "gif"],
   ["https://x/clip", undefined, "mp4"],
 ];
 
@@ -24,6 +26,7 @@ describe("containerOf", () => {
     expect(isManifestContainer("m3u8")).toBe(true);
     expect(isManifestContainer("mpd")).toBe(true);
     expect(isManifestContainer("mp4")).toBe(false);
+    expect(isManifestContainer("gif")).toBe(false);
     expect(isManifestContainer("webm")).toBe(false);
     expect(isManifestContainer("mov")).toBe(false);
   });

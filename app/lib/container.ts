@@ -4,7 +4,7 @@
 // read this instead of keeping a pattern each.
 // Client-safe: no imports, no node: builtins.
 
-export type Container = "mov" | "mp4" | "mpd" | "m3u8" | "webm";
+export type Container = "gif" | "mov" | "mp4" | "mpd" | "m3u8" | "webm";
 
 // The content-type is authoritative when the host sends a usable one; the path
 // is the fallback for hosts that mislabel or omit it.
@@ -13,6 +13,7 @@ const SIGNATURES: { container: Container; mime: string; path: RegExp }[] = [
   { container: "mpd", mime: "dash+xml", path: /\.mpd(?:[?#]|$)/iu },
   { container: "webm", mime: "webm", path: /\.webm(?:[?#]|$)/iu },
   { container: "mov", mime: "quicktime", path: /\.mov(?:[?#]|$)/iu },
+  { container: "gif", mime: "gif", path: /\.gif(?:[?#]|$)/iu },
 ];
 
 export const containerOf = (

@@ -13,6 +13,7 @@ import { PLATFORMS } from "./platforms";
 
 const videoAssetSchema = z.object({
   downloadHref: z.string(),
+  gif: z.boolean().optional(),
   label: z.string().optional(),
   platform: z.enum(PLATFORMS),
   shortcode: z.string(),

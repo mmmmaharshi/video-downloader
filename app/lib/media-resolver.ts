@@ -4,6 +4,7 @@
 // exposes at most one, so IG resolves to a one-element list.
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
+import { containerOf } from "./container";
 import type { Platform } from "./platforms";
 import { PLATFORM_HOSTS } from "./platforms";
 import { assertPublicHost, defaultLookup } from "./public-host";
@@ -20,6 +21,8 @@ export interface VideoAsset {
   platform: Platform;
   label?: string;
   title?: string;
+  // the preview cannot re-derive this: it never sees the content-type
+  gif?: boolean;
 }
 
 export interface MediaResolverDeps {
@@ -481,9 +484,12 @@ const resolveFacebook = async (
   }));
 };
 
-// Catch-all for any other link: a video content-type resolves the link
+// Catch-all for any other link: a video or gif content-type resolves the link
 // itself, otherwise the page's og:video tag is the last resort. The body of a
 // video response is never read — only headers — so large files cost nothing.
+const NO_VIDEO_FOUND =
+  "No video found at this link. Only pages, video files, and GIFs are downloadable.";
+
 const resolveGeneric = async (
   sourceUrl: string,
   doFetch: typeof fetch,
@@ -507,12 +513,13 @@ const resolveGeneric = async (
   const shortcode = slugOf(url);
   const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
 
-  if (contentType.startsWith("video/")) {
+  if (contentType.startsWith("video/") || contentType.startsWith("image/gif")) {
     // headers were all this branch needed — release the upstream connection
     await res.body?.cancel();
 
     return [
       {
+        gif: containerOf(url, contentType) === "gif",
         platform: "direct",
         shortcode,
         sourceUrl,
@@ -528,22 +535,19 @@ const resolveGeneric = async (
     /^(?:text\/|application\/(?:xhtml\+xml|xml))/u.test(contentType);
 
   if (!isPage) {
-    throw new Error(
-      "No video found at this link. Only pages and files that serve video are downloadable."
-    );
+    throw new Error(NO_VIDEO_FOUND);
   }
 
   const html = await readCapped(res, MAX_PAGE_BYTES);
   const videoUrl = extractOgVideo(html);
 
   if (!videoUrl) {
-    throw new Error(
-      "No video found at this link. Only pages and files that serve video are downloadable."
-    );
+    throw new Error(NO_VIDEO_FOUND);
   }
 
   return [
     {
+      gif: containerOf(videoUrl) === "gif",
       platform: "direct",
       shortcode,
       sourceUrl,

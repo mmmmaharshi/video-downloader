@@ -18,7 +18,7 @@ import type { VideoAsset } from "../lib/media-resolver";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
 import { isFresh, resolveKey, resolveResultSchema } from "../lib/resolve-query";
-import type { ResolveResult } from "../lib/resolve-query";
+import type { ResolveResult, ResolvedAsset } from "../lib/resolve-query";
 import type { Route } from "./+types/home";
 
 export const meta = () => [
@@ -54,10 +54,22 @@ export const links: Route.LinksFunction = () => [
 const MEDIA_CLASS =
   "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
 
-const PreviewMedia = ({ asset }: { asset: VideoAsset }) =>
+// the resolver flags what it served as gif; the path covers og:video links
+// from other resolvers, which never see a content-type
+const isGifAsset = (asset: VideoAsset): boolean =>
+  asset.gif === true || containerOf(asset.videoUrl) === "gif";
+
+const PreviewMedia = ({ asset }: { asset: VideoAsset }) => {
+  // GIFs animate in an image element; no video element plays them
+  if (isGifAsset(asset)) {
+    return (
+      <img src={asset.videoUrl} alt="GIF preview" className={MEDIA_CLASS} />
+    );
+  }
+
   // the same container rule the download uses, so the preview cannot call a
   // file playable that the proxy names as a playlist
-  isManifestContainer(containerOf(asset.videoUrl)) ? (
+  return isManifestContainer(containerOf(asset.videoUrl)) ? (
     <Typography color="muted" type="body-sm">
       This post serves a streaming playlist, which the player cannot preview.
       Download it to get the file.
@@ -72,6 +84,30 @@ const PreviewMedia = ({ asset }: { asset: VideoAsset }) =>
       className={MEDIA_CLASS}
     />
   );
+};
+
+// the signed download href is same-origin, so this fetch dodges the
+// cross-origin limits that block reading the file from its host
+const copyGif = async (asset: ResolvedAsset): Promise<void> => {
+  try {
+    const res = await fetch(asset.downloadHref);
+
+    if (!res.ok) {
+      throw new Error(`downloadHref returned ${res.status}`);
+    }
+
+    const blob = await res.blob();
+
+    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    toast.success("Copied", {
+      description: "The GIF is on your clipboard.",
+    });
+  } catch {
+    toast.danger("Copy failed", {
+      description: "Download the file instead.",
+    });
+  }
+};
 
 const Home = () => {
   const queryClient = useQueryClient();
@@ -151,6 +187,8 @@ const Home = () => {
   const { shown } = preview;
   const current = shown[preview.active];
   const isYouTube = current?.platform === "youtube";
+
+  const isGif = current !== undefined && isGifAsset(current);
 
   const dismiss = () =>
     setPreview((p) => nextPreview(p, { type: "dismissed" }));
@@ -285,6 +323,11 @@ const Home = () => {
                 >
                   Download
                 </Button>
+                {isGif && current && (
+                  <Button variant="secondary" onPress={() => copyGif(current)}>
+                    Copy GIF
+                  </Button>
+                )}
               </Modal.Footer>
             </Modal.Dialog>
           </Modal.Container>

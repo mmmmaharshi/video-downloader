@@ -15,6 +15,7 @@ import * as React from "react";
 
 import { containerOf, isManifestContainer } from "../lib/container";
 import type { VideoAsset } from "../lib/media-resolver";
+import { convertMp4ToGif } from "../lib/mp4-to-gif";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
 import { isFresh, resolveKey, resolveResultSchema } from "../lib/resolve-query";
@@ -63,6 +64,10 @@ const isGifAsset = (asset: VideoAsset): boolean =>
 // so it skips the fetch and copies its link at once
 const isGifFile = (asset: VideoAsset): boolean =>
   containerOf(asset.videoUrl) === "gif";
+
+// only a non-file gif needs converting: a real gif file downloads as-is
+const needsConverting = (asset: VideoAsset): boolean =>
+  asset.gif === true && !isGifFile(asset);
 
 const PreviewMedia = ({ asset }: { asset: VideoAsset }) => {
   // a real gif file animates in an image element; an X gif is an mp4, which
@@ -152,6 +157,7 @@ const copyGif = async (asset: ResolvedAsset): Promise<void> => {
 const Home = () => {
   const queryClient = useQueryClient();
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
+  const [converting, setConverting] = React.useState(false);
 
   // One transition per resolved submit, whether the answer came from the
   // network or the cache. A fresh object per submit keeps repeat submits of
@@ -242,6 +248,35 @@ const Home = () => {
     if (href) {
       window.location.href = href;
     }
+  };
+
+  // the stem rides in the signed href; parsing it keeps the naming rule in download-link
+  const downloadGif = async (asset: ResolvedAsset) => {
+    const stem =
+      new URL(asset.downloadHref, window.location.origin).searchParams.get(
+        "name"
+      ) ?? "video";
+
+    setConverting(true);
+
+    try {
+      const blob = await convertMp4ToGif(asset.downloadHref);
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `${stem}.gif`;
+      anchor.click();
+      URL.revokeObjectURL(href);
+      toast.success("Saved", {
+        description: "The GIF is in your downloads.",
+      });
+    } catch {
+      toast.danger("Couldn't convert", {
+        description: "Download the MP4 instead.",
+      });
+    }
+
+    setConverting(false);
   };
 
   return (
@@ -366,6 +401,23 @@ const Home = () => {
                 {isGif && current && (
                   <Button variant="secondary" onPress={() => copyGif(current)}>
                     {isGifFile(current) ? "Copy GIF" : "Copy link"}
+                  </Button>
+                )}
+                {isGif && current && needsConverting(current) && (
+                  <Button
+                    variant="secondary"
+                    isDisabled={converting}
+                    isPending={converting}
+                    onPress={() => downloadGif(current)}
+                  >
+                    {({ isPending }) => (
+                      <>
+                        {isPending ? (
+                          <Spinner color="current" size="sm" />
+                        ) : null}
+                        {isPending ? "Making GIF…" : "Download GIF"}
+                      </>
+                    )}
                   </Button>
                 )}
               </Modal.Footer>

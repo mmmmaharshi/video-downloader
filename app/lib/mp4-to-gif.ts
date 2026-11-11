@@ -122,3 +122,16 @@ export const convertMp4ToGif = async (src: string): Promise<Blob> => {
 
   return new Blob([await encodeFrames(frames)], { type: "image/gif" });
 };
+
+// base64 by hand: FileReader would work in the browser but not in bun's tests,
+// while arrayBuffer + btoa runs in both
+export const blobToDataUrl = async (blob: Blob): Promise<string> => {
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  let binary = "";
+
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCodePoint(...bytes.subarray(i, i + 8192));
+  }
+
+  return `data:${blob.type};base64,${btoa(binary)}`;
+};

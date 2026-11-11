@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { encodeFrames } from "./mp4-to-gif";
+import { blobToDataUrl, encodeFrames } from "./mp4-to-gif";
 import type { GifFrame } from "./mp4-to-gif";
 
 const frame = (pixels: [number, number, number][]): GifFrame => {
@@ -49,5 +49,11 @@ describe("encodeFrames", () => {
 
     expect(headerOf(bytes)).toBe("GIF89a");
     expect(bytes.at(-1)).toBe(0x3b);
+  });
+
+  test("encodes a blob as a data url", async () => {
+    expect(await blobToDataUrl(new Blob(["abc"], { type: "image/gif" }))).toBe(
+      "data:image/gif;base64,YWJj"
+    );
   });
 });

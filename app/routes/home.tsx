@@ -15,7 +15,7 @@ import * as React from "react";
 
 import { containerOf, isManifestContainer } from "../lib/container";
 import type { VideoAsset } from "../lib/media-resolver";
-import { convertMp4ToGif } from "../lib/mp4-to-gif";
+import { blobToDataUrl, convertMp4ToGif } from "../lib/mp4-to-gif";
 import type { ClipboardReps } from "../lib/mp4-to-gif";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
@@ -141,26 +141,12 @@ const gifReps = async (asset: ResolvedAsset): Promise<ClipboardReps> => {
 
 // the signed download href is same-origin, so this fetch dodges the
 // cross-origin limits that block reading the file from its host
-const copyGif = async (asset: ResolvedAsset): Promise<void> => {
+const copyLinkFallback = async (asset: ResolvedAsset): Promise<void> => {
   try {
-    try {
-      await navigator.clipboard.write([
-        new ClipboardItem(await gifReps(asset)),
-      ]);
-    } catch {
-      // one rejected type fails the whole write: the link still pastes everywhere
-      await navigator.clipboard.writeText(asset.videoUrl);
-    }
-
-    if (isGifFile(asset)) {
-      toast.success("Copied", {
-        description: "Paste it anywhere — chats and mail show the GIF.",
-      });
-    } else {
-      toast.success("Copied link", {
-        description: "Paste it anywhere to share the GIF.",
-      });
-    }
+    await navigator.clipboard.writeText(asset.videoUrl);
+    toast.success("Copied link", {
+      description: "Paste it anywhere to share the GIF.",
+    });
   } catch {
     toast.danger("Copy failed", {
       description: "Download the file instead.",
@@ -172,6 +158,7 @@ const Home = () => {
   const queryClient = useQueryClient();
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
   const [converting, setConverting] = React.useState(false);
+  const [copying, setCopying] = React.useState(false);
 
   // One transition per resolved submit, whether the answer came from the
   // network or the cache. A fresh object per submit keeps repeat submits of
@@ -256,6 +243,40 @@ const Home = () => {
   const select = (index: number) =>
     setPreview((p) => nextPreview(p, { index, type: "selected" }));
 
+  // an X gif is an mp4 wearing the flag: download a converted gif file, not the mp4
+  const downloadConvertedGif = async (asset: ResolvedAsset) => {
+    // the stem rides in the signed href; parsing it keeps the naming rule in download-link
+    const stem =
+      new URL(asset.downloadHref, window.location.origin).searchParams.get(
+        "name"
+      ) ?? "video";
+
+    setConverting(true);
+
+    try {
+      const blob = await convertMp4ToGif(asset.downloadHref);
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = `${stem}.gif`;
+      // some browsers only honor clicks on attached nodes; revoke late so
+      // the download can grab the blob first
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+      toast.success("Saved", {
+        description: "The GIF is in your downloads.",
+      });
+    } catch {
+      toast.danger("Couldn't convert", {
+        description: "Download the MP4 instead.",
+      });
+    }
+
+    setConverting(false);
+  };
+
   const download = async (index: number) => {
     const asset = shown[index];
 
@@ -263,38 +284,8 @@ const Home = () => {
       return;
     }
 
-    // an X gif is an mp4 wearing the flag: download a converted gif file, not the mp4
     if (needsConverting(asset)) {
-      // the stem rides in the signed href; parsing it keeps the naming rule in download-link
-      const stem =
-        new URL(asset.downloadHref, window.location.origin).searchParams.get(
-          "name"
-        ) ?? "video";
-
-      setConverting(true);
-
-      try {
-        const blob = await convertMp4ToGif(asset.downloadHref);
-        const href = URL.createObjectURL(blob);
-        const anchor = document.createElement("a");
-        anchor.href = href;
-        anchor.download = `${stem}.gif`;
-        // some browsers only honor clicks on attached nodes; revoke late so
-        // the download can grab the blob first
-        document.body.append(anchor);
-        anchor.click();
-        anchor.remove();
-        setTimeout(() => URL.revokeObjectURL(href), 1000);
-        toast.success("Saved", {
-          description: "The GIF is in your downloads.",
-        });
-      } catch {
-        toast.danger("Couldn't convert", {
-          description: "Download the MP4 instead.",
-        });
-      }
-
-      setConverting(false);
+      await downloadConvertedGif(asset);
 
       return;
     }
@@ -302,6 +293,46 @@ const Home = () => {
     if (asset.downloadHref) {
       window.location.href = asset.downloadHref;
     }
+  };
+
+  // an X gif is an mp4: convert it, then copy the gif inline as a data url
+  // so the paste target gets real gif bytes instead of a link
+  const copyGif = async (asset: ResolvedAsset) => {
+    if (!needsConverting(asset)) {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem(await gifReps(asset)),
+        ]);
+        toast.success("Copied", {
+          description: "Paste it anywhere — chats and mail show the GIF.",
+        });
+      } catch {
+        await copyLinkFallback(asset);
+      }
+
+      return;
+    }
+
+    setCopying(true);
+
+    try {
+      const blob = await convertMp4ToGif(asset.downloadHref);
+      const dataUrl = await blobToDataUrl(blob);
+
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": `<img src="${dataUrl}" alt="GIF">`,
+          "text/plain": asset.videoUrl,
+        }),
+      ]);
+      toast.success("Copied", {
+        description: "Paste it anywhere — chats and mail show the GIF.",
+      });
+    } catch {
+      await copyLinkFallback(asset);
+    }
+
+    setCopying(false);
   };
 
   return (
@@ -431,8 +462,20 @@ const Home = () => {
                   )}
                 </Button>
                 {isGif && current && (
-                  <Button variant="secondary" onPress={() => copyGif(current)}>
-                    {isGifFile(current) ? "Copy GIF" : "Copy link"}
+                  <Button
+                    variant="secondary"
+                    isDisabled={copying}
+                    isPending={copying}
+                    onPress={() => copyGif(current)}
+                  >
+                    {({ isPending }) => (
+                      <>
+                        {isPending ? (
+                          <Spinner color="current" size="sm" />
+                        ) : null}
+                        {isPending ? "Copying…" : "Copy GIF"}
+                      </>
+                    )}
                   </Button>
                 )}
               </Modal.Footer>

@@ -110,43 +110,51 @@ const PreviewMedia = ({ asset }: { asset: VideoAsset }) => {
   );
 };
 
-// the clipboard takes images, not video: an mp4 gif falls back to its link
-const copyImage = async (blob: Blob): Promise<boolean> => {
-  try {
-    await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-
-    return true;
-  } catch {
-    return false;
+// one copy, every app gets its best form: bytes where the clipboard takes
+// them, an html image for rich-text apps, the link for chats (which unfurl it)
+const gifReps = async (
+  asset: ResolvedAsset
+): Promise<Record<string, string | Blob>> => {
+  // an X gif has no gif file to point an <img> at: link only
+  if (!isGifFile(asset)) {
+    return { "text/plain": asset.videoUrl };
   }
+
+  // the url comes from a remote page: keep it inside the attribute
+  const html = `<img src="${asset.videoUrl.replaceAll('"', "%22")}" alt="GIF">`;
+
+  if (ClipboardItem.supports("image/gif")) {
+    const res = await fetch(asset.downloadHref);
+
+    if (!res.ok) {
+      throw new Error(`downloadHref returned ${res.status}`);
+    }
+
+    return {
+      "image/gif": await res.blob(),
+      "text/html": html,
+      "text/plain": asset.videoUrl,
+    };
+  }
+
+  return { "text/html": html, "text/plain": asset.videoUrl };
 };
 
 // the signed download href is same-origin, so this fetch dodges the
 // cross-origin limits that block reading the file from its host
 const copyGif = async (asset: ResolvedAsset): Promise<void> => {
   try {
+    await navigator.clipboard.write([new ClipboardItem(await gifReps(asset))]);
+
     if (isGifFile(asset)) {
-      const res = await fetch(asset.downloadHref);
-
-      if (!res.ok) {
-        throw new Error(`downloadHref returned ${res.status}`);
-      }
-
-      const blob = await res.blob();
-
-      if (await copyImage(blob)) {
-        toast.success("Copied", {
-          description: "The GIF is on your clipboard.",
-        });
-
-        return;
-      }
+      toast.success("Copied", {
+        description: "Paste it anywhere — chats and mail show the GIF.",
+      });
+    } else {
+      toast.success("Copied link", {
+        description: "Paste it anywhere to share the GIF.",
+      });
     }
-
-    await navigator.clipboard.writeText(asset.videoUrl);
-    toast.success("Copied link", {
-      description: "Paste it anywhere to share the GIF.",
-    });
   } catch {
     toast.danger("Copy failed", {
       description: "Download the file instead.",

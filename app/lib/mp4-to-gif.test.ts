@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { blobToDataUrl, encodeFrames, withTimeout } from "./mp4-to-gif";
+import {
+  blobToDataUrl,
+  canCopyGif,
+  encodeFrames,
+  pruneGifJobs,
+  withTimeout,
+} from "./mp4-to-gif";
 import type { GifFrame } from "./mp4-to-gif";
 
 const frame = (pixels: [number, number, number][]): GifFrame => {
@@ -15,6 +21,8 @@ const frame = (pixels: [number, number, number][]): GifFrame => {
 
 const headerOf = (bytes: Uint8Array): string =>
   String.fromCodePoint(...bytes.subarray(0, 6));
+
+const writeTrue = () => Promise.resolve();
 
 describe("encodeFrames", () => {
   test("encodes frames into gif bytes", async () => {
@@ -70,5 +78,34 @@ describe("encodeFrames", () => {
     await expect(withTimeout(stalled, 10, "seek")).rejects.toThrow(
       "seek timed out"
     );
+  });
+
+  test("reports no support without browser apis", () => {
+    expect(canCopyGif({})).toBe(false);
+  });
+
+  test("reports no support when the clipboard cannot write", () => {
+    expect(
+      canCopyGif({ ClipboardItem: {}, Worker: {}, clipboardWrite: undefined })
+    ).toBe(false);
+  });
+
+  test("reports support with all pieces present", () => {
+    expect(
+      canCopyGif({ ClipboardItem: {}, Worker: {}, clipboardWrite: writeTrue })
+    ).toBe(true);
+  });
+
+  test("pruneGifJobs keeps only the latest conversions", () => {
+    const jobs = new Map([
+      ["a", 1],
+      ["b", 2],
+      ["c", 3],
+      ["d", 4],
+    ]);
+
+    pruneGifJobs(jobs);
+
+    expect([...jobs.keys()]).toEqual(["b", "c", "d"]);
   });
 });

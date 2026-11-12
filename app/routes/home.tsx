@@ -15,7 +15,13 @@ import * as React from "react";
 
 import { containerOf, isManifestContainer } from "../lib/container";
 import type { VideoAsset } from "../lib/media-resolver";
-import { blobToDataUrl, convertMp4ToGif } from "../lib/mp4-to-gif";
+import {
+  blobToDataUrl,
+  canCopyGif,
+  convertMp4ToGif,
+  hasWorker,
+  pruneGifJobs,
+} from "../lib/mp4-to-gif";
 import type { ClipboardReps } from "../lib/mp4-to-gif";
 import { closedPreview, nextPreview } from "../lib/preview";
 import type { PreviewState } from "../lib/preview";
@@ -159,11 +165,53 @@ const copyLinkFallback = async (asset: ResolvedAsset): Promise<void> => {
   }
 };
 
+// a conversion that never rejects: callers uniformly await it
+interface GifJob {
+  blob?: Blob;
+  error?: unknown;
+}
+
+const startGifJob = (src: string): Promise<GifJob> => {
+  const convert = async (): Promise<GifJob> => {
+    try {
+      return { blob: await convertMp4ToGif(src) };
+    } catch (error) {
+      return { error };
+    }
+  };
+
+  return convert();
+};
+
 const Home = () => {
   const queryClient = useQueryClient();
   const [preview, setPreview] = React.useState<PreviewState>(closedPreview);
   const [converting, setConverting] = React.useState(false);
   const [copying, setCopying] = React.useState(false);
+  const [copySupported, setCopySupported] = React.useState(false);
+  const gifJobs = React.useRef(new Map<string, Promise<GifJob>>());
+
+  // the button only exists where copying can work: the effect runs only
+  // in the browser, so server and old browsers render without it and
+  // hydration has nothing to reconcile
+  React.useEffect(() => {
+    // eslint-disable-next-line react/set-state-in-effect -- feature detection needs the browser; deriving it during render would mismatch the server HTML
+    setCopySupported(canCopyGif());
+  }, []);
+
+  const gifBlobFor = (asset: ResolvedAsset): Promise<GifJob> => {
+    const cached = gifJobs.current.get(asset.videoUrl);
+
+    if (cached) {
+      return cached;
+    }
+
+    const job = startGifJob(asset.downloadHref);
+    gifJobs.current.set(asset.videoUrl, job);
+    pruneGifJobs(gifJobs.current);
+
+    return job;
+  };
 
   // One transition per resolved submit, whether the answer came from the
   // network or the cache. A fresh object per submit keeps repeat submits of
@@ -173,6 +221,20 @@ const Home = () => {
       setPreview((p) => nextPreview(p, { type: "failed" }));
       toast.danger("Could not fetch", { description: result.error });
     } else {
+      // convert while the user looks at the preview; without a worker the
+      // encode would freeze the tab, so that case converts on click instead
+      if (hasWorker()) {
+        for (const asset of result.assets) {
+          if (needsConverting(asset) && !gifJobs.current.has(asset.videoUrl)) {
+            gifJobs.current.set(
+              asset.videoUrl,
+              startGifJob(asset.downloadHref)
+            );
+            pruneGifJobs(gifJobs.current);
+          }
+        }
+      }
+
       setPreview((p) =>
         nextPreview(p, { assets: result.assets, type: "resolved" })
       );
@@ -254,8 +316,21 @@ const Home = () => {
 
     setConverting(true);
 
+    const { blob, error: jobError } = await gifBlobFor(asset);
+
+    if (!blob) {
+      // the mp4 always downloads: convert failure must not strand the file
+      console.error("convert gif failed:", jobError);
+      setConverting(false);
+      toast.success("Downloading MP4", {
+        description: "Conversion failed, getting the original instead.",
+      });
+      window.location.href = asset.downloadHref;
+
+      return;
+    }
+
     try {
-      const blob = await convertMp4ToGif(asset.downloadHref);
       const href = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = href;
@@ -269,9 +344,8 @@ const Home = () => {
       toast.success("Saved", {
         description: "The GIF is in your downloads.",
       });
-    } catch (error) {
-      // the mp4 always downloads: convert failure must not strand the file
-      console.error("convert gif failed:", error);
+    } catch (anchorError) {
+      console.error("gif download failed:", anchorError);
       toast.success("Downloading MP4", {
         description: "Conversion failed, getting the original instead.",
       });
@@ -319,8 +393,17 @@ const Home = () => {
 
     setCopying(true);
 
+    const { blob, error: jobError } = await gifBlobFor(asset);
+
+    if (!blob) {
+      console.error("gif job failed:", jobError);
+      setCopying(false);
+      await copyLinkFallback(asset);
+
+      return;
+    }
+
     try {
-      const blob = await convertMp4ToGif(asset.downloadHref);
       const dataUrl = await blobToDataUrl(blob);
 
       await navigator.clipboard.write([
@@ -468,7 +551,7 @@ const Home = () => {
                     </>
                   )}
                 </Button>
-                {isGif && current && (
+                {isGif && current && copySupported && (
                   <Button
                     variant="secondary"
                     isDisabled={copying}

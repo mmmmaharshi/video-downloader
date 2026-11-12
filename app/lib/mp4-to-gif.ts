@@ -1,6 +1,11 @@
 // Module: Mp4ToGif — turn an mp4 download into a real GIF file, in the browser.
-// Interface: convertMp4ToGif(src) → Promise<Blob> (needs DOM: video + canvas),
-//   encodeFrames(frames) → Promise<Uint8Array> (pure pixels + gifenc, tested in bun).
+// Interface: convertMp4ToGif(src) → Promise<Blob> (extracts frames on the
+// main thread, encodes them in a worker where available),
+//   extractFrames(src) → Promise<GifFrame[]> (DOM: video + canvas),
+//   encodeFrames(frames) → Promise<Uint8Array> (pure pixels + gifenc, tested in bun),
+//   encodeInWorker(frames) → Promise<Uint8Array> (same encode, off the main thread),
+//   canCopyGif(env?) → boolean (clipboard write support, tested with injected env),
+//   pruneGifJobs(jobs) (caps remembered conversions, tested).
 // The src is the signed same-origin href, so the canvas stays clean: a
 // cross-origin file would taint it and block pixel reads.
 
@@ -13,6 +18,54 @@ export interface GifFrame {
 
 // one copy, every app picks the rep it understands
 export type ClipboardReps = Record<string, string | Blob>;
+
+// the pieces of browser support the gif copy path needs, injected in tests
+// and read from the real environment in the route
+export interface GifCopySupport {
+  ClipboardItem?: unknown;
+  Worker?: unknown;
+  clipboardWrite?: unknown;
+}
+
+const browserGifSupport = (): GifCopySupport => ({
+  ClipboardItem:
+    typeof ClipboardItem === "undefined" ? undefined : ClipboardItem,
+  Worker: typeof Worker === "undefined" ? undefined : Worker,
+  clipboardWrite:
+    typeof navigator === "undefined" ? undefined : navigator.clipboard?.write,
+});
+
+export const canCopyGif = (
+  support: GifCopySupport = browserGifSupport()
+): boolean =>
+  support.ClipboardItem !== undefined &&
+  support.Worker !== undefined &&
+  support.clipboardWrite !== undefined;
+
+// remembered conversions stay usable for the session; bound so heavy use
+// cannot pile unbounded bitmaps into memory
+export const MAX_GIF_JOBS = 3;
+
+// probing the global any other way throws where it does not exist
+export const hasWorker = (): boolean => {
+  try {
+    return Worker !== undefined;
+  } catch {
+    return false;
+  }
+};
+
+export const pruneGifJobs = <T>(jobs: Map<string, T>): void => {
+  while (jobs.size > MAX_GIF_JOBS) {
+    const oldest = jobs.keys().next().value;
+
+    if (oldest === undefined) {
+      break;
+    }
+
+    jobs.delete(oldest);
+  }
+};
 
 // gif holds 256 colors at most: fewer posterizes, more is not encodable
 const MAX_GIF_COLORS = 256;
@@ -99,7 +152,7 @@ const grabFrame = (
     video.currentTime = at;
   });
 
-export const convertMp4ToGif = async (src: string): Promise<Blob> => {
+const extractFrames = async (src: string): Promise<GifFrame[]> => {
   const video = await withTimeout(
     loadVideo(src),
     LOAD_TIMEOUT_MS,
@@ -144,7 +197,69 @@ export const convertMp4ToGif = async (src: string): Promise<Blob> => {
     });
   }
 
-  return new Blob([await encodeFrames(frames)], { type: "image/gif" });
+  return frames;
+};
+
+// frames cross into the worker by value unless transferred; the buffers are
+// encode-only, so transfer them instead of paying for a copy
+export const encodeInWorker = (
+  frames: GifFrame[]
+): Promise<Uint8Array<ArrayBuffer>> =>
+  // eslint-disable-next-line promise/avoid-new -- worker messages have no awaitable form; the promise only bridges them
+  new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL("gif-encode.worker.ts", import.meta.url),
+      { type: "module" }
+    );
+
+    const done = () => worker.terminate();
+
+    worker.addEventListener(
+      "message",
+      (event) => {
+        const data: unknown =
+          event instanceof MessageEvent ? event.data : undefined;
+
+        done();
+
+        if (
+          data instanceof Object &&
+          "bytes" in data &&
+          data.bytes instanceof Uint8Array
+        ) {
+          resolve(Uint8Array.from(data.bytes));
+        } else {
+          reject(new Error("gif worker failed"));
+        }
+      },
+      { once: true }
+    );
+
+    worker.addEventListener(
+      "error",
+      () => {
+        done();
+        reject(new Error("gif worker failed"));
+      },
+      { once: true }
+    );
+
+    const transferable: ArrayBuffer[] = [];
+
+    for (const frame of frames) {
+      if (frame.data.buffer instanceof ArrayBuffer) {
+        transferable.push(frame.data.buffer);
+      }
+    }
+
+    worker.postMessage({ frames }, transferable);
+  });
+
+export const convertMp4ToGif = async (src: string): Promise<Blob> => {
+  const frames = await extractFrames(src);
+  const encode = hasWorker() ? encodeInWorker : encodeFrames;
+
+  return new Blob([await encode(frames)], { type: "image/gif" });
 };
 
 // base64 by hand: FileReader would work in the browser but not in bun's tests,

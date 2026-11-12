@@ -23,14 +23,12 @@ export type ClipboardReps = Record<string, string | Blob>;
 // and read from the real environment in the route
 export interface GifCopySupport {
   ClipboardItem?: unknown;
-  Worker?: unknown;
   clipboardWrite?: unknown;
 }
 
 const browserGifSupport = (): GifCopySupport => ({
   ClipboardItem:
     typeof ClipboardItem === "undefined" ? undefined : ClipboardItem,
-  Worker: typeof Worker === "undefined" ? undefined : Worker,
   clipboardWrite:
     typeof navigator === "undefined" ? undefined : navigator.clipboard?.write,
 });
@@ -38,9 +36,7 @@ const browserGifSupport = (): GifCopySupport => ({
 export const canCopyGif = (
   support: GifCopySupport = browserGifSupport()
 ): boolean =>
-  support.ClipboardItem !== undefined &&
-  support.Worker !== undefined &&
-  support.clipboardWrite !== undefined;
+  support.ClipboardItem !== undefined && support.clipboardWrite !== undefined;
 
 // remembered conversions stay usable for the session; bound so heavy use
 // cannot pile unbounded bitmaps into memory
@@ -297,9 +293,16 @@ export const encodeInWorker = (
 
 export const convertMp4ToGif = async (src: string): Promise<Blob> => {
   const frames = await extractFrames(src);
-  const encode = hasWorker() ? encodeInWorker : encodeFrames;
 
-  return new Blob([await encode(frames)], { type: "image/gif" });
+  if (hasWorker()) {
+    try {
+      return new Blob([await encodeInWorker(frames)], { type: "image/gif" });
+    } catch {
+      // the worker is a fast path, not a requirement: fall back inline
+    }
+  }
+
+  return new Blob([await encodeFrames(frames)], { type: "image/gif" });
 };
 
 // base64 by hand: FileReader would work in the browser but not in bun's tests,

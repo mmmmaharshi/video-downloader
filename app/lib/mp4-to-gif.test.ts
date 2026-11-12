@@ -86,15 +86,15 @@ describe("encodeFrames", () => {
   });
 
   test("reports no support when the clipboard cannot write", () => {
-    expect(
-      canCopyGif({ ClipboardItem: {}, Worker: {}, clipboardWrite: undefined })
-    ).toBe(false);
+    expect(canCopyGif({ ClipboardItem: {}, clipboardWrite: undefined })).toBe(
+      false
+    );
   });
 
-  test("reports support with all pieces present", () => {
-    expect(
-      canCopyGif({ ClipboardItem: {}, Worker: {}, clipboardWrite: writeTrue })
-    ).toBe(true);
+  test("does not need a worker to allow copying", () => {
+    expect(canCopyGif({ ClipboardItem: {}, clipboardWrite: writeTrue })).toBe(
+      true
+    );
   });
 
   test("pruneGifJobs keeps only the latest conversions", () => {

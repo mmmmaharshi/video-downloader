@@ -171,16 +171,12 @@ interface GifJob {
   error?: unknown;
 }
 
-const startGifJob = (src: string): Promise<GifJob> => {
-  const convert = async (): Promise<GifJob> => {
-    try {
-      return { blob: await convertMp4ToGif(src) };
-    } catch (error) {
-      return { error };
-    }
-  };
-
-  return convert();
+const startGifJob = async (src: string): Promise<GifJob> => {
+  try {
+    return { blob: await convertMp4ToGif(src) };
+  } catch (error) {
+    return { error };
+  }
 };
 
 const Home = () => {
@@ -225,12 +221,8 @@ const Home = () => {
       // encode would freeze the tab, so that case converts on click instead
       if (hasWorker()) {
         for (const asset of result.assets) {
-          if (needsConverting(asset) && !gifJobs.current.has(asset.videoUrl)) {
-            gifJobs.current.set(
-              asset.videoUrl,
-              startGifJob(asset.downloadHref)
-            );
-            pruneGifJobs(gifJobs.current);
+          if (needsConverting(asset)) {
+            gifBlobFor(asset);
           }
         }
       }

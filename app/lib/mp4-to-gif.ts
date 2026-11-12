@@ -70,6 +70,35 @@ export const pruneGifJobs = <T>(jobs: Map<string, T>): void => {
 // gif holds 256 colors at most: fewer posterizes, more is not encodable
 const MAX_GIF_COLORS = 256;
 
+// one palette for the whole gif: quantize over spread samples instead of
+// per frame — faster and stops colors flickering between frames
+export const MAX_SAMPLE_FRAMES = 12;
+
+export const sampleFrames = (
+  frames: GifFrame[],
+  max: number = MAX_SAMPLE_FRAMES
+): GifFrame[] => {
+  if (frames.length <= max) {
+    return frames;
+  }
+
+  if (max < 2) {
+    return frames.slice(0, 1);
+  }
+
+  const sampled: GifFrame[] = [];
+
+  for (let i = 0; i < max; i += 1) {
+    const frame = frames[Math.round((i * (frames.length - 1)) / (max - 1))];
+
+    if (frame !== undefined) {
+      sampled.push(frame);
+    }
+  }
+
+  return sampled;
+};
+
 export const encodeFrames = async (
   frames: GifFrame[]
 ): Promise<Uint8Array<ArrayBuffer>> => {
@@ -77,9 +106,20 @@ export const encodeFrames = async (
   // named ESM exports, which the Node-based production server cannot import
   const { GIFEncoder, applyPalette, quantize } = await import("gifenc");
   const gif = GIFEncoder();
+  const sampled = sampleFrames(frames);
+  const total = sampled.reduce((sum, frame) => sum + frame.data.length, 0);
+  const sample = new Uint8Array(total);
+
+  let offset = 0;
+
+  for (const frame of sampled) {
+    sample.set(frame.data, offset);
+    offset += frame.data.length;
+  }
+
+  const palette = quantize(sample, MAX_GIF_COLORS);
 
   for (const frame of frames) {
-    const palette = quantize(frame.data, MAX_GIF_COLORS);
     const index = applyPalette(frame.data, palette);
 
     gif.writeFrame(index, frame.width, frame.height, {

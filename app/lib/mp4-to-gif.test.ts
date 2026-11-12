@@ -5,6 +5,7 @@ import {
   canCopyGif,
   encodeFrames,
   pruneGifJobs,
+  sampleFrames,
   withTimeout,
 } from "./mp4-to-gif";
 import type { GifFrame } from "./mp4-to-gif";
@@ -107,5 +108,33 @@ describe("encodeFrames", () => {
     pruneGifJobs(jobs);
 
     expect([...jobs.keys()]).toEqual(["b", "c", "d"]);
+  });
+
+  test("samples evenly across many frames and keeps the ends", () => {
+    const frames = Array.from({ length: 60 }, (_, i): GifFrame => ({
+      data: new Uint8ClampedArray([i, 0, 0, 255]),
+      delayMs: 100,
+      height: 1,
+      width: 1,
+    }));
+
+    const sampled = sampleFrames(frames);
+
+    expect(sampled.length).toBeLessThanOrEqual(12);
+    expect(sampled[0]).toBe(frames[0]);
+    expect(sampled.at(-1)).toBe(frames.at(-1));
+  });
+
+  test("keeps every frame when there are few", () => {
+    const frames = [
+      frame([
+        [1, 2, 3],
+        [4, 5, 6],
+        [7, 8, 9],
+        [10, 11, 12],
+      ]),
+    ];
+
+    expect(sampleFrames(frames)).toEqual(frames);
   });
 });

@@ -6,8 +6,12 @@
 
 import { containerOf, isManifestContainer } from "./container";
 import type { Container } from "./container";
-import type { HostLookup } from "./public-host";
-import { assertPublicHost, defaultLookup } from "./public-host";
+import type { HostLookup, PinHost } from "./public-host";
+import {
+  defaultLookup,
+  pinnedFetch,
+  resolvePublicAddresses,
+} from "./public-host";
 import { UA } from "./user-agent";
 
 const UPSTREAM_TIMEOUT_MS = 15_000;
@@ -21,10 +25,75 @@ const MAX_DOWNLOAD_BYTES = 1024 ** 3;
 export interface TransferDeps {
   fetch?: typeof fetch;
   lookup?: HostLookup;
+  pinHost?: PinHost;
   maxMs?: number;
   /** the client's byte-range request, forwarded so video seeking works */
   range?: string | null;
+  /** lower cap for tests; one download's worth by default */
+  maxBytes?: number;
 }
+
+// content-length is only a claim from upstream. Count the bytes that actually
+// arrive so a chunked or under-reported body cannot exceed the cap.
+const boundedBody = (
+  body: ReadableStream<Uint8Array>,
+  limit: number
+): ReadableStream<Uint8Array> => {
+  let seen = 0;
+
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+
+        if (seen > limit) {
+          controller.error(new Error("Download exceeds the byte cap"));
+
+          return;
+        }
+
+        controller.enqueue(chunk);
+      },
+    })
+  );
+};
+
+// A manifest is buffered to rewrite its refs, so it needs a read cap of its own.
+const readCappedText = async (
+  body: ReadableStream<Uint8Array> | null,
+  limit: number
+): Promise<string> => {
+  if (!body) {
+    return "";
+  }
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let text = "";
+  let read = 0;
+
+  while (read <= limit) {
+    // eslint-disable-next-line no-await-in-loop -- the cap is checked between reads
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    read += value.byteLength;
+    text += decoder.decode(value, { stream: true });
+  }
+
+  await reader.cancel();
+
+  if (read > limit) {
+    throw new Response("This file is too large to download here", {
+      status: 413,
+    });
+  }
+
+  return text;
+};
 
 // A manifest points at its media relatively, and a saved playlist has no base
 // url left to resolve them against, so the downloaded file would not play.
@@ -84,14 +153,23 @@ export const proxy = async (
   stem: string,
   deps: TransferDeps = {}
 ): Promise<Response> => {
-  // a page can name an internal host as its video; the proxy must not fetch it
+  // a page can name an internal host as its video; the proxy must not fetch it.
+  // Keep the approved addresses so the socket dials one of them, not a later
+  // answer from DNS.
+  let addresses: string[];
+
   try {
-    await assertPublicHost(videoUrl, deps.lookup ?? defaultLookup);
+    addresses = await resolvePublicAddresses(
+      videoUrl,
+      deps.lookup ?? defaultLookup
+    );
   } catch {
     throw new Response("Only public links are supported", { status: 403 });
   }
 
+  const limit = deps.maxBytes ?? MAX_DOWNLOAD_BYTES;
   const doFetch = deps.fetch ?? fetch;
+  const pinHost = deps.pinHost ?? pinnedFetch;
   const maxMs = deps.maxMs ?? UPSTREAM_MAX_MS;
 
   // Fast-fail when headers stall; the overall bound accepts truncating a stalled stream.
@@ -108,7 +186,7 @@ export const proxy = async (
   }
 
   try {
-    upstream = await doFetch(videoUrl, {
+    upstream = await pinHost(doFetch, videoUrl, addresses, {
       headers: upstreamHeaders,
       // the overall bound outlives this block: a trickling upstream must not hold the connection forever
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(maxMs)]),
@@ -140,7 +218,7 @@ export const proxy = async (
 
   const length = upstream.headers.get("content-length");
 
-  if (length && Number(length) > MAX_DOWNLOAD_BYTES) {
+  if (length && Number(length) > limit) {
     await upstream.body.cancel();
 
     throw new Response("This file is too large to download here", {
@@ -164,13 +242,19 @@ export const proxy = async (
       }
     }
 
-    return new Response(upstream.body, { headers: rangeHeaders, status: 206 });
+    return new Response(boundedBody(upstream.body, limit), {
+      headers: rangeHeaders,
+      status: 206,
+    });
   }
 
   if (isManifestContainer(ext)) {
-    // small text, so buffering costs nothing; the length below no longer applies
     return new Response(
-      absolutizeManifest(await upstream.text(), videoUrl, ext),
+      absolutizeManifest(
+        await readCappedText(upstream.body, limit),
+        videoUrl,
+        ext
+      ),
       { headers: base }
     );
   }
@@ -178,7 +262,7 @@ export const proxy = async (
   const headers = length ? { ...base, "Content-Length": length } : base;
 
   // seeking works when the client knows ranges are served
-  return new Response(upstream.body, {
+  return new Response(boundedBody(upstream.body, limit), {
     headers: { ...headers, "Accept-Ranges": "bytes" },
   });
 };

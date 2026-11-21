@@ -7,8 +7,12 @@
 import { containerOf } from "./container";
 import type { Platform } from "./platforms";
 import { PLATFORM_HOSTS } from "./platforms";
-import { assertPublicHost, defaultLookup } from "./public-host";
-import type { HostLookup } from "./public-host";
+import {
+  defaultLookup,
+  pinnedFetch,
+  resolvePublicAddresses,
+} from "./public-host";
+import type { HostLookup, PinHost } from "./public-host";
 import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
@@ -32,6 +36,15 @@ export interface MediaResolverDeps {
     deps?: YouTubeDeps
   ) => Promise<TubeAsset[]> | TubeAsset[];
   lookup?: HostLookup;
+  pinHost?: PinHost;
+}
+
+// One guarded transport for every network read in this module: the lookup
+// proves the host, the pin makes the socket use that proof.
+interface FetchContext {
+  doFetch: typeof fetch;
+  lookup: HostLookup;
+  pinHost: PinHost;
 }
 
 const INSTA_RE =
@@ -50,16 +63,6 @@ const PAGE_HEADERS = {
 
 // probing for a file, not a page: accept whatever the host serves
 const FILE_HEADERS = { ...PAGE_HEADERS, Accept: "*/*" };
-
-const fetchPage = (
-  doFetch: typeof fetch,
-  url: string,
-  headers: typeof PAGE_HEADERS = PAGE_HEADERS
-): Promise<Response> =>
-  doFetch(url, {
-    headers,
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
 
 // A page carrying og:video is small; a mislabelled binary is not. Read only the
 // head of the body, so a 1GB file cannot be decoded into a string.
@@ -84,8 +87,11 @@ const readCapped = async (res: Response, cap: number): Promise<string> => {
       break;
     }
 
+    const remaining = cap - read;
+
     read += value.length;
-    text += decoder.decode(value, { stream: true });
+    // a single chunk can be larger than the budget — keep only what fits
+    text += decoder.decode(value.subarray(0, remaining), { stream: true });
   }
 
   await reader.cancel();
@@ -93,22 +99,29 @@ const readCapped = async (res: Response, cap: number): Promise<string> => {
   return text;
 };
 
+// JSON has no streaming parser here: read a capped string, then parse it. An
+// oversized body fails the parse instead of being buffered without a limit.
+const readCappedJson = async (res: Response) =>
+  JSON.parse(await readCapped(res, MAX_PAGE_BYTES));
+
 const MAX_REDIRECTS = 4;
 
+// Every hop is checked before it is dialled, and the socket is pinned to the
+// addresses the check approved, so a DNS change between check and fetch cannot
+// redirect the connection to a private host.
 const fetchPublic = async (
-  doFetch: typeof fetch,
+  ctx: FetchContext,
   url: string,
-  lookup: HostLookup,
-  headers: typeof PAGE_HEADERS
+  headers: BunFetchRequestInit["headers"]
 ): Promise<{ res: Response; url: string }> => {
   let current = url;
 
   for (let hop = 0; hop < MAX_REDIRECTS; hop += 1) {
     // eslint-disable-next-line no-await-in-loop -- chain stays sequential: each hop feeds the next lookup
-    await assertPublicHost(current, lookup);
+    const addresses = await resolvePublicAddresses(current, ctx.lookup);
 
     // eslint-disable-next-line no-await-in-loop -- response needed before following the redirect
-    const res = await doFetch(current, {
+    const res = await ctx.pinHost(ctx.doFetch, current, addresses, {
       headers,
       redirect: "manual",
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -293,12 +306,15 @@ const assertOk = (res: Response, upstream: string): void => {
 const resolveInstagram = async (
   sourceUrl: string,
   shortcode: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const res = await fetchPage(doFetch, sourceUrl);
+  const { res, url } = await fetchPublic(ctx, sourceUrl, PAGE_HEADERS);
 
   // more specific than the status itself: a login redirect is a private post, not a bad link
-  if (res.redirected && res.url.includes("/accounts/login")) {
+  if (
+    (res.redirected && res.url.includes("/accounts/login")) ||
+    url.includes("/accounts/login")
+  ) {
     throw new Error(
       "Private or login-required post. Only public posts are supported."
     );
@@ -306,7 +322,7 @@ const resolveInstagram = async (
 
   assertOk(res, "Instagram");
 
-  const html = await res.text();
+  const html = await readCapped(res, MAX_PAGE_BYTES);
 
   if (html.includes("/accounts/login") && !html.includes("og:video")) {
     throw new Error("Private post or requires login. Only public posts work.");
@@ -327,13 +343,12 @@ const resolveInstagram = async (
 
       const embedUrl = `https://www.instagram.com/${embedKind}/${shortcode}/embed/captioned/`;
 
-      const er = await doFetch(embedUrl, {
-        headers: { "User-Agent": UA },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      const { res: er } = await fetchPublic(ctx, embedUrl, {
+        "User-Agent": UA,
       });
 
       if (er.ok) {
-        const ehtml = await er.text();
+        const ehtml = await readCapped(er, MAX_PAGE_BYTES);
 
         const evRaw =
           ehtml.match(
@@ -430,13 +445,16 @@ const resolveFacebook = async (
   sourceUrl: string,
   id: string,
   fetchUrl: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const res = await fetchPage(doFetch, fetchUrl);
+  const { res, url } = await fetchPublic(ctx, fetchUrl, PAGE_HEADERS);
 
   // a login redirect is the only reliable private signal: public pages carry
   // login links in their chrome, so page text must never decide this
-  if (res.redirected && res.url.includes("facebook.com/login")) {
+  if (
+    (res.redirected && res.url.includes("facebook.com/login")) ||
+    url.includes("facebook.com/login")
+  ) {
     throw new Error(
       "Private or login-required post. Only public posts are supported."
     );
@@ -444,7 +462,7 @@ const resolveFacebook = async (
 
   assertOk(res, "Facebook");
 
-  const html = await res.text();
+  const html = await readCapped(res, MAX_PAGE_BYTES);
 
   // Facebook names two rungs of the same video; og:video is the sd-grade last
   // resort when neither stream url is in the page
@@ -492,15 +510,9 @@ const NO_VIDEO_FOUND =
 
 const resolveGeneric = async (
   sourceUrl: string,
-  doFetch: typeof fetch,
-  lookup: HostLookup
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res, url } = await fetchPublic(
-    doFetch,
-    sourceUrl,
-    lookup,
-    FILE_HEADERS
-  );
+  const { res, url } = await fetchPublic(ctx, sourceUrl, FILE_HEADERS);
 
   if (res.status === 404) {
     throw new Error("Post not found. Check the URL.");
@@ -603,7 +615,7 @@ interface SyndicationTweet {
 const resolveTwitter = async (
   sourceUrl: string,
   id: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
   // the token is the web client's derivation from the tweet id; an absent token returns an empty payload
   // shortcut: X does not validate this token today and the derivation divides an id above 2^53 as a float — derive it exactly if X ever starts rejecting tokens
@@ -613,9 +625,9 @@ const resolveTwitter = async (
 
   const endpoint = `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=en`;
 
-  const res = await doFetch(endpoint, {
-    headers: { Accept: "application/json", "User-Agent": CHROME_UA },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  const { res } = await fetchPublic(ctx, endpoint, {
+    Accept: "application/json",
+    "User-Agent": CHROME_UA,
   });
 
   assertOk(res, "X");
@@ -624,7 +636,7 @@ const resolveTwitter = async (
   let tweet: SyndicationTweet;
 
   try {
-    tweet = await res.json();
+    tweet = await readCappedJson(res);
   } catch {
     throw new Error("X returned an unexpected response. Try again later.");
   }
@@ -744,13 +756,13 @@ interface RedditListing {
 const resolveReddit = async (
   sourceUrl: string,
   id: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
   const jsonUrl = `${sourceUrl.split("?")[0].replace(/\/+$/u, "")}.json`;
 
-  const res = await doFetch(jsonUrl, {
-    headers: { Accept: "application/json", "User-Agent": CHROME_UA },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  const { res } = await fetchPublic(ctx, jsonUrl, {
+    Accept: "application/json",
+    "User-Agent": CHROME_UA,
   });
 
   assertOk(res, "Reddit");
@@ -758,7 +770,7 @@ const resolveReddit = async (
   let listing: RedditListing[];
 
   try {
-    listing = await res.json();
+    listing = await readCappedJson(res);
   } catch {
     throw new Error("Reddit returned an unexpected response. Try again later.");
   }
@@ -834,19 +846,23 @@ interface StreamableResponse {
 const resolveStreamable = async (
   sourceUrl: string,
   code: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const res = await doFetch(`https://api.streamable.com/videos/${code}`, {
-    headers: { Accept: "application/json", "User-Agent": CHROME_UA },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
+  const { res } = await fetchPublic(
+    ctx,
+    `https://api.streamable.com/videos/${code}`,
+    {
+      Accept: "application/json",
+      "User-Agent": CHROME_UA,
+    }
+  );
 
   assertOk(res, "Streamable");
 
   let data: StreamableResponse;
 
   try {
-    data = await res.json();
+    data = await readCappedJson(res);
   } catch {
     throw new Error(
       "Streamable returned an unexpected response. Try again later."
@@ -939,7 +955,7 @@ const resolveVimeo = async (
   sourceUrl: string,
   id: string,
   hash: string | undefined,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
   const configUrl = new URL(`https://player.vimeo.com/video/${id}/config`);
 
@@ -947,13 +963,10 @@ const resolveVimeo = async (
     configUrl.searchParams.set("h", hash);
   }
 
-  const res = await doFetch(configUrl.href, {
-    headers: {
-      Accept: "application/json",
-      Referer: `https://player.vimeo.com/video/${id}`,
-      "User-Agent": CHROME_UA,
-    },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  const { res } = await fetchPublic(ctx, configUrl.href, {
+    Accept: "application/json",
+    Referer: `https://player.vimeo.com/video/${id}`,
+    "User-Agent": CHROME_UA,
   });
 
   assertOk(res, "Vimeo");
@@ -961,7 +974,7 @@ const resolveVimeo = async (
   let data: VimeoConfig;
 
   try {
-    data = await res.json();
+    data = await readCappedJson(res);
   } catch {
     throw new Error("Vimeo returned an unexpected response. Try again later.");
   }
@@ -1053,13 +1066,13 @@ const parseTikTokVideo = (html: string): TikTokVideo | undefined => {
 const resolveTikTok = async (
   sourceUrl: string,
   id: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const res = await fetchPage(doFetch, sourceUrl);
+  const { res } = await fetchPublic(ctx, sourceUrl, PAGE_HEADERS);
 
   assertOk(res, "TikTok");
 
-  const html = await res.text();
+  const html = await readCapped(res, MAX_PAGE_BYTES);
 
   const video = parseTikTokVideo(html);
 
@@ -1117,13 +1130,13 @@ const matchThreads = (sourceUrl: string): { id: string } | undefined => {
 const resolveThreads = async (
   sourceUrl: string,
   id: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const res = await fetchPage(doFetch, sourceUrl);
+  const { res } = await fetchPublic(ctx, sourceUrl, PAGE_HEADERS);
 
   assertOk(res, "Threads");
 
-  const html = await res.text();
+  const html = await readCapped(res, MAX_PAGE_BYTES);
 
   const videoUrl = extractOgVideo(html);
 
@@ -1185,14 +1198,12 @@ interface DailymotionMetadata {
 const resolveDailymotion = async (
   sourceUrl: string,
   id: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const res = await doFetch(
+  const { res } = await fetchPublic(
+    ctx,
     `https://www.dailymotion.com/player/metadata/video/${id}`,
-    {
-      headers: { Accept: "application/json", "User-Agent": CHROME_UA },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    }
+    { Accept: "application/json", "User-Agent": CHROME_UA }
   );
 
   assertOk(res, "Dailymotion");
@@ -1200,7 +1211,7 @@ const resolveDailymotion = async (
   let data: DailymotionMetadata;
 
   try {
-    data = await res.json();
+    data = await readCappedJson(res);
   } catch {
     throw new Error(
       "Dailymotion returned an unexpected response. Try again later."
@@ -1268,13 +1279,13 @@ const matchLoom = (sourceUrl: string): { id: string } | undefined => {
 const resolveLoom = async (
   sourceUrl: string,
   id: string,
-  doFetch: typeof fetch
+  ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const res = await fetchPage(doFetch, sourceUrl);
+  const { res } = await fetchPublic(ctx, sourceUrl, PAGE_HEADERS);
 
   assertOk(res, "Loom");
 
-  const html = await res.text();
+  const html = await readCapped(res, MAX_PAGE_BYTES);
 
   const videoUrl = extractOgVideo(html);
 
@@ -1306,66 +1317,70 @@ export const resolve = async (
     throw new Error("Paste a video link");
   }
 
-  const doFetch = deps.fetch ?? fetch;
+  const ctx: FetchContext = {
+    doFetch: deps.fetch ?? fetch,
+    lookup: deps.lookup ?? defaultLookup,
+    pinHost: deps.pinHost ?? pinnedFetch,
+  };
 
   const insta = trimmed.match(INSTA_RE)?.groups?.shortcode;
 
   if (insta) {
-    return resolveInstagram(canonicalReelUrl(trimmed), insta, doFetch);
+    return resolveInstagram(canonicalReelUrl(trimmed), insta, ctx);
   }
 
   const fb = matchFacebookId(trimmed);
 
   if (fb) {
-    return resolveFacebook(trimmed, fb.id, fb.fetchUrl, doFetch);
+    return resolveFacebook(trimmed, fb.id, fb.fetchUrl, ctx);
   }
 
   const tweet = trimmed.match(TWEET_RE)?.groups?.id;
 
   if (tweet) {
-    return resolveTwitter(trimmed, tweet, doFetch);
+    return resolveTwitter(trimmed, tweet, ctx);
   }
 
   const reddit = matchReddit(trimmed);
 
   if (reddit) {
-    return resolveReddit(trimmed, reddit.id, doFetch);
+    return resolveReddit(trimmed, reddit.id, ctx);
   }
 
   const streamable = matchStreamable(trimmed);
 
   if (streamable) {
-    return resolveStreamable(trimmed, streamable.code, doFetch);
+    return resolveStreamable(trimmed, streamable.code, ctx);
   }
 
   const vimeo = matchVimeo(trimmed);
 
   if (vimeo) {
-    return resolveVimeo(trimmed, vimeo.id, vimeo.hash, doFetch);
+    return resolveVimeo(trimmed, vimeo.id, vimeo.hash, ctx);
   }
 
   const tiktok = matchTikTok(trimmed);
 
   if (tiktok) {
-    return resolveTikTok(trimmed, tiktok.id, doFetch);
+    return resolveTikTok(trimmed, tiktok.id, ctx);
   }
 
   const threads = matchThreads(trimmed);
 
   if (threads) {
-    return resolveThreads(trimmed, threads.id, doFetch);
+    return resolveThreads(trimmed, threads.id, ctx);
   }
 
   const dailymotion = matchDailymotion(trimmed);
 
   if (dailymotion) {
-    return resolveDailymotion(trimmed, dailymotion.id, doFetch);
+    return resolveDailymotion(trimmed, dailymotion.id, ctx);
   }
 
   const loom = matchLoom(trimmed);
 
   if (loom) {
-    return resolveLoom(trimmed, loom.id, doFetch);
+    return resolveLoom(trimmed, loom.id, ctx);
   }
 
   const ytId = matchYouTubeId(trimmed);
@@ -1384,5 +1399,5 @@ export const resolve = async (
     );
   }
 
-  return resolveGeneric(trimmed, doFetch, deps.lookup ?? defaultLookup);
+  return resolveGeneric(trimmed, ctx);
 };

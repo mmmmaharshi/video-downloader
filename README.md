@@ -11,4 +11,8 @@ Live: https://download.maharshi.work
 
 `DOWNLOAD_SECRET` signs the download links (`/api/download?…&s=…`) and must be the same value on every instance — set it once in the deploy environment. Without it the resolve action cannot build a download link.
 
+In Vercel, scope `DOWNLOAD_SECRET` to Production only. Contributors can open pull requests, so Preview deployments must not read this value. `vercel.json` disables git auto-deploys. The `verify` workflow's deploy hook on `master` is the only path to production.
+
 Verify with `bun run verify` (typecheck, tests, lint + format, production build).
+
+The HeroUI MCP server in `opencode.json` is pinned to `@heroui/react-mcp@1.1.4`. Without `-y`, `npx` prompts before install.

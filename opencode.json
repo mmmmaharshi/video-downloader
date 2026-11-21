@@ -3,7 +3,7 @@
   "mcp": {
     "heroui-react": {
       "type": "local",
-      "command": ["npx", "-y", "@heroui/react-mcp@latest"]
+      "command": ["npx", "@heroui/react-mcp@1.1.4"]
     }
   }
 }

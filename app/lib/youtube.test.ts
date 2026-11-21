@@ -79,9 +79,13 @@ describe("getYouTubeFormats", () => {
     const open = "https://x/android-open.mp4";
 
     const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
-      fetch: stubFetch(
-        (url) => new Response(null, { status: url === gated ? 403 : 200 })
-      ),
+      fetch: stubFetch((_url, init) => {
+        const host = new Headers(init?.headers).get("host");
+
+        return new Response(null, {
+          status: host === "x" && _url.includes("ios-gated") ? 403 : 200,
+        });
+      }),
       getInfo: (_id, client) =>
         client === "IOS" ? info([mp4(gated, 1080)]) : info([mp4(open, 360)]),
       lookup: publicHost,

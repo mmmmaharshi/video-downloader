@@ -1,6 +1,7 @@
 import {
   Button,
   Input,
+  Label,
   ListBox,
   Modal,
   Select,
@@ -60,6 +61,11 @@ export const meta = () => [
 export const links: Route.LinksFunction = () => [
   { href: "https://download.maharshi.work/", rel: "canonical" },
 ];
+
+// HeroUI's dark focus ring is under 1px and fades out on buttons; keep a
+// visible 2px ring on every control this page owns.
+const FOCUS_RING =
+  "focus-visible:outline-2! focus-visible:outline-offset-2! focus-visible:outline-white! focus-visible:outline-solid!";
 
 // The media never overflows the dialog: 70vh keeps landscape videos width-bound
 // on tall screens, while 100dvh minus the header/footer/dialog chrome (~300px)
@@ -419,51 +425,62 @@ const Home = () => {
 
   return (
     <div className="bg-background text-foreground flex min-h-dvh flex-col">
-      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col justify-center gap-8 px-6 py-10 md:px-10 md:py-20">
-        <div className="flex flex-col gap-6">
+      <main className="mx-auto flex w-full max-w-[720px] flex-1 flex-col px-6 py-16 md:px-10 md:py-24">
+        <header className="flex flex-col gap-3">
           <Typography type="h1">Video downloader</Typography>
+          <Typography color="muted" type="body-sm">
+            Paste a public video link and download it. No login, no storage.
+          </Typography>
+        </header>
 
-          <form
-            className="flex flex-col gap-2 sm:flex-row sm:items-end"
-            onSubmit={(e) => {
-              e.preventDefault();
-              submit(
-                new FormData(e.currentTarget).get("url")?.toString() ?? ""
-              );
-            }}
+        <form
+          className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-end"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit(new FormData(e.currentTarget).get("url")?.toString() ?? "");
+          }}
+        >
+          <TextField
+            fullWidth
+            isRequired
+            name="url"
+            // validation stays on the aria path: submit() answers an empty
+            // field with a toast instead of a native browser bubble
+            validationBehavior="aria"
           >
-            <TextField
-              aria-label="Video link"
-              fullWidth
-              isRequired
-              name="url"
-              // aria validation keeps the native bubble out of it: submit()
-              // rejects an empty field as a toast, like every other failure
-              validationBehavior="aria"
-            >
-              <Input autoComplete="off" placeholder="Paste any video link" />
-            </TextField>
-            <Button
-              className="w-full sm:w-auto"
-              isDisabled={isLoading}
-              isPending={isLoading}
-              type="submit"
-              variant="primary"
-            >
-              {({ isPending }) => (
-                <>
-                  {isPending ? <Spinner color="current" size="sm" /> : null}
-                  {isPending ? "Fetching…" : "Fetch"}
-                </>
-              )}
-            </Button>
-          </form>
-        </div>
+            <Label>Video link</Label>
+            <Input
+              autoComplete="off"
+              inputMode="url"
+              placeholder="https://…"
+              aria-describedby="url-hint"
+              className={`min-h-12 ${FOCUS_RING}`}
+            />
+          </TextField>
+          <Button
+            className={`min-h-12 w-full sm:min-h-10 sm:w-auto ${FOCUS_RING}`}
+            isDisabled={isLoading}
+            isPending={isLoading}
+            type="submit"
+            variant="primary"
+          >
+            {({ isPending }) => (
+              <>
+                {isPending ? <Spinner color="current" size="sm" /> : null}
+                {isPending ? "Fetching…" : "Fetch"}
+              </>
+            )}
+          </Button>
+        </form>
 
-        <Typography color="muted">
-          Paste any video link and hit Fetch to download it from Instagram, X
-          (Twitter), YouTube, Facebook, Reddit, Streamable, Vimeo, TikTok,
-          Threads, Dailymotion, Loom, and direct video links.
+        <Typography
+          className="mt-6 max-w-[60ch]"
+          color="muted"
+          id="url-hint"
+          type="body-sm"
+        >
+          Works with Instagram, X, YouTube, Facebook, Reddit, Streamable, Vimeo,
+          TikTok, Threads, Dailymotion, Loom, and direct video files.
         </Typography>
       </main>
 
@@ -500,7 +517,7 @@ const Home = () => {
                 {!isYouTube && current && <PreviewMedia asset={current} />}
               </Modal.Body>
               <Modal.Footer>
-                <Button slot="close" variant="tertiary">
+                <Button slot="close" variant="tertiary" className={FOCUS_RING}>
                   Close
                 </Button>
                 {shown.length > 1 && (
@@ -531,6 +548,7 @@ const Home = () => {
                   </Select>
                 )}
                 <Button
+                  className={FOCUS_RING}
                   variant="primary"
                   isDisabled={converting}
                   isPending={converting}
@@ -545,6 +563,7 @@ const Home = () => {
                 </Button>
                 {isGif && current && copySupported && (
                   <Button
+                    className={FOCUS_RING}
                     variant="secondary"
                     isDisabled={copying}
                     isPending={copying}

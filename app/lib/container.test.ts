@@ -36,8 +36,6 @@ describe("containerOf", () => {
       encoding: "utf-8",
     });
 
-    // type imports are erased at build and safe; value imports would drag
-    // node builtins into the client bundle
-    expect(source).not.toMatch(/^\s*import(?!\s+type\b)/mu);
+    expect(source).not.toMatch(/\bimport\b/u);
   });
 });

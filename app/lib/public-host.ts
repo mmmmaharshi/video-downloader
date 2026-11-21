@@ -10,6 +10,16 @@ import { isIP } from "node:net";
 // Both sync and async doubles work — every use site awaits.
 export type HostLookup = (hostname: string) => Promise<string[]> | string[];
 
+// The pin seam: dial one validated address while the request still names the
+// original origin. Tests inject a double that records the addresses instead of
+// opening a socket; production uses pinnedFetch.
+export type PinHost = (
+  doFetch: typeof fetch,
+  url: string,
+  addresses: string[],
+  init: BunFetchRequestInit
+) => Promise<Response>;
+
 export const defaultLookup: HostLookup = async (hostname) => {
   const records = await dnsLookup(hostname, { all: true });
 
@@ -89,10 +99,12 @@ const isBlockedAddress = (addr: string): boolean => {
   return true;
 };
 
-export const assertPublicHost = async (
+// Resolve and validate in one step so the caller can pin the connection to the
+// very addresses the guard approved. Discarding them reintroduces DNS rebinding.
+export const resolvePublicAddresses = async (
   url: string,
   lookup: HostLookup
-): Promise<void> => {
+): Promise<string[]> => {
   let addresses: string[];
 
   try {
@@ -104,4 +116,43 @@ export const assertPublicHost = async (
   if (!addresses.length || addresses.some(isBlockedAddress)) {
     throw new Error("Only public links are supported.");
   }
+
+  return addresses;
+};
+
+export const assertPublicHost = async (
+  url: string,
+  lookup: HostLookup
+): Promise<void> => {
+  await resolvePublicAddresses(url, lookup);
+};
+
+// Bun dials the address that appears in the URL, so put the checked address
+// there and keep the origin in Host and tls.serverName. A relative Location
+// resolves against the address, so callers follow redirects themselves.
+// eslint-disable-next-line require-await -- the seam stays async so a rejected approval surfaces as a rejection, not a sync throw
+export const pinnedFetch: PinHost = async (doFetch, url, addresses, init) => {
+  const [address] = addresses;
+
+  // fail closed: an empty approval set must never turn into a hostname fetch
+  if (!address) {
+    throw new Error("Only public links are supported.");
+  }
+
+  const target = new URL(url);
+  const dial = new URL(url);
+
+  // the URL parser only accepts a bare address for IPv4; IPv6 needs brackets
+  dial.hostname = isIP(address) === 6 ? `[${address}]` : address;
+
+  const headers = new Headers(init.headers);
+
+  headers.set("Host", target.host);
+
+  return doFetch(dial.href, {
+    ...init,
+    headers,
+    proxy: false,
+    tls: { serverName: target.hostname },
+  });
 };

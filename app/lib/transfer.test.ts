@@ -281,4 +281,90 @@ describe("proxy", () => {
     expect(res.status).toBe(502);
     expect(await res.text()).toBe("Upstream unreachable");
   });
+
+  test("pins the proxy connection to the approved address", async () => {
+    const approved: string[][] = [];
+
+    const res = await proxy(CDN, "ABC123", {
+      fetch: ok(),
+      pinHost: (doFetch, url, addresses, init) => {
+        approved.push(addresses);
+
+        return doFetch(url, init);
+      },
+    });
+
+    expect(approved).toEqual([["93.184.216.34"]]);
+    expect(await res.text()).toBe("video-bytes");
+  });
+
+  test("refuses a link with no usable address", async () => {
+    const res = await thrown(
+      proxy(CDN, "ABC123", { fetch: ok(), lookup: () => [] })
+    );
+
+    expect(res.status).toBe(403);
+  });
+
+  test("stops a chunked body that passes the byte cap", async () => {
+    const chunk = new TextEncoder().encode("0123456789");
+
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+
+    const chunked = stubFetch(
+      () =>
+        new Response(body, {
+          headers: { "content-type": "video/mp4" },
+          status: 200,
+        })
+    );
+
+    const res = await proxy(CDN, "ABC123", { fetch: chunked, maxBytes: 10 });
+    const reader = res.body?.getReader();
+
+    if (!reader) {
+      throw new Error("expected a response body");
+    }
+
+    let received = 0;
+    let errored = false;
+    let done = false;
+
+    try {
+      while (!done) {
+        // eslint-disable-next-line no-await-in-loop -- draining the bounded stream one chunk at a time
+        const { done: finished, value } = await reader.read();
+
+        done = finished;
+
+        if (value) {
+          received += value.byteLength;
+        }
+      }
+    } catch {
+      errored = true;
+    }
+
+    expect(errored).toBe(true);
+    expect(received).toBeLessThanOrEqual(10);
+  });
+
+  test("refuses a buffered manifest past the byte cap", async () => {
+    const huge = `#EXTM3U\n${"x".repeat(100)}`;
+
+    const res = await thrown(
+      proxy("https://cdn.example/x.m3u8", "abc", {
+        fetch: ok(huge, "application/vnd.apple.mpegurl"),
+        maxBytes: 10,
+      })
+    );
+
+    expect(res.status).toBe(413);
+  });
 });

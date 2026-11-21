@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
 import { stubFetch } from "./fake-fetch";
-import { resolve } from "./media-resolver";
+import { resolve as resolveRaw } from "./media-resolver";
+import type { MediaResolverDeps } from "./media-resolver";
+import { pinnedFetch } from "./public-host";
+
+// deterministic DNS for every path: no test reaches the real resolver
+const publicHost = () => ["93.184.216.34"];
+
+const resolve = (url: string, deps: MediaResolverDeps = {}) =>
+  resolveRaw(url, { lookup: publicHost, ...deps });
 
 const REEL = "https://www.instagram.com/reel/ABC123/";
 const CDN = "https://scontent.cdninstagram.com/v/abc.mp4";
@@ -128,14 +136,20 @@ describe("resolve", () => {
 
   test("a plural /reels/ url is fetched as the singular /reel/ form", async () => {
     const requested: string[] = [];
+    const hosts: (string | null)[] = [];
+
     await resolve("https://www.instagram.com/reels/DeUJBPLgZeX/", {
-      fetch: stubFetch((url) => {
+      fetch: stubFetch((url, init) => {
         requested.push(url);
+        hosts.push(new Headers(init?.headers).get("host"));
 
         return page(`<meta property="og:video" content="${CDN}">`);
       }),
     });
-    expect(requested[0]).toBe("https://www.instagram.com/reel/DeUJBPLgZeX/");
+
+    // the dialled address is the checked IP, but the path and Host name the post
+    expect(new URL(requested[0] ?? "").pathname).toBe("/reel/DeUJBPLgZeX/");
+    expect(hosts[0]).toBe("www.instagram.com");
   });
 
   test("rejects an empty url", async () => {
@@ -352,9 +366,12 @@ describe("resolve — X/Twitter", () => {
 
   test("asks the syndication endpoint for the tweet id", async () => {
     let requested = "";
+    const hosts: (string | null)[] = [];
+
     await resolve(TWEET, {
-      fetch: stubFetch((url) => {
+      fetch: stubFetch((url, init) => {
         requested = url;
+        hosts.push(new Headers(init?.headers).get("host"));
 
         return tweetResult({
           id_str: "2006763209378922836",
@@ -363,9 +380,9 @@ describe("resolve — X/Twitter", () => {
       }),
     });
     const u = new URL(requested);
-    expect(`${u.origin}${u.pathname}`).toBe(
-      "https://cdn.syndication.twimg.com/tweet-result"
-    );
+    // the pin dials an IP; the original origin must survive in Host
+    expect(hosts[0]).toBe("cdn.syndication.twimg.com");
+    expect(u.pathname).toBe("/tweet-result");
     expect(u.searchParams.get("id")).toBe("2006763209378922836");
     expect(u.searchParams.get("token")).toBeTruthy();
   });
@@ -1215,9 +1232,6 @@ describe("resolve — Facebook", () => {
 // directly, otherwise the page's og:video tag is the last resort.
 const MP4_URL = "https://cdn.example.com/clips/funny-cat.mp4?token=abc";
 
-// deterministic DNS: no test below touches the real resolver
-const publicHost = () => ["93.184.216.34"];
-
 describe("resolve — direct links", () => {
   test("resolves a link that serves video content directly", async () => {
     const [asset] = await resolve(MP4_URL, {
@@ -1424,7 +1438,7 @@ describe("resolve — direct links", () => {
   test("follows a redirect to a public host", async () => {
     const [asset] = await resolve("https://short.example/x", {
       fetch: stubFetch((url) =>
-        url.includes("short.example")
+        url.includes("/x")
           ? new Response(null, { headers: { location: MP4_URL }, status: 301 })
           : new Response("bytes", {
               headers: { "content-type": "video/mp4" },
@@ -1441,7 +1455,7 @@ describe("resolve — direct links", () => {
     await expect(
       resolve("https://short.example/x", {
         fetch: stubFetch((url) =>
-          url.includes("short.example")
+          url.includes("/x")
             ? new Response(null, {
                 headers: { location: "http://127.0.0.1/secret.mp4" },
                 status: 301,
@@ -1469,5 +1483,116 @@ describe("resolve — direct links", () => {
         lookup: publicHost,
       })
     ).rejects.toThrow("too many times");
+  });
+});
+
+describe("guarded platform fetches", () => {
+  test("dials the approved address while keeping Host and SNI", async () => {
+    let dialed = "";
+    const hosts: (string | null)[] = [];
+    const snis: (string | undefined)[] = [];
+
+    const responder = stubFetch((url, init) => {
+      dialed = url;
+      hosts.push(new Headers(init?.headers).get("host"));
+      snis.push(init?.tls?.serverName);
+
+      return new Response("ok");
+    });
+
+    await pinnedFetch(
+      responder,
+      "https://example.com:8443/v.mp4",
+      ["93.184.216.34"],
+      {}
+    );
+
+    expect(dialed).toBe("https://93.184.216.34:8443/v.mp4");
+    expect(hosts[0]).toBe("example.com:8443");
+    expect(snis[0]).toBe("example.com");
+  });
+
+  test("fails closed when no address was approved", async () => {
+    await expect(
+      pinnedFetch(
+        stubFetch(() => new Response("ok")),
+        "https://example.com/v.mp4",
+        [],
+        {}
+      )
+    ).rejects.toThrow("Only public links");
+  });
+
+  test("passes the validated addresses to the pin seam", async () => {
+    const approved: string[][] = [];
+
+    const [asset] = await resolve(TWEET, {
+      fetch: stubFetch(() =>
+        tweetResult({
+          id_str: "1",
+          mediaDetails: [videoMedia],
+        })
+      ),
+      lookup: () => ["93.184.216.34", "8.8.8.8"],
+      pinHost: (doFetch, url, addresses, init) => {
+        approved.push(addresses);
+
+        return doFetch(url, init);
+      },
+    });
+
+    expect(approved).toEqual([["93.184.216.34", "8.8.8.8"]]);
+    expect(asset.videoUrl).toBe(BEST_MP4);
+  });
+
+  test("a platform redirect to a private address never fetches it", async () => {
+    await expect(
+      resolve(TWEET, {
+        fetch: stubFetch((url) => {
+          if (url.includes("/secret")) {
+            throw new Error("private host was fetched");
+          }
+
+          return new Response(null, {
+            headers: { location: "http://127.0.0.1/secret" },
+            status: 302,
+          });
+        }),
+        lookup: (host) =>
+          host === "cdn.syndication.twimg.com"
+            ? ["93.184.216.34"]
+            : ["127.0.0.1"],
+      })
+    ).rejects.toThrow("Only public links");
+  });
+
+  test("does not read an oversized page past the cap", async () => {
+    const tail = "x".repeat(600 * 1024);
+
+    await expect(
+      resolve(THREADS_URL, {
+        fetch: stubFetch(
+          () =>
+            new Response(
+              `<html><head>${tail}<meta property="og:video" content="https://cdn.threads.com/v.mp4"></head></html>`,
+              { status: 200 }
+            )
+        ),
+      })
+    ).rejects.toThrow("No video found");
+  });
+
+  test("does not parse an oversized json payload past the cap", async () => {
+    const padding = "x".repeat(600 * 1024);
+
+    await expect(
+      resolve(STREAMABLE_URL, {
+        fetch: stubFetch(() =>
+          Response.json({
+            files: { mp4: { url: STREAMABLE_MP4 }, pad: padding },
+          })
+        ),
+      })
+    ).rejects.toThrow("Streamable returned an unexpected response");
   });
 });

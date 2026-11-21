@@ -23,6 +23,9 @@ const mp4 = (url: string, height: number) => ({
 
 const headOk = stubFetch(() => new Response(null, { status: 200 }));
 
+// deterministic DNS: no test below touches the real resolver
+const publicHost = () => ["93.184.216.34"];
+
 describe("getYouTubeFormats", () => {
   test("keeps mp4 renditions best-first by height", async () => {
     const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
@@ -33,6 +36,7 @@ describe("getYouTubeFormats", () => {
           mp4("https://x/1080.mp4", 1080),
           mp4("https://x/720.mp4", 720),
         ]),
+      lookup: publicHost,
     });
 
     expect(formats.map((f) => f.videoUrl)).toEqual([
@@ -61,6 +65,7 @@ describe("getYouTubeFormats", () => {
             width: 0,
           },
         ]),
+      lookup: publicHost,
     });
 
     expect(formats.map((f) => f.videoUrl)).toEqual([
@@ -79,6 +84,7 @@ describe("getYouTubeFormats", () => {
       ),
       getInfo: (_id, client) =>
         client === "IOS" ? info([mp4(gated, 1080)]) : info([mp4(open, 360)]),
+      lookup: publicHost,
     });
 
     expect(formats.map((f) => f.videoUrl)).toEqual([open]);
@@ -88,6 +94,7 @@ describe("getYouTubeFormats", () => {
     const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
       fetch: stubFetch(() => new Response(null, { status: 403 })),
       getInfo: () => info([mp4("https://x/gated.mp4", 1080)]),
+      lookup: publicHost,
     });
 
     expect(formats).toEqual([]);
@@ -113,6 +120,7 @@ describe("getYouTubeFormats", () => {
     const err = await getYouTubeFormats("dQw4w9WgXcQ", {
       fetch: headOk,
       getInfo: down,
+      lookup: publicHost,
     }).catch((error) => error);
 
     if (!(err instanceof Error)) {
@@ -127,6 +135,7 @@ describe("getYouTubeFormats", () => {
     const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
       fetch: headOk,
       getInfo: () => info([{ height: 720, mime_type: "video/webm", width: 0 }]),
+      lookup: publicHost,
     });
 
     expect(formats).toEqual([]);
@@ -139,8 +148,57 @@ describe("getYouTubeFormats", () => {
         ...info([mp4("https://x/720.mp4", 720)]),
         title: "Never Gonna Give You Up",
       }),
+      lookup: publicHost,
     });
 
     expect(formats.map((f) => f.title)).toEqual(["Never Gonna Give You Up"]);
+  });
+
+  test("refuses to send a HEAD request to a private format host", async () => {
+    const privateUrl = "http://169.254.169.254/latest/meta-data/";
+    const fetched: string[] = [];
+
+    const record = stubFetch((url) => {
+      fetched.push(url);
+
+      return new Response(null, { status: 200 });
+    });
+
+    const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
+      fetch: record,
+      getInfo: () => info([mp4(privateUrl, 1080)]),
+      lookup: () => ["169.254.169.254"],
+    });
+
+    expect(formats).toEqual([]);
+    expect(fetched).toEqual([]);
+  });
+
+  test("refuses a redirect from a public format host to a private host", async () => {
+    const publicUrl = "https://cdn.example.com/video.mp4";
+    const privateUrl = "http://169.254.169.254/latest/meta-data/";
+    const fetched: string[] = [];
+
+    const redirect = stubFetch((url) => {
+      fetched.push(url);
+
+      return url === publicUrl
+        ? new Response(null, {
+            headers: { location: privateUrl },
+            status: 302,
+          })
+        : new Response(null, { status: 200 });
+    });
+
+    await getYouTubeFormats("dQw4w9WgXcQ", {
+      fetch: redirect,
+      getInfo: () => info([mp4(publicUrl, 1080)]),
+      lookup: (hostname) =>
+        hostname === "cdn.example.com"
+          ? ["93.184.216.34"]
+          : ["169.254.169.254"],
+    });
+
+    expect(fetched).not.toContain(privateUrl);
   });
 });

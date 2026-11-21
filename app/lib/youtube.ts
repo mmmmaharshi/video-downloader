@@ -8,6 +8,9 @@
 
 import { Innertube } from "youtubei.js";
 
+import { assertPublicHost, defaultLookup } from "./public-host";
+import type { HostLookup } from "./public-host";
+
 export interface TubeAsset {
   videoUrl: string;
   height: number;
@@ -17,6 +20,7 @@ export interface TubeAsset {
 export interface YouTubeDeps {
   getInfo?: (id: string, client: ClientName) => Promise<TubeInfo> | TubeInfo;
   fetch?: typeof fetch;
+  lookup?: HostLookup;
 }
 
 type ClientName = "IOS" | "ANDROID";
@@ -79,11 +83,45 @@ const liveGetInfo = async (
   };
 };
 
-const headOk = async (head: typeof fetch, url: string): Promise<boolean> => {
-  try {
-    const res = await head(url, { method: "HEAD" });
+const MAX_HEAD_REDIRECTS = 4;
 
-    return res.ok;
+// An InnerTube format url is upstream-supplied, so each hop is checked before
+// it is fetched — a redirect must not carry the probe onto a private host.
+const headOk = async (
+  head: typeof fetch,
+  url: string,
+  lookup: HostLookup
+): Promise<boolean> => {
+  let current = url;
+
+  try {
+    for (let hop = 0; hop < MAX_HEAD_REDIRECTS; hop += 1) {
+      // eslint-disable-next-line no-await-in-loop -- each hop is checked before it is fetched
+      await assertPublicHost(current, lookup);
+
+      // eslint-disable-next-line no-await-in-loop -- the response decides whether another hop is needed
+      const res = await head(current, {
+        method: "HEAD",
+        redirect: "manual",
+      });
+
+      const location =
+        res.status >= 300 && res.status < 400
+          ? res.headers.get("location")
+          : null;
+
+      if (!location) {
+        return res.ok;
+      }
+
+      try {
+        current = new URL(location, current).href;
+      } catch {
+        return false;
+      }
+    }
+
+    return false;
   } catch {
     return false;
   }
@@ -107,6 +145,7 @@ export const getYouTubeFormats = async (
 ): Promise<TubeAsset[]> => {
   const getInfo = deps.getInfo ?? liveGetInfo;
   const head = deps.fetch ?? fetch;
+  const lookup = deps.lookup ?? defaultLookup;
   let answered = false;
   let failure: unknown;
   let reason: string | undefined;
@@ -136,7 +175,7 @@ export const getYouTubeFormats = async (
     }
 
     // eslint-disable-next-line no-await-in-loop -- the HEAD probe gates this client before falling back to the next
-    if (await headOk(head, mp4s[0].videoUrl)) {
+    if (await headOk(head, mp4s[0].videoUrl, lookup)) {
       return mp4s.map((m) => ({ ...m, title: info.title }));
     }
   }

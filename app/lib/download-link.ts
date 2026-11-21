@@ -32,8 +32,11 @@ const secretOf = (deps: DownloadLinkDeps): string => {
 const sign = (payload: string, deps: DownloadLinkDeps): string =>
   createHmac("sha256", secretOf(deps)).update(payload).digest("base64url");
 
+// Length-prefixed fields keep the MAC unambiguous even when a signed URL contains a newline.
 const payloadOf = (videoUrl: string, stem: string, exp: number): string =>
-  `${videoUrl}\n${stem}\n${exp}`;
+  [videoUrl, stem, String(exp)]
+    .map((value) => `${value.length}:${value}`)
+    .join("");
 
 const reject = (): never => {
   throw new Response("Resolve the link in the form first", { status: 403 });

@@ -120,13 +120,6 @@ export const resolvePublicAddresses = async (
   return addresses;
 };
 
-export const assertPublicHost = async (
-  url: string,
-  lookup: HostLookup
-): Promise<void> => {
-  await resolvePublicAddresses(url, lookup);
-};
-
 // Bun dials the address that appears in the URL, so put the checked address
 // there and keep the origin in Host and tls.serverName. A relative Location
 // resolves against the address, so callers follow redirects themselves.

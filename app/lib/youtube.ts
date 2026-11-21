@@ -8,7 +8,11 @@
 
 import { Innertube } from "youtubei.js";
 
-import { assertPublicHost, defaultLookup } from "./public-host";
+import {
+  defaultLookup,
+  pinnedFetch,
+  resolvePublicAddresses,
+} from "./public-host";
 import type { HostLookup } from "./public-host";
 
 export interface TubeAsset {
@@ -97,10 +101,12 @@ const headOk = async (
   try {
     for (let hop = 0; hop < MAX_HEAD_REDIRECTS; hop += 1) {
       // eslint-disable-next-line no-await-in-loop -- each hop is checked before it is fetched
-      await assertPublicHost(current, lookup);
+      const addresses = await resolvePublicAddresses(current, lookup);
 
+      // pin the HEAD to an approved address too — otherwise the check and the
+      // dial resolve separately and a DNS change reaches a private host
       // eslint-disable-next-line no-await-in-loop -- the response decides whether another hop is needed
-      const res = await head(current, {
+      const res = await pinnedFetch(head, current, addresses, {
         method: "HEAD",
         redirect: "manual",
       });

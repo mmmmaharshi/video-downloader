@@ -283,18 +283,23 @@ describe("proxy", () => {
   });
 
   test("pins the proxy connection to the approved address", async () => {
-    const approved: string[][] = [];
+    let dialed = "";
+    let host = "";
 
     const res = await proxy(CDN, "ABC123", {
-      fetch: ok(),
-      pinHost: (doFetch, url, addresses, init) => {
-        approved.push(addresses);
+      fetch: stubFetch((url, init) => {
+        dialed = url;
+        host = new Headers(init?.headers).get("host") ?? "";
 
-        return doFetch(url, init);
-      },
+        return new Response("video-bytes", {
+          headers: { "content-type": "video/mp4" },
+          status: 200,
+        });
+      }),
     });
 
-    expect(approved).toEqual([["93.184.216.34"]]);
+    expect(new URL(dialed).hostname).toBe("93.184.216.34");
+    expect(host).toBe("scontent.cdninstagram.com");
     expect(await res.text()).toBe("video-bytes");
   });
 
@@ -351,6 +356,65 @@ describe("proxy", () => {
       errored = true;
     }
 
+    expect(errored).toBe(true);
+    expect(received).toBeLessThanOrEqual(10);
+  });
+
+  test("stops a chunked 206 response that passes the byte cap", async () => {
+    const chunk = new TextEncoder().encode("0123456789");
+
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(chunk);
+        controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+
+    const ranged = stubFetch(
+      () =>
+        new Response(body, {
+          headers: {
+            "accept-ranges": "bytes",
+            "content-range": "bytes 0-19/100",
+            "content-type": "video/mp4",
+          },
+          status: 206,
+        })
+    );
+
+    const res = await proxy(CDN, "ABC123", {
+      fetch: ranged,
+      maxBytes: 10,
+      range: "bytes=0-19",
+    });
+
+    const reader = res.body?.getReader();
+
+    if (!reader) {
+      throw new Error("expected a response body");
+    }
+
+    let received = 0;
+    let errored = false;
+    let done = false;
+
+    try {
+      while (!done) {
+        // eslint-disable-next-line no-await-in-loop -- draining the bounded stream one chunk at a time
+        const { done: finished, value } = await reader.read();
+
+        done = finished;
+
+        if (value) {
+          received += value.byteLength;
+        }
+      }
+    } catch {
+      errored = true;
+    }
+
+    expect(res.status).toBe(206);
     expect(errored).toBe(true);
     expect(received).toBeLessThanOrEqual(10);
   });

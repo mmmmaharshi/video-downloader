@@ -1524,24 +1524,21 @@ describe("guarded platform fetches", () => {
   });
 
   test("passes the validated addresses to the pin seam", async () => {
-    const approved: string[][] = [];
+    let dialed = "";
 
     const [asset] = await resolve(TWEET, {
-      fetch: stubFetch(() =>
-        tweetResult({
+      fetch: stubFetch((url) => {
+        dialed = url;
+
+        return tweetResult({
           id_str: "1",
           mediaDetails: [videoMedia],
-        })
-      ),
+        });
+      }),
       lookup: () => ["93.184.216.34", "8.8.8.8"],
-      pinHost: (doFetch, url, addresses, init) => {
-        approved.push(addresses);
-
-        return doFetch(url, init);
-      },
     });
 
-    expect(approved).toEqual([["93.184.216.34", "8.8.8.8"]]);
+    expect(new URL(dialed).hostname).toBe("93.184.216.34");
     expect(asset.videoUrl).toBe(BEST_MP4);
   });
 

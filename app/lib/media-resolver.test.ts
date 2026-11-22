@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { stubFetch } from "./fake-fetch";
 import { resolve as resolveRaw } from "./media-resolver";
 import type { MediaResolverDeps } from "./media-resolver";
-import { pinnedFetch } from "./public-host";
+import { pinnedFetch } from "./pinned-fetch";
 
 // deterministic DNS for every path: no test reaches the real resolver
 const publicHost = () => ["93.184.216.34"];

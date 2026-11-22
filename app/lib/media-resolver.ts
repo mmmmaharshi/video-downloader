@@ -4,15 +4,13 @@
 // exposes at most one, so IG resolves to a one-element list.
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
+import { readCappedUtf8 } from "./capped-body";
 import { containerOf } from "./container";
+import { pinnedFetch } from "./pinned-fetch";
 import type { Platform } from "./platforms";
 import { PLATFORM_HOSTS } from "./platforms";
-import {
-  defaultLookup,
-  pinnedFetch,
-  resolvePublicAddresses,
-} from "./public-host";
-import type { HostLookup, PinHost } from "./public-host";
+import { defaultLookup, resolvePublicAddresses } from "./public-host";
+import type { HostLookup } from "./public-host";
 import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
@@ -36,15 +34,13 @@ export interface MediaResolverDeps {
     deps?: YouTubeDeps
   ) => Promise<TubeAsset[]> | TubeAsset[];
   lookup?: HostLookup;
-  pinHost?: PinHost;
 }
 
 // One guarded transport for every network read in this module: the lookup
-// proves the host, the pin makes the socket use that proof.
+// proves the host, PinnedFetch makes the socket use that proof.
 interface FetchContext {
   doFetch: typeof fetch;
   lookup: HostLookup;
-  pinHost: PinHost;
 }
 
 const INSTA_RE =
@@ -68,33 +64,10 @@ const FILE_HEADERS = { ...PAGE_HEADERS, Accept: "*/*" };
 // head of the body, so a 1GB file cannot be decoded into a string.
 const MAX_PAGE_BYTES = 512 * 1024;
 
+// an oversized page is truncated to its head; the JSON helpers below fail the
+// parse instead. Both policies share one byte-accurate read.
 const readCapped = async (res: Response, cap: number): Promise<string> => {
-  const reader = res.body?.getReader();
-
-  if (!reader) {
-    return "";
-  }
-
-  const decoder = new TextDecoder();
-  let text = "";
-  let read = 0;
-
-  while (read < cap) {
-    // eslint-disable-next-line no-await-in-loop -- the cap is checked between reads
-    const { done, value } = await reader.read();
-
-    if (done) {
-      break;
-    }
-
-    const remaining = cap - read;
-
-    read += value.length;
-    // a single chunk can be larger than the budget — keep only what fits
-    text += decoder.decode(value.subarray(0, remaining), { stream: true });
-  }
-
-  await reader.cancel();
+  const { text } = await readCappedUtf8(res.body, cap);
 
   return text;
 };
@@ -121,7 +94,7 @@ const fetchPublic = async (
     const addresses = await resolvePublicAddresses(current, ctx.lookup);
 
     // eslint-disable-next-line no-await-in-loop -- response needed before following the redirect
-    const res = await ctx.pinHost(ctx.doFetch, current, addresses, {
+    const res = await pinnedFetch(ctx.doFetch, current, addresses, {
       headers,
       redirect: "manual",
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -1320,7 +1293,6 @@ export const resolve = async (
   const ctx: FetchContext = {
     doFetch: deps.fetch ?? fetch,
     lookup: deps.lookup ?? defaultLookup,
-    pinHost: deps.pinHost ?? pinnedFetch,
   };
 
   const insta = trimmed.match(INSTA_RE)?.groups?.shortcode;

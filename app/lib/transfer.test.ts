@@ -21,6 +21,48 @@ const ok = (body = "video-bytes", contentType = "video/mp4") =>
       })
   );
 
+// A capped stream fails by erroring mid-body; drain it the way a player would.
+const drain = async (res: Response) => {
+  const reader = res.body?.getReader();
+
+  if (!reader) {
+    throw new Error("expected a response body");
+  }
+
+  let received = 0;
+  let failure: unknown;
+  let done = false;
+
+  try {
+    while (!done) {
+      // eslint-disable-next-line no-await-in-loop -- draining the bounded stream one chunk at a time
+      const { done: finished, value } = await reader.read();
+
+      done = finished;
+
+      if (value) {
+        received += value.byteLength;
+      }
+    }
+  } catch (error) {
+    failure = error;
+  }
+
+  return { failure, received };
+};
+
+const overCapBody = () => {
+  const chunk = new TextEncoder().encode("0123456789");
+
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(chunk);
+      controller.enqueue(chunk);
+      controller.close();
+    },
+  });
+};
+
 const thrown = async (p: Promise<unknown>): Promise<Response> => {
   let rejection: unknown;
 
@@ -312,68 +354,30 @@ describe("proxy", () => {
   });
 
   test("stops a chunked body that passes the byte cap", async () => {
-    const chunk = new TextEncoder().encode("0123456789");
-
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(chunk);
-        controller.enqueue(chunk);
-        controller.close();
-      },
-    });
-
     const chunked = stubFetch(
       () =>
-        new Response(body, {
+        new Response(overCapBody(), {
           headers: { "content-type": "video/mp4" },
           status: 200,
         })
     );
 
     const res = await proxy(CDN, "ABC123", { fetch: chunked, maxBytes: 10 });
-    const reader = res.body?.getReader();
+    const { failure, received } = await drain(res);
 
-    if (!reader) {
-      throw new Error("expected a response body");
+    expect(failure).toBeInstanceOf(Response);
+
+    if (failure instanceof Response) {
+      expect(failure.status).toBe(413);
     }
 
-    let received = 0;
-    let errored = false;
-    let done = false;
-
-    try {
-      while (!done) {
-        // eslint-disable-next-line no-await-in-loop -- draining the bounded stream one chunk at a time
-        const { done: finished, value } = await reader.read();
-
-        done = finished;
-
-        if (value) {
-          received += value.byteLength;
-        }
-      }
-    } catch {
-      errored = true;
-    }
-
-    expect(errored).toBe(true);
     expect(received).toBeLessThanOrEqual(10);
   });
 
   test("stops a chunked 206 response that passes the byte cap", async () => {
-    const chunk = new TextEncoder().encode("0123456789");
-
-    const body = new ReadableStream<Uint8Array>({
-      start(controller) {
-        controller.enqueue(chunk);
-        controller.enqueue(chunk);
-        controller.close();
-      },
-    });
-
     const ranged = stubFetch(
       () =>
-        new Response(body, {
+        new Response(overCapBody(), {
           headers: {
             "accept-ranges": "bytes",
             "content-range": "bytes 0-19/100",
@@ -389,33 +393,15 @@ describe("proxy", () => {
       range: "bytes=0-19",
     });
 
-    const reader = res.body?.getReader();
-
-    if (!reader) {
-      throw new Error("expected a response body");
-    }
-
-    let received = 0;
-    let errored = false;
-    let done = false;
-
-    try {
-      while (!done) {
-        // eslint-disable-next-line no-await-in-loop -- draining the bounded stream one chunk at a time
-        const { done: finished, value } = await reader.read();
-
-        done = finished;
-
-        if (value) {
-          received += value.byteLength;
-        }
-      }
-    } catch {
-      errored = true;
-    }
+    const { failure, received } = await drain(res);
 
     expect(res.status).toBe(206);
-    expect(errored).toBe(true);
+    expect(failure).toBeInstanceOf(Response);
+
+    if (failure instanceof Response) {
+      expect(failure.status).toBe(413);
+    }
+
     expect(received).toBeLessThanOrEqual(10);
   });
 

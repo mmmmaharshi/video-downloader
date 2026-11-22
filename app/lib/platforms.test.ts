@@ -37,18 +37,6 @@ const clientFiles = async () => {
     );
 };
 
-describe("platforms", () => {
-  test("stays dependency-free so the client can import it", async () => {
-    const source = await readFile(new URL("platforms.ts", import.meta.url), {
-      encoding: "utf-8",
-    });
-
-    // type imports are erased at build and safe; value imports would drag
-    // node builtins into the client bundle (same rule as the boundary test below)
-    expect(source).not.toMatch(/^\s*import(?!\s+type\b)/mu);
-  });
-});
-
 describe("client boundary", () => {
   // The guard that broke: browser code may take the resolver's types (erased at
   // build) but never its runtime. Scanned over the whole app/ tree, so a new

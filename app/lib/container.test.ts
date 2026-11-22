@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
 
 import { containerOf, isManifestContainer } from "./container";
 import type { Container } from "./container";
@@ -29,15 +28,5 @@ describe("containerOf", () => {
     expect(isManifestContainer("gif")).toBe(false);
     expect(isManifestContainer("webm")).toBe(false);
     expect(isManifestContainer("mov")).toBe(false);
-  });
-
-  test("stays dependency-free so the client can import it", async () => {
-    const source = await readFile(new URL("container.ts", import.meta.url), {
-      encoding: "utf-8",
-    });
-
-    // type imports are erased at build and safe; value imports would drag
-    // node builtins into the client bundle
-    expect(source).not.toMatch(/^\s*import(?!\s+type\b)/mu);
   });
 });

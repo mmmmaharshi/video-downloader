@@ -2,6 +2,7 @@
 // user-supplied link off the private network. MediaResolver checks the pasted
 // link and every redirect hop; Transfer checks the file it is about to stream,
 // so a page cannot hand us an internal address to fetch. Server-only.
+// PinnedFetch owns dialing the addresses this module approves.
 
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -9,16 +10,6 @@ import { isIP } from "node:net";
 // DNS seam: production resolves for real, tests inject addresses.
 // Both sync and async doubles work — every use site awaits.
 export type HostLookup = (hostname: string) => Promise<string[]> | string[];
-
-// The pin seam: dial one validated address while the request still names the
-// original origin. Tests inject a double that records the addresses instead of
-// opening a socket; production uses pinnedFetch.
-export type PinHost = (
-  doFetch: typeof fetch,
-  url: string,
-  addresses: string[],
-  init: BunFetchRequestInit
-) => Promise<Response>;
 
 export const defaultLookup: HostLookup = async (hostname) => {
   const records = await dnsLookup(hostname, { all: true });
@@ -118,34 +109,4 @@ export const resolvePublicAddresses = async (
   }
 
   return addresses;
-};
-
-// Bun dials the address that appears in the URL, so put the checked address
-// there and keep the origin in Host and tls.serverName. A relative Location
-// resolves against the address, so callers follow redirects themselves.
-// eslint-disable-next-line require-await -- the seam stays async so a rejected approval surfaces as a rejection, not a sync throw
-export const pinnedFetch: PinHost = async (doFetch, url, addresses, init) => {
-  const [address] = addresses;
-
-  // fail closed: an empty approval set must never turn into a hostname fetch
-  if (!address) {
-    throw new Error("Only public links are supported.");
-  }
-
-  const target = new URL(url);
-  const dial = new URL(url);
-
-  // the URL parser only accepts a bare address for IPv4; IPv6 needs brackets
-  dial.hostname = isIP(address) === 6 ? `[${address}]` : address;
-
-  const headers = new Headers(init.headers);
-
-  headers.set("Host", target.host);
-
-  return doFetch(dial.href, {
-    ...init,
-    headers,
-    proxy: false,
-    tls: { serverName: target.hostname },
-  });
 };

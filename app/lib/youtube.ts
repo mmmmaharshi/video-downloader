@@ -8,12 +8,9 @@
 
 import { Innertube } from "youtubei.js";
 
-import {
-  defaultLookup,
-  pinnedFetch,
-  resolvePublicAddresses,
-} from "./public-host";
+import { pinnedFetch } from "./pinned-fetch";
 import type { HostLookup } from "./public-host";
+import { defaultLookup, resolvePublicAddresses } from "./public-host";
 
 export interface TubeAsset {
   videoUrl: string;

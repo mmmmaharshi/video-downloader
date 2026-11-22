@@ -4,14 +4,12 @@
 // resolver (a signed href); the url itself is re-checked against the private
 // network here, because the resolver can hand us an address it read out of a page.
 
+import { readCappedUtf8 } from "./capped-body";
 import { containerOf, isManifestContainer } from "./container";
 import type { Container } from "./container";
-import type { HostLookup, PinHost } from "./public-host";
-import {
-  defaultLookup,
-  pinnedFetch,
-  resolvePublicAddresses,
-} from "./public-host";
+import { pinnedFetch } from "./pinned-fetch";
+import type { HostLookup } from "./public-host";
+import { defaultLookup, resolvePublicAddresses } from "./public-host";
 import { UA } from "./user-agent";
 
 const UPSTREAM_TIMEOUT_MS = 15_000;
@@ -25,7 +23,6 @@ const MAX_DOWNLOAD_BYTES = 1024 ** 3;
 export interface TransferDeps {
   fetch?: typeof fetch;
   lookup?: HostLookup;
-  pinHost?: PinHost;
   maxMs?: number;
   /** the client's byte-range request, forwarded so video seeking works */
   range?: string | null;
@@ -47,7 +44,9 @@ const boundedBody = (
         seen += chunk.byteLength;
 
         if (seen > limit) {
-          controller.error(new Error("Download exceeds the byte cap"));
+          controller.error(
+            new Response("Download exceeds the byte cap", { status: 413 })
+          );
 
           return;
         }
@@ -59,34 +58,14 @@ const boundedBody = (
 };
 
 // A manifest is buffered to rewrite its refs, so it needs a read cap of its own.
+// Overflow is a 413 here; MediaResolver truncates with the same shared read.
 const readCappedText = async (
   body: ReadableStream<Uint8Array> | null,
   limit: number
 ): Promise<string> => {
-  if (!body) {
-    return "";
-  }
+  const { exceeded, text } = await readCappedUtf8(body, limit);
 
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  let read = 0;
-
-  while (read <= limit) {
-    // eslint-disable-next-line no-await-in-loop -- the cap is checked between reads
-    const { done, value } = await reader.read();
-
-    if (done) {
-      break;
-    }
-
-    read += value.byteLength;
-    text += decoder.decode(value, { stream: true });
-  }
-
-  await reader.cancel();
-
-  if (read > limit) {
+  if (exceeded) {
     throw new Response("This file is too large to download here", {
       status: 413,
     });
@@ -169,7 +148,6 @@ export const proxy = async (
 
   const limit = deps.maxBytes ?? MAX_DOWNLOAD_BYTES;
   const doFetch = deps.fetch ?? fetch;
-  const pinHost = deps.pinHost ?? pinnedFetch;
   const maxMs = deps.maxMs ?? UPSTREAM_MAX_MS;
 
   // Fast-fail when headers stall; the overall bound accepts truncating a stalled stream.
@@ -186,7 +164,7 @@ export const proxy = async (
   }
 
   try {
-    upstream = await pinHost(doFetch, videoUrl, addresses, {
+    upstream = await pinnedFetch(doFetch, videoUrl, addresses, {
       headers: upstreamHeaders,
       // the overall bound outlives this block: a trickling upstream must not hold the connection forever
       signal: AbortSignal.any([controller.signal, AbortSignal.timeout(maxMs)]),

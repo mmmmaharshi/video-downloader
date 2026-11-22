@@ -236,8 +236,8 @@ const extractFrames = async (src: string): Promise<GifFrame[]> => {
   return frames;
 };
 
-// frames cross into the worker by value unless transferred; the buffers are
-// encode-only, so transfer them instead of paying for a copy
+// frames are cloned, not transferred: a transfer detaches the caller's buffers,
+// and convertMp4ToGif must still be able to encode them inline if the worker fails
 export const encodeInWorker = (
   frames: GifFrame[]
 ): Promise<Uint8Array<ArrayBuffer>> =>
@@ -280,15 +280,8 @@ export const encodeInWorker = (
       { once: true }
     );
 
-    const transferable: ArrayBuffer[] = [];
-
-    for (const frame of frames) {
-      if (frame.data.buffer instanceof ArrayBuffer) {
-        transferable.push(frame.data.buffer);
-      }
-    }
-
-    worker.postMessage({ frames }, transferable);
+    // eslint-disable-next-line unicorn/require-post-message-target-origin -- this is Worker.postMessage, which has no targetOrigin
+    worker.postMessage({ frames });
   });
 
 export const convertMp4ToGif = async (src: string): Promise<Blob> => {

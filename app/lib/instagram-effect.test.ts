@@ -153,6 +153,20 @@ describe("instagram-effect", () => {
     );
   });
 
+  test("refuses a private host with a typed guard failure", async () => {
+    const privateLayer = Layer.succeed(FetchDeps)({
+      doFetch: stubFetch(() => page("<p>no video here</p>")),
+      lookup: () => ["127.0.0.1"],
+    });
+
+    const error = await runStreamsError(privateLayer);
+
+    expect(error._tag).toBe("InstagramGuardBlocked");
+    expect(toThrownError(error).message).toBe(
+      "Only public links are supported."
+    );
+  });
+
   test("every tag maps to its legacy message", () => {
     expect(
       toThrownError({ _tag: "InstagramUnreachable" as const }).message

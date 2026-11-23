@@ -141,10 +141,17 @@ const isBlockedAddress = (addr: string): boolean => {
   return true;
 };
 
-// The guard decision without dialing: the Rumble Effect program classifies the
-// resolved addresses itself so its failures stay typed instead of thrown.
+// The guard decision without dialing: manual-hop loops (Rumble's cookie loop)
+// classify each hop's addresses through it and stay fully typed.
 export const areAddressesPublic = (addresses: string[]): boolean =>
   addresses.length > 0 && !addresses.some(isBlockedAddress);
+
+// The guard's user-facing messages: single source for resolvePublicAddresses
+// and the Effect programs that classify a failed fetch back into them.
+export const GUARD_BLOCKED_MESSAGE = "Only public links are supported.";
+
+export const GUARD_UNRESOLVED_MESSAGE =
+  "Could not resolve this link. Check the URL.";
 
 // Resolve and validate in one step so the caller can pin the connection to the
 // very addresses the guard approved. Discarding them reintroduces DNS rebinding.
@@ -157,11 +164,11 @@ export const resolvePublicAddresses = async (
   try {
     addresses = await lookup(new URL(url).hostname);
   } catch {
-    throw new Error("Could not resolve this link. Check the URL.");
+    throw new Error(GUARD_UNRESOLVED_MESSAGE);
   }
 
   if (!addresses.length || addresses.some(isBlockedAddress)) {
-    throw new Error("Only public links are supported.");
+    throw new Error(GUARD_BLOCKED_MESSAGE);
   }
 
   return addresses;

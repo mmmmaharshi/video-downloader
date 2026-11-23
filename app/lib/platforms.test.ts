@@ -23,6 +23,7 @@ const SERVER_ONLY_MODULES = [
   "rumble-effect",
   "transfer",
   "transfer-effect",
+  "twitter-effect",
   "youtube",
   "youtube-effect",
 ];

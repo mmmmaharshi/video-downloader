@@ -2,10 +2,15 @@ import { Effect } from "effect";
 import { z } from "zod";
 
 import { readCappedUtf8 } from "./capped-body";
-import { FetchDeps, guardAddresses } from "./fetch-deps";
+import {
+  FetchDeps,
+  classifyTransportError,
+  guardAddresses,
+} from "./fetch-deps";
 import { fetchGuarded, PAGE_HEADERS } from "./guarded-fetch";
 import type { GuardedFetch } from "./guarded-fetch";
 import { pinnedFetch } from "./pinned-fetch";
+import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { HostLookup } from "./public-host";
 
 // Module: RumbleEffect — the Rumble fetch flow as an Effect program. Rumble
@@ -81,11 +86,11 @@ export const rumbleErrorMessage = (error: RumbleError): string => {
     }
 
     case "RumbleGuardBlocked": {
-      return "Only public links are supported.";
+      return GUARD_BLOCKED_MESSAGE;
     }
 
     case "RumbleUnresolved": {
-      return "Could not resolve this link. Check the URL.";
+      return GUARD_UNRESOLVED_MESSAGE;
     }
 
     case "RumbleTooManyRedirects": {
@@ -278,7 +283,12 @@ const fetchEmbedMp4s = (
     const http: GuardedFetch = { doFetch, lookup };
 
     const { res } = yield* Effect.tryPromise({
-      catch: () => ({ _tag: "RumbleUnexpectedResponse" as const }),
+      catch: (cause) =>
+        classifyTransportError(cause, {
+          blocked: { _tag: "RumbleGuardBlocked" as const },
+          unreachable: { _tag: "RumbleUnexpectedResponse" as const },
+          unresolved: { _tag: "RumbleUnresolved" as const },
+        }),
       try: () => fetchGuarded(http, endpoint, { headers }),
     });
 

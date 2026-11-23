@@ -16,8 +16,14 @@ import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
 import { hostMatches, isPlatformHost } from "./platforms";
 import { defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
+import { byQuality, preferMp4, renditionLabel } from "./renditions";
+import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
 import { resolveRumbleProgram, rumbleErrorMessage } from "./rumble-effect";
+import {
+  resolveTwitterProgram,
+  toThrownError as toTwitterThrownError,
+} from "./twitter-effect";
 import { CHROME_UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
@@ -130,53 +136,6 @@ const isKnownMediaHost = (sourceUrl: string): boolean =>
 // fetches while /reel/ serves the same post: fetch the canonical singular form.
 const canonicalReelUrl = (url: string): string =>
   url.replace("instagram.com/reels/", "instagram.com/reel/");
-
-// mp4 is the one container every browser plays: prefer those renditions, but
-// fall back to whatever the host offers (HLS/DASH manifests, webm) rather than
-// dropping the post — one definition so the policy changes in one place
-const preferMp4 = <T>(mp4s: T[], all: T[]): T[] =>
-  mp4s.length > 0 ? mp4s : all;
-
-interface Rendition {
-  height?: number;
-  /** the provider's own name for this rung when it carries no resolution (Dailymotion's "auto", Facebook's "HD") */
-  label?: string;
-  url: string;
-  width?: number;
-}
-
-const renditionLabel = (r: Rendition): string | undefined =>
-  r.height && r.height > 0 ? `${r.height}p` : r.label;
-
-// Providers that hand us a quality ladder (YouTube, Vimeo, Streamable,
-// Dailymotion, Facebook) become one selectable option per rung, best first —
-// the same picker YouTube gets, so nothing is silently thrown away and the
-// caller's next step just gets more links. Rungs sharing a label collapse into
-// the first, leaving the container preference applied upstream to decide.
-const byQuality = <T extends Rendition>(renditions: T[]): T[] => {
-  const seen = new Set<string>();
-
-  const unique = renditions.filter((r) => {
-    const label = renditionLabel(r);
-
-    if (label === undefined) {
-      return true;
-    }
-
-    if (seen.has(label)) {
-      return false;
-    }
-
-    seen.add(label);
-
-    return true;
-  });
-
-  // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh filtered copy
-  return unique.sort(
-    (a, b) => (b.height ?? b.width ?? 0) - (a.height ?? a.width ?? 0)
-  );
-};
 
 // A watch page is identified by its 11-char id, wherever it sits: watch?v= (any param
 // order), youtu.be, /shorts/, /live/, /embed/. A regex cannot read query params, so parse.
@@ -470,91 +429,24 @@ const resolveYouTube = async (
   return assets;
 };
 
-interface SyndicationMedia {
-  type?: string;
-  media_url_https?: string;
-  video_info?: {
-    variants?: { bitrate?: number; content_type: string; url: string }[];
-  };
-}
-
-interface SyndicationTweet {
-  id_str?: string;
-  mediaDetails?: SyndicationMedia[];
-}
-
-const resolveTwitter = async (
+// The X syndication flow runs as an Effect program (FetchDeps Layer) and is
+// bridged back to promises here, so resolve() keeps its thrown-Error contract.
+const resolveTwitter = (
   sourceUrl: string,
   id: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  // the token is the web client's derivation from the tweet id; an absent token returns an empty payload
-  // shortcut: X does not validate this token today and the derivation divides an id above 2^53 as a float — derive it exactly if X ever starts rejecting tokens
-  const token = ((Number(id) / 1e15) * Math.PI)
-    .toString(36)
-    .replaceAll(/(?:0+|\.)/gu, "");
-
-  const endpoint = `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=en`;
-
-  const { res } = await fetchPublic(ctx, endpoint, {
-    Accept: "application/json",
-    "User-Agent": CHROME_UA,
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
   });
 
-  assertOk(res, "X");
-
-  // this endpoint answers with HTML on some failure paths and with {} when the token is missing
-  let tweet: SyndicationTweet;
-
-  try {
-    tweet = await readCappedJson(res);
-  } catch {
-    throw new Error("X returned an unexpected response. Try again later.");
-  }
-
-  if (!tweet.id_str) {
-    throw new Error("X returned an unexpected response. Try again later.");
-  }
-
-  // an animated_gif is an mp4 on X too; it carries a single variant with bitrate 0
-  const videos = (tweet.mediaDetails ?? []).filter(
-    (m) => m.type === "video" || m.type === "animated_gif"
+  return Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveTwitterProgram({ id, sourceUrl }), layer),
+      toTwitterThrownError
+    )
   );
-
-  if (!videos.length) {
-    throw new Error("No video found. Only video posts are downloadable.");
-  }
-
-  const assets: VideoAsset[] = [];
-
-  for (const video of videos) {
-    const variants = video.video_info?.variants ?? [];
-    const mp4s = variants.filter((v) => v.content_type === "video/mp4");
-
-    // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh copy
-    const sorted = [...preferMp4(mp4s, variants)].sort(
-      (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0)
-    );
-
-    const [pick] = sorted;
-
-    if (pick?.url) {
-      assets.push({
-        gif: video.type === "animated_gif" ? "video" : undefined,
-        platform: "twitter",
-        shortcode: id,
-        sourceUrl,
-        thumbnail: video.media_url_https,
-        videoUrl: pick.url,
-      });
-    }
-  }
-
-  if (!assets.length) {
-    throw new Error("No downloadable video found for this post.");
-  }
-
-  return assets;
 };
 
 // Reddit posts with video: the .json endpoint exposes media.reddit_video.fallback_url

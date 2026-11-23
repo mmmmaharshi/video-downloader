@@ -50,6 +50,7 @@ export type TransferError =
 export const toThrownResponse = (error: TransferError): Response => {
   switch (error._tag) {
     case "TransferForbidden": {
+      // legacy transfer copy has no trailing period; the guard message does
       return new Response("Only public links are supported", { status: 403 });
     }
 

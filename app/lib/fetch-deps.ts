@@ -1,6 +1,11 @@
 import { Context, Effect, Layer } from "effect";
 
-import { areAddressesPublic, defaultLookup } from "./public-host";
+import {
+  areAddressesPublic,
+  defaultLookup,
+  GUARD_BLOCKED_MESSAGE,
+  GUARD_UNRESOLVED_MESSAGE,
+} from "./public-host";
 import type { HostLookup } from "./public-host";
 
 // Module: FetchDeps — the Effect seam for server-side fetching. Bun's fetch
@@ -51,3 +56,26 @@ export const guardAddresses = <E>(
 
     return addresses;
   });
+
+// A guarded fetch throws the guard's plain Errors on a blocked hop; a plain
+// fetch throws whatever the transport raised. Classify a failed fetch back
+// into typed failures so programs keep legacy-exact messages without matching
+// strings at every call site.
+export const classifyTransportError = <E>(
+  cause: unknown,
+  errors: {
+    readonly blocked: E;
+    readonly unreachable: E;
+    readonly unresolved: E;
+  }
+): E => {
+  if (cause instanceof Error && cause.message === GUARD_BLOCKED_MESSAGE) {
+    return errors.blocked;
+  }
+
+  if (cause instanceof Error && cause.message === GUARD_UNRESOLVED_MESSAGE) {
+    return errors.unresolved;
+  }
+
+  return errors.unreachable;
+};

@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
-import { FetchDeps, guardAddresses } from "./fetch-deps";
+import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
-import type { HostLookup } from "./public-host";
+import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { UA } from "./user-agent";
 
 // Module: InstagramEffect — the Instagram page-plus-embed flow as an Effect
@@ -86,11 +86,11 @@ export const instagramErrorMessage = (error: InstagramError): string => {
     }
 
     case "InstagramGuardBlocked": {
-      return "Only public links are supported.";
+      return GUARD_BLOCKED_MESSAGE;
     }
 
     case "InstagramUnresolved": {
-      return "Could not resolve this link. Check the URL.";
+      return GUARD_UNRESOLVED_MESSAGE;
     }
 
     default: {
@@ -118,15 +118,6 @@ const readText = async (res: Response): Promise<string> => {
   return text;
 };
 
-const instagramGuard = (
-  url: string,
-  lookup: HostLookup
-): Effect.Effect<string[], InstagramError, FetchDeps> =>
-  guardAddresses(url, lookup, {
-    blocked: { _tag: "InstagramGuardBlocked" as const },
-    unresolved: { _tag: "InstagramUnresolved" as const },
-  });
-
 interface InstagramPage {
   readonly res: Response;
   readonly url: string;
@@ -139,10 +130,13 @@ const fetchPage = (
   Effect.gen(function* page() {
     const { doFetch, lookup } = yield* FetchDeps;
 
-    yield* instagramGuard(url, lookup);
-
     return yield* Effect.tryPromise({
-      catch: () => ({ _tag: "InstagramUnreachable" as const }),
+      catch: (cause) =>
+        classifyTransportError(cause, {
+          blocked: { _tag: "InstagramGuardBlocked" as const },
+          unreachable: { _tag: "InstagramUnreachable" as const },
+          unresolved: { _tag: "InstagramUnresolved" as const },
+        }),
       try: () =>
         fetchGuarded({ doFetch, lookup }, url, {
           headers,

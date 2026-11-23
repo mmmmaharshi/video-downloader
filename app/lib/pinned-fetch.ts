@@ -3,7 +3,7 @@
 
 import { isIP } from "node:net";
 
-export type PinHost = (
+type PinHost = (
   doFetch: typeof fetch,
   url: string,
   addresses: string[],

@@ -2,7 +2,7 @@
 // The caller decides what overflow means: MediaResolver keeps the head, Transfer
 // answers 413. Only the byte-accurate read is shared.
 
-export interface CappedRead {
+interface CappedRead {
   exceeded: boolean;
   text: string;
 }

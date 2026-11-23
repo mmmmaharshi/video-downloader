@@ -7,7 +7,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { FRESH_MS } from "./freshness";
-import type { VideoAsset } from "./media-resolver";
+import type { VideoAsset } from "./resolve-query";
 
 export interface DownloadRequest {
   videoUrl: string;
@@ -72,11 +72,11 @@ export const fromDownloadRequest = (
 ): DownloadRequest => {
   const params = new URL(url).searchParams;
   const videoUrl = params.get("url");
-  const stem = params.get("name") ?? "video";
+  const stem = params.get("name");
   const exp = Number(params.get("e") ?? 0);
   const signature = params.get("s");
 
-  if (!videoUrl || !signature || !(exp > (deps.now ?? Date.now()))) {
+  if (!videoUrl || !stem || !signature || !(exp > (deps.now ?? Date.now()))) {
     return reject();
   }
 

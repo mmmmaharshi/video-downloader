@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { fromDownloadRequest, toDownloadHref } from "./download-link";
 import { FRESH_MS } from "./freshness";
-import type { VideoAsset } from "./media-resolver";
+import type { VideoAsset } from "./resolve-query";
 
 const SECRET = "test-secret";
 

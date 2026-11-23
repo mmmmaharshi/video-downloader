@@ -6,26 +6,15 @@
 
 import { readCappedUtf8 } from "./capped-body";
 import { containerOf } from "./container";
-import { pinnedFetch } from "./pinned-fetch";
-import type { Platform } from "./platforms";
-import { PLATFORM_HOSTS } from "./platforms";
-import { defaultLookup, resolvePublicAddresses } from "./public-host";
+import { fetchGuarded } from "./guarded-fetch";
+import { EMPTY_LINK } from "./messages";
+import { hostMatches, isPlatformHost } from "./platforms";
+import { defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
+import type { VideoAsset } from "./resolve-query";
 import { CHROME_UA, UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
-
-export interface VideoAsset {
-  videoUrl: string;
-  thumbnail?: string;
-  shortcode: string;
-  sourceUrl: string;
-  platform: Platform;
-  label?: string;
-  title?: string;
-  // the preview cannot re-derive this: it never sees the content-type
-  gif?: boolean;
-}
 
 export interface MediaResolverDeps {
   fetch?: typeof fetch;
@@ -43,11 +32,35 @@ interface FetchContext {
   lookup: HostLookup;
 }
 
-const INSTA_RE =
-  /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reels?|tv)\/(?<shortcode>[A-Za-z0-9_-]+)\/?(?:\?.*)?$/u;
+// Path shapes only: the host comes from the one list in Platforms.
+const INSTA_PATH_RE = /^\/(?:p|reels?|tv)\/(?<shortcode>[A-Za-z0-9_-]+)\/?$/u;
 
-const TWEET_RE =
-  /^https?:\/\/(?:www\.|mobile\.)?(?:twitter|x)\.com\/(?:[^/?#]+\/)*status(?:es)?\/(?<id>\d+)(?:[/?#]|$)/iu;
+const TWEET_PATH_RE = /^\/(?:[^/?#]+\/)*status(?:es)?\/(?<id>\d+)(?:[/?#]|$)/iu;
+
+const instagramShortcode = (url: string): string | undefined => {
+  const parsed = URL.parse(url);
+
+  if (!parsed || !hostMatches("instagram", parsed.hostname.toLowerCase())) {
+    return undefined;
+  }
+
+  return parsed.pathname.match(INSTA_PATH_RE)?.groups?.shortcode;
+};
+
+const tweetId = (url: string): string | undefined => {
+  const parsed = URL.parse(url);
+
+  if (!parsed || !hostMatches("twitter", parsed.hostname.toLowerCase())) {
+    return undefined;
+  }
+
+  return parsed.pathname.match(TWEET_PATH_RE)?.groups?.id;
+};
+
+const NOT_FOUND = "Post not found. Check the URL.";
+
+const LOGIN_REQUIRED =
+  "Private or login-required post. Only public posts are supported.";
 
 const FETCH_TIMEOUT_MS = 15_000;
 
@@ -77,47 +90,17 @@ const readCapped = async (res: Response, cap: number): Promise<string> => {
 const readCappedJson = async (res: Response) =>
   JSON.parse(await readCapped(res, MAX_PAGE_BYTES));
 
-const MAX_REDIRECTS = 4;
-
-// Every hop is checked before it is dialled, and the socket is pinned to the
-// addresses the check approved, so a DNS change between check and fetch cannot
-// redirect the connection to a private host.
-const fetchPublic = async (
+// one policy for every platform fetch: the guarded loop owns the hops, this
+// wrapper owns the header stall timeout
+const fetchPublic = (
   ctx: FetchContext,
   url: string,
   headers: BunFetchRequestInit["headers"]
-): Promise<{ res: Response; url: string }> => {
-  let current = url;
-
-  for (let hop = 0; hop < MAX_REDIRECTS; hop += 1) {
-    // eslint-disable-next-line no-await-in-loop -- chain stays sequential: each hop feeds the next lookup
-    const addresses = await resolvePublicAddresses(current, ctx.lookup);
-
-    // eslint-disable-next-line no-await-in-loop -- response needed before following the redirect
-    const res = await pinnedFetch(ctx.doFetch, current, addresses, {
-      headers,
-      redirect: "manual",
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-
-    const location =
-      res.status >= 300 && res.status < 400
-        ? res.headers.get("location")
-        : null;
-
-    if (!location) {
-      return { res, url: current };
-    }
-
-    try {
-      current = new URL(location, current).href;
-    } catch {
-      throw new Error("This link redirects somewhere invalid.");
-    }
-  }
-
-  throw new Error("This link redirects too many times.");
-};
+): Promise<{ res: Response; url: string }> =>
+  fetchGuarded(ctx, url, {
+    headers,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
 
 // a supported host with an unrecognized path is a mistyped platform link,
 // not a generic page — fail fast instead of fetching it
@@ -142,13 +125,8 @@ const slugOf = (sourceUrl: string): string => {
   return stem || "video";
 };
 
-const KNOWN_MEDIA_HOSTS = Object.values(PLATFORM_HOSTS).flat();
-
-const isKnownMediaHost = (sourceUrl: string): boolean => {
-  const host = new URL(sourceUrl).hostname.toLowerCase();
-
-  return KNOWN_MEDIA_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
-};
+const isKnownMediaHost = (sourceUrl: string): boolean =>
+  isPlatformHost(new URL(sourceUrl).hostname.toLowerCase());
 
 // Instagram answers the plural /reels/ route with a login redirect for anonymous
 // fetches while /reel/ serves the same post: fetch the canonical singular form.
@@ -229,7 +207,7 @@ const matchYouTubeId = (sourceUrl: string): string | undefined => {
     return id && YT_ID_RE.test(id) ? id : undefined;
   }
 
-  if (host === "youtube.com" || host.endsWith(".youtube.com")) {
+  if (hostMatches("youtube", host)) {
     const v = url.searchParams.get("v");
 
     if (v && YT_ID_RE.test(v)) {
@@ -268,7 +246,7 @@ const extractThumbnail = (html: string): string | undefined =>
 
 const assertOk = (res: Response, upstream: string): void => {
   if (res.status === 404) {
-    throw new Error("Post not found. Check the URL.");
+    throw new Error(NOT_FOUND);
   }
 
   if (!res.ok) {
@@ -288,9 +266,7 @@ const resolveInstagram = async (
     (res.redirected && res.url.includes("/accounts/login")) ||
     url.includes("/accounts/login")
   ) {
-    throw new Error(
-      "Private or login-required post. Only public posts are supported."
-    );
+    throw new Error(LOGIN_REQUIRED);
   }
 
   assertOk(res, "Instagram");
@@ -336,7 +312,7 @@ const resolveInstagram = async (
         }
       }
     } catch {
-      // swallow — handled by final throw
+      // the embed is a best-effort fallback; a failed one is reported below
     }
   }
 
@@ -380,7 +356,7 @@ const matchFacebookId = (
     return code ? { fetchUrl: sourceUrl, id: code } : undefined;
   }
 
-  if (host === "facebook.com" || host.endsWith(".facebook.com")) {
+  if (hostMatches("facebook", host)) {
     const reel = url.pathname.match(/^\/reel\/(?<id>\d+)(?:\/|$)/u)?.groups?.id;
 
     if (reel) {
@@ -428,9 +404,7 @@ const resolveFacebook = async (
     (res.redirected && res.url.includes("facebook.com/login")) ||
     url.includes("facebook.com/login")
   ) {
-    throw new Error(
-      "Private or login-required post. Only public posts are supported."
-    );
+    throw new Error(LOGIN_REQUIRED);
   }
 
   assertOk(res, "Facebook");
@@ -488,7 +462,7 @@ const resolveGeneric = async (
   const { res, url } = await fetchPublic(ctx, sourceUrl, FILE_HEADERS);
 
   if (res.status === 404) {
-    throw new Error("Post not found. Check the URL.");
+    throw new Error(NOT_FOUND);
   }
 
   if (!res.ok) {
@@ -499,12 +473,11 @@ const resolveGeneric = async (
   const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
 
   if (contentType.startsWith("video/") || contentType.startsWith("image/gif")) {
-    // headers were all this branch needed — release the upstream connection
     await res.body?.cancel();
 
     return [
       {
-        gif: containerOf(url, contentType) === "gif",
+        gif: containerOf(url, contentType) === "gif" ? "file" : undefined,
         platform: "direct",
         shortcode,
         sourceUrl,
@@ -532,7 +505,7 @@ const resolveGeneric = async (
 
   return [
     {
-      gif: containerOf(videoUrl) === "gif",
+      gif: undefined,
       platform: "direct",
       shortcode,
       sourceUrl,
@@ -642,7 +615,7 @@ const resolveTwitter = async (
 
     if (pick?.url) {
       assets.push({
-        gif: video.type === "animated_gif",
+        gif: video.type === "animated_gif" ? "video" : undefined,
         platform: "twitter",
         shortcode: id,
         sourceUrl,
@@ -674,11 +647,7 @@ const matchReddit = (
 
   const host = url.hostname.toLowerCase();
 
-  if (
-    host !== "reddit.com" &&
-    !host.endsWith(".reddit.com") &&
-    host !== "redd.it"
-  ) {
+  if (!hostMatches("reddit", host)) {
     return undefined;
   }
 
@@ -787,7 +756,7 @@ const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
 
   const host = url.hostname.toLowerCase();
 
-  if (host !== "streamable.com" && !host.endsWith(".streamable.com")) {
+  if (!hostMatches("streamable", host)) {
     return undefined;
   }
 
@@ -879,11 +848,7 @@ const matchVimeo = (
 
   const host = url.hostname.toLowerCase();
 
-  if (
-    host !== "vimeo.com" &&
-    host !== "player.vimeo.com" &&
-    !host.endsWith(".vimeo.com")
-  ) {
+  if (!hostMatches("vimeo", host)) {
     return undefined;
   }
 
@@ -1000,7 +965,7 @@ const matchTikTok = (sourceUrl: string): { id: string } | undefined => {
 
   const host = url.hostname.toLowerCase();
 
-  if (host !== "tiktok.com" && !host.endsWith(".tiktok.com")) {
+  if (!hostMatches("tiktok", host)) {
     return undefined;
   }
 
@@ -1083,12 +1048,7 @@ const matchThreads = (sourceUrl: string): { id: string } | undefined => {
 
   const host = url.hostname.toLowerCase();
 
-  if (
-    host !== "threads.net" &&
-    host !== "threads.com" &&
-    !host.endsWith(".threads.net") &&
-    !host.endsWith(".threads.com")
-  ) {
+  if (!hostMatches("threads", host)) {
     return undefined;
   }
 
@@ -1145,7 +1105,7 @@ const matchDailymotion = (sourceUrl: string): { id: string } | undefined => {
     return id ? { id } : undefined;
   }
 
-  if (host !== "dailymotion.com" && !host.endsWith(".dailymotion.com")) {
+  if (!hostMatches("dailymotion", host)) {
     return undefined;
   }
 
@@ -1239,7 +1199,7 @@ const matchLoom = (sourceUrl: string): { id: string } | undefined => {
 
   const host = url.hostname.toLowerCase();
 
-  if (host !== "loom.com" && !host.endsWith(".loom.com")) {
+  if (!hostMatches("loom", host)) {
     return undefined;
   }
 
@@ -1280,14 +1240,14 @@ const resolveLoom = async (
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
 // eslint-disable-next-line require-await, complexity -- dispatch over supported providers; async for uniform await contract
-export const resolve = async (
+const resolveRaw = async (
   sourceUrl: string,
   deps: MediaResolverDeps = {}
 ): Promise<VideoAsset[]> => {
   const trimmed = sourceUrl.trim();
 
   if (!trimmed) {
-    throw new Error("Paste a video link");
+    throw new Error(EMPTY_LINK);
   }
 
   const ctx: FetchContext = {
@@ -1295,7 +1255,7 @@ export const resolve = async (
     lookup: deps.lookup ?? defaultLookup,
   };
 
-  const insta = trimmed.match(INSTA_RE)?.groups?.shortcode;
+  const insta = instagramShortcode(trimmed);
 
   if (insta) {
     return resolveInstagram(canonicalReelUrl(trimmed), insta, ctx);
@@ -1307,7 +1267,7 @@ export const resolve = async (
     return resolveFacebook(trimmed, fb.id, fb.fetchUrl, ctx);
   }
 
-  const tweet = trimmed.match(TWEET_RE)?.groups?.id;
+  const tweet = tweetId(trimmed);
 
   if (tweet) {
     return resolveTwitter(trimmed, tweet, ctx);
@@ -1372,4 +1332,20 @@ export const resolve = async (
   }
 
   return resolveGeneric(trimmed, ctx);
+};
+
+// One owner for the gif fact. A resolver that only saw a URL (an og:video from
+// another platform) still gets a real gif recognized here; the client never
+// has to re-derive it from the path.
+export const resolve = async (
+  sourceUrl: string,
+  deps: MediaResolverDeps = {}
+): Promise<VideoAsset[]> => {
+  const assets = await resolveRaw(sourceUrl, deps);
+
+  return assets.map((asset) =>
+    asset.gif === undefined && containerOf(asset.videoUrl) === "gif"
+      ? { ...asset, gif: "file" }
+      : asset
+  );
 };

@@ -8,12 +8,10 @@
 import { z } from "zod";
 
 import { FRESH_MS } from "./freshness";
-import type { VideoAsset } from "./media-resolver";
 import { PLATFORMS } from "./platforms";
 
 const videoAssetSchema = z.object({
-  downloadHref: z.string(),
-  gif: z.boolean().optional(),
+  gif: z.enum(["file", "video"]).optional(),
   label: z.string().optional(),
   platform: z.enum(PLATFORMS),
   shortcode: z.string(),
@@ -23,10 +21,18 @@ const videoAssetSchema = z.object({
   videoUrl: z.string(),
 });
 
-export type ResolvedAsset = VideoAsset & { downloadHref: string };
+const resolvedAssetSchema = videoAssetSchema.extend({
+  downloadHref: z.string(),
+});
+
+// One declaration for the fields: the schema is both the wire contract and the
+// domain type, so a new field cannot be added to one side only.
+export type VideoAsset = z.infer<typeof videoAssetSchema>;
+
+export type ResolvedAsset = z.infer<typeof resolvedAssetSchema>;
 
 export const resolveResultSchema = z.union([
-  z.object({ assets: z.array(videoAssetSchema) }),
+  z.object({ assets: z.array(resolvedAssetSchema) }),
   z.object({ error: z.string() }),
 ]);
 
@@ -38,8 +44,16 @@ export const resolveKey = (url: string): readonly ["resolve", string] =>
 // the download href is same-origin relative; the base only resolves it for
 // parsing. The stem is read back here (not rebuilt) so the naming rule stays
 // in download-link, which is server-only and cannot be imported by the route.
-export const stemOf = (href: string): string =>
-  new URL(href, "http://localhost").searchParams.get("name") ?? "video";
+// A signed href always carries a name, so a missing one is a broken link.
+export const stemOf = (href: string): string => {
+  const stem = new URL(href, "http://localhost").searchParams.get("name");
+
+  if (!stem) {
+    throw new Error("Download link has no name");
+  }
+
+  return stem;
+};
 
 export const isFresh = (
   dataUpdatedAt: number,

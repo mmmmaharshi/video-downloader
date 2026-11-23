@@ -8,9 +8,9 @@
 
 import { Innertube } from "youtubei.js";
 
-import { pinnedFetch } from "./pinned-fetch";
+import { fetchGuarded } from "./guarded-fetch";
 import type { HostLookup } from "./public-host";
-import { defaultLookup, resolvePublicAddresses } from "./public-host";
+import { defaultLookup } from "./public-host";
 
 export interface TubeAsset {
   videoUrl: string;
@@ -84,47 +84,20 @@ const liveGetInfo = async (
   };
 };
 
-const MAX_HEAD_REDIRECTS = 4;
-
-// An InnerTube format url is upstream-supplied, so each hop is checked before
-// it is fetched — a redirect must not carry the probe onto a private host.
+// An InnerTube format url is upstream-supplied; the guarded loop checks every
+// hop so a redirect cannot carry the probe onto a private host. A failed probe
+// means the client cannot play this video, not that the whole resolve failed.
 const headOk = async (
   head: typeof fetch,
   url: string,
   lookup: HostLookup
 ): Promise<boolean> => {
-  let current = url;
-
   try {
-    for (let hop = 0; hop < MAX_HEAD_REDIRECTS; hop += 1) {
-      // eslint-disable-next-line no-await-in-loop -- each hop is checked before it is fetched
-      const addresses = await resolvePublicAddresses(current, lookup);
+    const { res } = await fetchGuarded({ doFetch: head, lookup }, url, {
+      method: "HEAD",
+    });
 
-      // pin the HEAD to an approved address too — otherwise the check and the
-      // dial resolve separately and a DNS change reaches a private host
-      // eslint-disable-next-line no-await-in-loop -- the response decides whether another hop is needed
-      const res = await pinnedFetch(head, current, addresses, {
-        method: "HEAD",
-        redirect: "manual",
-      });
-
-      const location =
-        res.status >= 300 && res.status < 400
-          ? res.headers.get("location")
-          : null;
-
-      if (!location) {
-        return res.ok;
-      }
-
-      try {
-        current = new URL(location, current).href;
-      } catch {
-        return false;
-      }
-    }
-
-    return false;
+    return res.ok;
   } catch {
     return false;
   }

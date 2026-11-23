@@ -55,6 +55,11 @@ describe("resolve-query", () => {
     expect(
       stemOf("/api/download?url=https%3A%2F%2Fx.mp4&name=twitter-99&e=1&s=2")
     ).toBe("twitter-99");
-    expect(stemOf("/api/download?url=https%3A%2F%2Fx.mp4")).toBe("video");
+  });
+
+  test("rejects a href without a stem", () => {
+    expect(() => stemOf("/api/download?url=https%3A%2F%2Fx.mp4")).toThrow(
+      "Download link has no name"
+    );
   });
 });

@@ -20,11 +20,10 @@ export const PLATFORMS = [
 
 export type Platform = (typeof PLATFORMS)[number];
 
-// Every host a platform resolves from. The resolver's matchers implement the
-// same list as logic; this copy feeds the fail-fast for known hosts with
-// unrecognized paths. One entry per platform is compiler-enforced, so adding
-// a platform without its hosts is a type error, not a silent miss. `direct`
-// has no hosts: it is the catch-all for everything else.
+// Every host a platform resolves from. Matchers and the fail-fast both read
+// this list through hostMatches/isPlatformHost, so one edit makes a host
+// recognizable everywhere. One entry per platform is compiler-enforced;
+// `direct` has no hosts because it is the catch-all.
 export const PLATFORM_HOSTS: Record<Platform, readonly string[]> = {
   dailymotion: ["dai.ly", "dailymotion.com"],
   direct: [],
@@ -39,3 +38,13 @@ export const PLATFORM_HOSTS: Record<Platform, readonly string[]> = {
   vimeo: ["player.vimeo.com", "vimeo.com"],
   youtube: ["youtu.be", "youtube.com"],
 };
+
+// The one host rule: exact host or any subdomain of a listed host. Matchers
+// reuse it so a host added here also becomes recognizable by its resolver.
+export const hostMatches = (platform: Platform, hostname: string): boolean =>
+  PLATFORM_HOSTS[platform].some(
+    (host) => hostname === host || hostname.endsWith(`.${host}`)
+  );
+
+export const isPlatformHost = (hostname: string): boolean =>
+  PLATFORMS.some((platform) => hostMatches(platform, hostname));

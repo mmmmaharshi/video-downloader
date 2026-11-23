@@ -14,14 +14,18 @@ const APP_DIR = fileURLToPath(new URL("..", import.meta.url));
 // hydration in dev while typecheck and the prod build stay green.
 const SERVER_ONLY_MODULES = [
   "download-link",
+  "guarded-fetch",
   "media-resolver",
+  "pinned-fetch",
   "public-host",
   "transfer",
   "youtube",
 ];
 
-const SERVER_ONLY_FILE =
-  /(?<lead>^|\/)(?<name>api\.|download-link\.|media-resolver\.|public-host\.|transfer\.|youtube\.)/u;
+const SERVER_ONLY_FILE = new RegExp(
+  `(?<lead>^|/)(?<name>api\\.|${SERVER_ONLY_MODULES.map((name) => `${name}\\.`).join("|")})`,
+  "u"
+);
 
 /** every file under app/ a browser may load, as posix-joined relative paths */
 const clientFiles = async () => {

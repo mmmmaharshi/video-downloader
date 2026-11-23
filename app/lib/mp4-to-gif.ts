@@ -1,11 +1,7 @@
 // Module: Mp4ToGif — turn an mp4 download into a real GIF file, in the browser.
-// Interface: convertMp4ToGif(src) → Promise<Blob> (extracts frames on the
-// main thread, encodes them in a worker where available),
-//   extractFrames(src) → Promise<GifFrame[]> (DOM: video + canvas),
-//   encodeFrames(frames) → Promise<Uint8Array> (pure pixels + gifenc, tested in bun),
-//   encodeInWorker(frames) → Promise<Uint8Array> (same encode, off the main thread),
-//   canCopyGif(env?) → boolean (clipboard write support, tested with injected env),
-//   pruneGifJobs(jobs) (caps remembered conversions, tested).
+// Interface: convertMp4ToGif(src) → Promise<Blob>, encodeFrames(frames) and
+// sampleFrames(frames) for the shared palette, withTimeout(promise, ms, what),
+// canCopyGif(env?), hasWorker(), pruneGifJobs(jobs), blobToDataUrl(blob).
 // The src is the signed same-origin href, so the canvas stays clean: a
 // cross-origin file would taint it and block pixel reads.
 
@@ -40,9 +36,11 @@ export const canCopyGif = (
 
 // remembered conversions stay usable for the session; bound so heavy use
 // cannot pile unbounded bitmaps into memory
-export const MAX_GIF_JOBS = 3;
+const MAX_GIF_JOBS = 3;
 
 // probing the global any other way throws where it does not exist
+// prefetching a conversion is only safe when it can run off the main thread;
+// the encode path itself also falls back inline when the worker fails
 export const hasWorker = (): boolean => {
   try {
     return Worker !== undefined;
@@ -68,7 +66,7 @@ const MAX_GIF_COLORS = 256;
 
 // one palette for the whole gif: quantize over spread samples instead of
 // per frame — faster and stops colors flickering between frames
-export const MAX_SAMPLE_FRAMES = 12;
+const MAX_SAMPLE_FRAMES = 12;
 
 export const sampleFrames = (
   frames: GifFrame[],
@@ -238,9 +236,7 @@ const extractFrames = async (src: string): Promise<GifFrame[]> => {
 
 // frames are cloned, not transferred: a transfer detaches the caller's buffers,
 // and convertMp4ToGif must still be able to encode them inline if the worker fails
-export const encodeInWorker = (
-  frames: GifFrame[]
-): Promise<Uint8Array<ArrayBuffer>> =>
+const encodeInWorker = (frames: GifFrame[]): Promise<Uint8Array<ArrayBuffer>> =>
   // eslint-disable-next-line promise/avoid-new -- worker messages have no awaitable form; the promise only bridges them
   new Promise((resolve, reject) => {
     const worker = new Worker(
@@ -291,7 +287,7 @@ export const convertMp4ToGif = async (src: string): Promise<Blob> => {
     try {
       return new Blob([await encodeInWorker(frames)], { type: "image/gif" });
     } catch {
-      // the worker is a fast path, not a requirement: fall back inline
+      // keep the frames: the inline encode below still needs them
     }
   }
 

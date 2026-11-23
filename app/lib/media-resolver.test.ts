@@ -268,7 +268,7 @@ describe("resolve — X/Twitter", () => {
     });
 
     expect(asset).toEqual({
-      gif: false,
+      gif: undefined,
       platform: "twitter",
       shortcode: "2006763209378922836",
       sourceUrl: TWEET,
@@ -465,7 +465,7 @@ describe("resolve — X/Twitter", () => {
     });
 
     expect(asset.videoUrl).toBe(GIF_MP4);
-    expect(asset.gif).toBe(true);
+    expect(asset.gif).toBe("video");
   });
 
   test("accepts the sole mp4 when the variant omits bitrate", async () => {
@@ -481,7 +481,7 @@ describe("resolve — X/Twitter", () => {
     });
 
     expect(asset.videoUrl).toBe(GIF_MP4);
-    expect(asset.gif).toBe(false);
+    expect(asset.gif).toBeUndefined();
   });
 
   test("rejects a status id with trailing junk instead of resolving the wrong tweet", async () => {
@@ -877,6 +877,20 @@ describe("resolve — Threads", () => {
     });
   });
 
+  test("recognizes an og:video gif from a platform page", async () => {
+    const [asset] = await resolve(THREADS_URL, {
+      fetch: stubFetch(
+        () =>
+          new Response(
+            `<html><head><meta property="og:video" content="https://cdn.threads.com/v.gif"></head></html>`,
+            { status: 200 }
+          )
+      ),
+    });
+
+    expect(asset.gif).toBe("file");
+  });
+
   test("rejects when no video", async () => {
     await expect(
       resolve(THREADS_URL, {
@@ -1246,7 +1260,7 @@ describe("resolve — direct links", () => {
     });
 
     expect(asset).toEqual({
-      gif: false,
+      gif: undefined,
       platform: "direct",
       shortcode: "funny-cat",
       sourceUrl: MP4_URL,
@@ -1270,7 +1284,7 @@ describe("resolve — direct links", () => {
     });
 
     expect(asset).toEqual({
-      gif: true,
+      gif: "file",
       platform: "direct",
       shortcode: "funny",
       sourceUrl: gif,
@@ -1293,7 +1307,7 @@ describe("resolve — direct links", () => {
       lookup: publicHost,
     });
 
-    expect(asset.gif).toBe(true);
+    expect(asset.gif).toBe("file");
     expect(asset.videoUrl).toBe(pageUrl);
   });
 
@@ -1310,7 +1324,7 @@ describe("resolve — direct links", () => {
     });
 
     expect(asset).toEqual({
-      gif: false,
+      gif: undefined,
       platform: "direct",
       shortcode: "42",
       sourceUrl: pageUrl,
@@ -1335,7 +1349,7 @@ describe("resolve — direct links", () => {
     ).rejects.toThrow("No video found at this link");
   });
 
-  test("reads only the head of a very long page", async () => {
+  test("finds og:video when a long page follows it", async () => {
     const pageUrl = "https://blog.example.com/posts/42";
     const tail = "x".repeat(2 * 1024 * 1024);
 

@@ -120,9 +120,18 @@ describe("encodeFrames", () => {
 
     const sampled = sampleFrames(frames);
 
-    expect(sampled.length).toBeLessThanOrEqual(12);
+    expect(sampled.length).toBe(12);
     expect(sampled[0]).toBe(frames[0]);
     expect(sampled.at(-1)).toBe(frames.at(-1));
+
+    const indices = sampled.map((f) => f.data[0]);
+
+    for (let i = 1; i < indices.length; i += 1) {
+      const gap = indices[i] - indices[i - 1];
+
+      expect(gap).toBeGreaterThanOrEqual(4);
+      expect(gap).toBeLessThanOrEqual(7);
+    }
   });
 
   test("keeps every frame when there are few", () => {

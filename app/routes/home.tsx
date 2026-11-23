@@ -14,7 +14,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as React from "react";
 
 import { containerOf, isManifestContainer } from "../lib/container";
-import type { VideoAsset } from "../lib/media-resolver";
+import { CONVERSION_FAILED, EMPTY_LINK, GIF_COPIED } from "../lib/messages";
 import {
   blobToDataUrl,
   canCopyGif,
@@ -31,7 +31,11 @@ import {
   resolveResultSchema,
   stemOf,
 } from "../lib/resolve-query";
-import type { ResolveResult, ResolvedAsset } from "../lib/resolve-query";
+import type {
+  ResolveResult,
+  ResolvedAsset,
+  VideoAsset,
+} from "../lib/resolve-query";
 import type { Route } from "./+types/home";
 
 export const meta = () => [
@@ -67,30 +71,23 @@ export const links: Route.LinksFunction = () => [
 const MEDIA_CLASS =
   "block w-full max-h-[min(70vh,calc(100dvh-300px))] object-contain";
 
-// the resolver flags what it served as gif; the path covers og:video links
-// from other resolvers, which never see a content-type
-const isGifAsset = (asset: VideoAsset): boolean =>
-  asset.gif === true || containerOf(asset.videoUrl) === "gif";
+// the resolver owns what kind of gif this is: only it sees the content-type
+const isGifAsset = (asset: VideoAsset): boolean => asset.gif !== undefined;
 
-// only a real gif file can go on the clipboard as bytes — an X mp4 cannot,
-// so it skips the fetch and copies its link at once
-const isGifFile = (asset: VideoAsset): boolean =>
-  containerOf(asset.videoUrl) === "gif";
+const isGifFile = (asset: VideoAsset): boolean => asset.gif === "file";
 
-// only a non-file gif needs converting: a real gif file downloads as-is
-const needsConverting = (asset: VideoAsset): boolean =>
-  asset.gif === true && !isGifFile(asset);
+const needsConverting = (asset: VideoAsset): boolean => asset.gif === "video";
 
 const PreviewMedia = ({ asset }: { asset: VideoAsset }) => {
   // a real gif file animates in an image element; an X gif is an mp4, which
   // plays in a video element — autoplaying and looping, like a gif
-  if (containerOf(asset.videoUrl) === "gif") {
+  if (asset.gif === "file") {
     return (
       <img src={asset.videoUrl} alt="GIF preview" className={MEDIA_CLASS} />
     );
   }
 
-  if (asset.gif === true) {
+  if (asset.gif === "video") {
     return (
       <video
         src={asset.videoUrl}
@@ -177,6 +174,18 @@ const startGifJob = async (src: string): Promise<GifJob> => {
   } catch (error) {
     return { error };
   }
+};
+
+// Both the download and the copy flow wait on a conversion, flip a busy flag
+// and log a failed job; only the fallback differs, so that stays with the caller.
+const runGifJob = async (job: Promise<GifJob>): Promise<Blob | undefined> => {
+  const { blob, error } = await job;
+
+  if (!blob) {
+    console.error("gif job failed:", error);
+  }
+
+  return blob;
 };
 
 const Home = () => {
@@ -272,7 +281,7 @@ const Home = () => {
     // an empty field is answered here rather than by the action, so no round
     // trip and no spinner; the message mirrors resolve() in media-resolver
     if (!url.trim()) {
-      applyResult({ error: "Paste a video link" });
+      applyResult({ error: EMPTY_LINK });
 
       return;
     }
@@ -289,7 +298,6 @@ const Home = () => {
     }
   };
 
-  // The preview renders the assets that opened it, not whatever the latest result holds.
   const { shown } = preview;
   const current = shown[preview.active];
   const isYouTube = current?.platform === "youtube";
@@ -308,14 +316,13 @@ const Home = () => {
 
     setConverting(true);
 
-    const { blob, error: jobError } = await gifBlobFor(asset);
+    const blob = await runGifJob(gifBlobFor(asset));
 
     if (!blob) {
-      // the mp4 always downloads: convert failure must not strand the file
-      console.error("convert gif failed:", jobError);
       setConverting(false);
+      // the mp4 always downloads: convert failure must not strand the file
       toast.success("Downloading MP4", {
-        description: "Conversion failed, getting the original instead.",
+        description: CONVERSION_FAILED,
       });
       window.location.href = asset.downloadHref;
 
@@ -339,7 +346,7 @@ const Home = () => {
     } catch (anchorError) {
       console.error("gif download failed:", anchorError);
       toast.success("Downloading MP4", {
-        description: "Conversion failed, getting the original instead.",
+        description: CONVERSION_FAILED,
       });
       window.location.href = asset.downloadHref;
     }
@@ -374,7 +381,7 @@ const Home = () => {
           new ClipboardItem(await gifReps(asset)),
         ]);
         toast.success("Copied", {
-          description: "Paste it anywhere — chats and mail show the GIF.",
+          description: GIF_COPIED,
         });
       } catch {
         await copyLinkFallback(asset);
@@ -385,10 +392,9 @@ const Home = () => {
 
     setCopying(true);
 
-    const { blob, error: jobError } = await gifBlobFor(asset);
+    const blob = await runGifJob(gifBlobFor(asset));
 
     if (!blob) {
-      console.error("gif job failed:", jobError);
       setCopying(false);
       await copyLinkFallback(asset);
 
@@ -405,7 +411,7 @@ const Home = () => {
         }),
       ]);
       toast.success("Copied", {
-        description: "Paste it anywhere — chats and mail show the GIF.",
+        description: GIF_COPIED,
       });
     } catch (error) {
       // silent here means undebuggable there: the toast stays plain so the

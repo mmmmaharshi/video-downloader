@@ -25,7 +25,7 @@ export type Platform = (typeof PLATFORMS)[number];
 // this list through hostMatches/isPlatformHost, so one edit makes a host
 // recognizable everywhere. One entry per platform is compiler-enforced;
 // `direct` has no hosts because it is the catch-all.
-export const PLATFORM_HOSTS: Record<Platform, readonly string[]> = {
+const PLATFORM_HOSTS: Record<Platform, readonly string[]> = {
   dailymotion: ["dai.ly", "dailymotion.com"],
   direct: [],
   facebook: ["facebook.com", "fb.watch"],

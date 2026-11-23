@@ -181,7 +181,7 @@ const absolutizeManifest = (
 ): string =>
   container === "mpd" ? absolutizeMpd(body, base) : absolutizeM3u8(body, base);
 
-export interface TransferInput {
+interface TransferInput {
   readonly maxBytes?: number;
   readonly maxMs?: number;
   readonly range?: string | null;

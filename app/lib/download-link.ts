@@ -11,7 +11,7 @@ import type { VideoAsset } from "./resolve-query";
 import { API_DOWNLOAD } from "./routes";
 import { stemOf } from "./stem";
 
-export interface DownloadRequest {
+interface DownloadRequest {
   videoUrl: string;
   stem: string;
 }

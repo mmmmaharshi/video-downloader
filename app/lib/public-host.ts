@@ -165,7 +165,7 @@ export const GUARD_UNRESOLVED_MESSAGE =
 
 // One guard decision, expressed as data so both the throwing seam and the
 // Effect programs read the same policy instead of keeping a copy each.
-export type GuardOutcome =
+type GuardOutcome =
   | { readonly addresses: string[]; readonly ok: true }
   | { readonly ok: false; readonly reason: "blocked" | "unresolved" };
 

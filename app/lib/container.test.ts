@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { containerOf, isManifestContainer } from "./container";
 import type { Container } from "./container";

@@ -1,11 +1,12 @@
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 // Guards the client-safe boundary that broke the dev form: the platform
 // vocabulary must stay importable by browser code. A client module once pulled
 // it from media-resolver (which imports node:dns), so Vite's externalized stub
 // threw during hydration and the Fetch form fell back to a native page reload.
-import { describe, expect, test } from "bun:test";
-import { readdir, readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { describe, expect, test } from "vitest";
 
 const APP_DIR = fileURLToPath(new URL("..", import.meta.url));
 

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { fromDownloadRequest, toDownloadHref } from "./download-link";
 import { FRESH_MS } from "./freshness";
@@ -37,21 +37,23 @@ const thrown = (act: () => void): Response => {
 
 describe("toDownloadHref", () => {
   test("names an X download after the tweet id", () => {
-    expect(
-      toDownloadHref(
-        [
-          asset(
-            "twitter",
-            "2006763209378922836",
-            "https://video.twimg.com/x.mp4"
-          ),
-        ],
-        0,
-        devDeps
-      )
-    ).toStartWith(
-      "/api/download?url=https%3A%2F%2Fvideo.twimg.com%2Fx.mp4&name=twitter-2006763209378922836"
+    const href = toDownloadHref(
+      [
+        asset(
+          "twitter",
+          "2006763209378922836",
+          "https://video.twimg.com/x.mp4"
+        ),
+      ],
+      0,
+      devDeps
     );
+
+    expect(
+      href.startsWith(
+        "/api/download?url=https%3A%2F%2Fvideo.twimg.com%2Fx.mp4&name=twitter-2006763209378922836"
+      )
+    ).toBe(true);
   });
 
   test("encodes a video url that carries its own query string", () => {

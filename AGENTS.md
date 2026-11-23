@@ -16,7 +16,7 @@
 
 - New server logic is an Effect 4 program with dependencies as a Layer and failures as a plain tagged union. Follow the `rumble-effect.ts` pattern: `FetchDeps` service, `Effect.provide` at the seam, `rumbleErrorMessage`-style mapper back to the legacy contract.
 - Never change a seam's user-facing contract in the porting commit: `resolve()` still throws `Error`, `Transfer.proxy` still throws `Response` (ADR-0001). Error-currency changes are their own ADR.
-- Test Effect code with `Effect.runPromise` / `Effect.flip` and injected Layers under `bun:test`. Keep the legacy promise tests green as equivalence proof.
+- Test Effect code with `Effect.runPromise` / `Effect.flip` and injected Layers under `vitest`. Keep the legacy promise tests green as equivalence proof.
 
 ## Workflow
 

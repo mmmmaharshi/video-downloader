@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test";
-
 import { Effect, Layer } from "effect";
+import { describe, expect, test } from "vitest";
 
 import { resolveFacebookProgram, toThrownError } from "./facebook-effect";
 import { stubFetch } from "./fake-fetch";

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { stubFetch } from "./fake-fetch";
 import { resolve as resolveRaw } from "./media-resolver";

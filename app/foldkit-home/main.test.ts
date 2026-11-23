@@ -1,9 +1,8 @@
 // Stories for the home widget: dispatch a Message, resolve the Command, assert
 // the Model. Each story fails for its own reason — no shared setup to blame.
 
-import { describe, expect, test } from "bun:test";
-
 import { Command, given, message, model, story } from "foldkit/story";
+import { describe, expect, test } from "vitest";
 
 import { EMPTY_LINK } from "../lib/messages";
 import { init, Message, ResolveUrl, update } from "./main";

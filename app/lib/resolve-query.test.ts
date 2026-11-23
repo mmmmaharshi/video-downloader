@@ -1,6 +1,5 @@
-import { describe, expect, test } from "bun:test";
-
 import { Schema } from "effect";
+import { describe, expect, test } from "vitest";
 
 import { toDownloadHref } from "./download-link";
 import { stubFetch } from "./fake-fetch";

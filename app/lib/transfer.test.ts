@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test } from "vitest";
 
 import { stubFetch } from "./fake-fetch";
 import { proxy as proxyRaw } from "./transfer";
@@ -203,8 +203,13 @@ describe("proxy", () => {
   });
 
   test("falls back to video/mp4 when upstream sends no content type", async () => {
+    // undici defaults a string body to text/plain; the upstream under test
+    // sends none, so strip what the constructor added
+    const upstream = new Response("x", { status: 200 });
+    upstream.headers.delete("content-type");
+
     const res = await proxy(CDN, "ABC123", {
-      fetch: stubFetch(() => new Response("x", { status: 200 })),
+      fetch: stubFetch(() => upstream),
     });
 
     expect(res.headers.get("content-type")).toBe("video/mp4");

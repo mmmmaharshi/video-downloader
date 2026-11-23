@@ -7,10 +7,10 @@
     "dev": "react-router dev",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc",
-    "test": "bun test",
+    "test": "vitest run",
     "check": "ultracite check",
     "fix": "ultracite fix",
-    "verify": "bun run typecheck && bun test && bun run check && bun run build"
+    "verify": "bun run typecheck && bun run test && bun run check && bun run build"
   },
   "dependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.87",

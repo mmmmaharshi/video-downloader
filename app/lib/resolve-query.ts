@@ -1,13 +1,8 @@
-// Module: ResolveQuery — the TanStack Query seam for link resolution.
-// Interface: resolveKey(url) → query key; isFresh(updatedAt, now?) → gate check;
-// resolveResultSchema.parse(json) validates the /api/resolve response at the boundary.
-// Resolved CDN urls go stale, so cached resolutions stay valid only inside
-// FRESH_MS — the same window the signed download href lives for, so a cached
-// hit can still download.
+// Module: ResolveQuery — the /api/resolve response contract.
+// resolveResultSchema.parse(json) validates the response at the boundary.
 
 import { z } from "zod";
 
-import { FRESH_MS } from "./freshness";
 import { PLATFORMS } from "./platforms";
 
 const videoAssetSchema = z.object({
@@ -37,25 +32,3 @@ export const resolveResultSchema = z.union([
 ]);
 
 export type ResolveResult = z.infer<typeof resolveResultSchema>;
-
-export const resolveKey = (url: string): readonly ["resolve", string] =>
-  ["resolve", url.trim()] as const;
-
-// the download href is same-origin relative; the base only resolves it for
-// parsing. The stem is read back here (not rebuilt) so the naming rule stays
-// in download-link, which is server-only and cannot be imported by the route.
-// A signed href always carries a name, so a missing one is a broken link.
-export const stemOf = (href: string): string => {
-  const stem = new URL(href, "http://localhost").searchParams.get("name");
-
-  if (!stem) {
-    throw new Error("Download link has no name");
-  }
-
-  return stem;
-};
-
-export const isFresh = (
-  dataUpdatedAt: number,
-  now: number = Date.now()
-): boolean => now - dataUpdatedAt < FRESH_MS;

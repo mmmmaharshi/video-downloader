@@ -1,4 +1,3 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as React from "react";
 import {
   isRouteErrorResponse,
@@ -37,20 +36,7 @@ export const Layout = ({ children }: { children: React.ReactNode }) => (
   </html>
 );
 
-const App = () => {
-  // per-component instance: a module singleton would share cached
-  // resolutions across server requests
-  const queryClient = React.useMemo(
-    () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-    []
-  );
-
-  return (
-    <QueryClientProvider client={queryClient}>
-      <Outlet />
-    </QueryClientProvider>
-  );
-};
+const App = () => <Outlet />;
 
 export default App;
 

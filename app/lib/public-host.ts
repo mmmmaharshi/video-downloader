@@ -7,6 +7,8 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
+import { z } from "zod";
+
 // DNS seam: production resolves for real, tests inject addresses.
 // Both sync and async doubles work — every use site awaits.
 export type HostLookup = (hostname: string) => Promise<string[]> | string[];
@@ -15,6 +17,55 @@ export const defaultLookup: HostLookup = async (hostname) => {
   const records = await dnsLookup(hostname, { all: true });
 
   return records.map((r) => r.address);
+};
+
+// Workers has no node:dns and no raw sockets. Resolve over DNS-over-HTTPS so
+// the same guard runs on Cloudflare. Query both A and AAAA: an AAAA-only
+// host must not slip past an A-only check. The caller still re-checks every
+// redirect hop; a TTL-0 rebind between this check and the Worker's fetch stays
+// open (see ADR-0003) because cf.resolveOverride only pins names in our zone.
+const dohResponseSchema = z.object({
+  Answer: z.array(z.object({ data: z.string() })).optional(),
+});
+
+const dohQuery = async (
+  hostname: string,
+  recordType: "A" | "AAAA",
+  doFetch: DohFetch
+): Promise<string[]> => {
+  const res = await doFetch(
+    `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(hostname)}&type=${recordType}`,
+    { headers: { Accept: "application/dns-json" } }
+  );
+
+  if (!res.ok) {
+    throw new Error(`DoH ${recordType} query failed with ${res.status}`);
+  }
+
+  const parsed = dohResponseSchema.safeParse(await res.json());
+
+  if (!parsed.success) {
+    return [];
+  }
+
+  return (parsed.data.Answer ?? []).map((record) => record.data);
+};
+
+export type DohFetch = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Response>;
+
+export const dohLookup = async (
+  hostname: string,
+  doFetch: DohFetch = fetch
+): Promise<string[]> => {
+  const [aRecords, aaaaRecords] = await Promise.all([
+    dohQuery(hostname, "A", doFetch),
+    dohQuery(hostname, "AAAA", doFetch),
+  ]);
+
+  return [...aRecords, ...aaaaRecords];
 };
 
 // Explicit range checks — Bun's net.BlockList mishandles IPv6.

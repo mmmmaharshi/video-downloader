@@ -22,6 +22,7 @@ const SERVER_ONLY_MODULES = [
   "rumble-effect",
   "transfer",
   "youtube",
+  "youtube-effect",
 ];
 
 const SERVER_ONLY_FILE = new RegExp(

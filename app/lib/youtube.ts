@@ -6,11 +6,17 @@
 // url gates each client and ANDROID (360p, playable) is the fallback.
 // Seam: getInfo + fetch (live Innertube in prod, stubs in tests).
 
+import { Effect, Layer } from "effect";
 import { Innertube } from "youtubei.js";
 
-import { fetchGuarded } from "./guarded-fetch";
+import { FetchDeps } from "./fetch-deps";
 import type { HostLookup } from "./public-host";
 import { defaultLookup } from "./public-host";
+import {
+  getYouTubeFormatsProgram,
+  toThrownError,
+  YouTubeInfo,
+} from "./youtube-effect";
 
 export interface TubeAsset {
   videoUrl: string;
@@ -24,9 +30,7 @@ export interface YouTubeDeps {
   lookup?: HostLookup;
 }
 
-type ClientName = "IOS" | "ANDROID";
-
-const CLIENTS: ClientName[] = ["IOS", "ANDROID"];
+export type ClientName = "IOS" | "ANDROID";
 
 interface TubeFormat {
   url?: string;
@@ -84,89 +88,25 @@ const liveGetInfo = async (
   };
 };
 
-// An InnerTube format url is upstream-supplied; the guarded loop checks every
-// hop so a redirect cannot carry the probe onto a private host. A failed probe
-// means the client cannot play this video, not that the whole resolve failed.
-const headOk = async (
-  head: typeof fetch,
-  url: string,
-  lookup: HostLookup
-): Promise<boolean> => {
-  try {
-    const { res } = await fetchGuarded({ doFetch: head, lookup }, url, {
-      method: "HEAD",
-    });
-
-    return res.ok;
-  } catch {
-    return false;
-  }
-};
-
-// sort runs on the mapped copy, so nothing shared is mutated (toSorted
-// needs ES2023 lib, which this project does not target)
-const bestMp4s = (info: TubeInfo): TubeAsset[] =>
-  info.formats
-    .filter(
-      (f): f is TubeFormat & { url: string } =>
-        f.mime_type.startsWith("video/mp4") && f.url !== undefined
-    )
-    .map((f) => ({ height: f.height ?? 0, videoUrl: f.url }))
-    // eslint-disable-next-line unicorn/no-array-sort -- fresh mapped copy, and toSorted needs ES2023 lib
-    .sort((a, b) => b.height - a.height);
-
+// The format extraction runs as an Effect program (FetchDeps plus YouTubeInfo
+// Layers) and is bridged back to promises here, so resolve()'s thrown-Error
+// contract — including the unreachable cause — is unchanged.
 export const getYouTubeFormats = async (
   id: string,
   deps: YouTubeDeps = {}
 ): Promise<TubeAsset[]> => {
-  const getInfo = deps.getInfo ?? liveGetInfo;
-  const head = deps.fetch ?? fetch;
-  const lookup = deps.lookup ?? defaultLookup;
-  let answered = false;
-  let failure: unknown;
-  let reason: string | undefined;
+  const layer = Layer.merge(
+    Layer.succeed(FetchDeps)({
+      doFetch: deps.fetch ?? fetch,
+      lookup: deps.lookup ?? defaultLookup,
+    }),
+    Layer.succeed(YouTubeInfo)({ getInfo: deps.getInfo ?? liveGetInfo })
+  );
 
-  for (const client of CLIENTS) {
-    let info: TubeInfo;
-
-    try {
-      // eslint-disable-next-line no-await-in-loop -- ANDROID is the fallback for exactly the videos IOS failed
-      info = await getInfo(id, client);
-    } catch (error) {
-      failure ??= error;
-      continue;
-    }
-
-    answered = true;
-
-    if (info.playability !== "OK") {
-      reason ??= info.reason;
-      continue;
-    }
-
-    const mp4s = bestMp4s(info);
-
-    if (!mp4s.length) {
-      continue;
-    }
-
-    // eslint-disable-next-line no-await-in-loop -- the HEAD probe gates this client before falling back to the next
-    if (await headOk(head, mp4s[0].videoUrl, lookup)) {
-      return mp4s.map((m) => ({ ...m, title: info.title }));
-    }
-  }
-
-  if (!answered) {
-    throw new Error("YouTube is unreachable right now. Try again later.", {
-      cause: failure,
-    });
-  }
-
-  if (reason) {
-    throw new Error(
-      `This video is unavailable${`: ${reason}`}. Private or age-restricted videos need a login, which is not supported.`
-    );
-  }
-
-  return [];
+  return await Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(getYouTubeFormatsProgram(id), layer),
+      toThrownError
+    )
+  );
 };

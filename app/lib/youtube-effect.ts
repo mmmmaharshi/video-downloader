@@ -1,0 +1,169 @@
+import { Context, Effect } from "effect";
+
+import { FetchDeps } from "./fetch-deps";
+import { fetchGuarded } from "./guarded-fetch";
+import type { ClientName, TubeAsset, TubeInfo } from "./youtube";
+
+// Module: YouTubeEffect — the anonymous MP4 extraction as an Effect program.
+// The IOS client returns plain playback URLs with no attestation; some videos
+// refuse anonymous playback on every IOS url, so a HEAD probe gates each
+// client and ANDROID is the fallback. Dependencies arrive as Layers (FetchDeps
+// for transport, YouTubeInfo for InnerTube); failures are a plain tagged
+// union, mapped to the legacy user-facing strings at the bridge in youtube.ts,
+// which keeps getYouTubeFormats' thrown-Error contract.
+
+export interface YouTubeGetInfo {
+  readonly getInfo: (
+    id: string,
+    client: ClientName
+  ) => Promise<TubeInfo> | TubeInfo;
+}
+
+export class YouTubeInfo extends Context.Service<YouTubeInfo, YouTubeGetInfo>()(
+  "YouTubeInfo"
+) {}
+
+export interface YouTubeUnreachable {
+  readonly _tag: "YouTubeUnreachable";
+  readonly cause: unknown;
+}
+
+export interface YouTubeUnavailable {
+  readonly _tag: "YouTubeUnavailable";
+  readonly reason: string;
+}
+
+export type YouTubeError = YouTubeUnavailable | YouTubeUnreachable;
+
+// Legacy strings, pinned by test: the bridge keeps the promise contract while
+// the program reasons in tags.
+export const youtubeErrorMessage = (error: YouTubeError): string => {
+  switch (error._tag) {
+    case "YouTubeUnreachable": {
+      return "YouTube is unreachable right now. Try again later.";
+    }
+
+    case "YouTubeUnavailable": {
+      return `This video is unavailable: ${error.reason}. Private or age-restricted videos need a login, which is not supported.`;
+    }
+
+    default: {
+      const exhaustive: never = error;
+
+      throw new Error(`Unhandled YouTubeError: ${JSON.stringify(exhaustive)}`);
+    }
+  }
+};
+
+// The bridge maps tags to thrown Errors; a named function (not an inline
+// callback) so the call site stays a plain Effect pipeline.
+export const toThrownError = (error: YouTubeError): Error => {
+  if (error._tag === "YouTubeUnreachable") {
+    return new Error(youtubeErrorMessage(error), { cause: error.cause });
+  }
+
+  return new Error(youtubeErrorMessage(error));
+};
+
+const CLIENTS: ClientName[] = ["IOS", "ANDROID"];
+
+interface TubeFormat {
+  readonly height?: number;
+  readonly mime_type: string;
+  readonly url?: string;
+  readonly width?: number;
+}
+
+// sort runs on the mapped copy, so nothing shared is mutated (toSorted
+// needs ES2023 lib, which this project does not target)
+const bestMp4s = (info: TubeInfo): TubeAsset[] =>
+  info.formats
+    .filter(
+      (f): f is TubeFormat & { url: string } =>
+        f.mime_type.startsWith("video/mp4") && f.url !== undefined
+    )
+    .map((f) => ({ height: f.height ?? 0, videoUrl: f.url }))
+    // eslint-disable-next-line unicorn/no-array-sort -- fresh mapped copy, and toSorted needs ES2023 lib
+    .sort((a, b) => b.height - a.height);
+
+// An InnerTube format url is upstream-supplied; the guarded loop checks every
+// hop so a redirect cannot carry the probe onto a private host. A failed probe
+// means the client cannot play this video, not that the whole resolve failed.
+const probeHead = (url: string): Effect.Effect<boolean, never, FetchDeps> =>
+  Effect.gen(function* probe() {
+    const { doFetch, lookup } = yield* FetchDeps;
+
+    return yield* Effect.promise(() =>
+      fetchGuarded({ doFetch, lookup }, url, { method: "HEAD" }).then(
+        ({ res }) => res.ok,
+        () => false
+      )
+    );
+  });
+
+export const getYouTubeFormatsProgram = (
+  id: string
+): Effect.Effect<TubeAsset[], YouTubeError, FetchDeps | YouTubeInfo> =>
+  Effect.gen(function* program() {
+    const { getInfo } = yield* YouTubeInfo;
+
+    let answered = false;
+    let failure: unknown;
+    let reason: string | undefined;
+
+    for (const client of CLIENTS) {
+      // a per-client failure is data (fall through to the next client), not a
+      // program failure: the inner promise never rejects, it reports ok/cause
+      const attempt = yield* Effect.promise(() =>
+        Promise.resolve()
+          .then(() => getInfo(id, client))
+          .then(
+            (info) => ({ info, ok: true as const }),
+            // eslint-disable-next-line anti-slop/no-unknown-parameters -- the injected getInfo double can throw any value; the sentinel carries it opaquely as the unreachable cause without inspecting it
+            (error: unknown) => ({ cause: error, ok: false as const })
+          )
+      );
+
+      if (!attempt.ok) {
+        failure = attempt.cause;
+        continue;
+      }
+
+      answered = true;
+
+      const { info } = attempt;
+
+      if (info.playability !== "OK") {
+        reason ??= info.reason;
+        continue;
+      }
+
+      const mp4s = bestMp4s(info);
+
+      if (!mp4s.length) {
+        continue;
+      }
+
+      const playable = yield* probeHead(mp4s[0].videoUrl);
+
+      if (playable) {
+        return mp4s.map((m) => ({ ...m, title: info.title }));
+      }
+    }
+
+    if (!answered) {
+      return yield* Effect.fail({
+        _tag: "YouTubeUnreachable" as const,
+        cause: failure,
+      });
+    }
+
+    if (reason !== undefined) {
+      return yield* Effect.fail({
+        _tag: "YouTubeUnavailable" as const,
+        reason,
+      });
+    }
+
+    return [];
+  });

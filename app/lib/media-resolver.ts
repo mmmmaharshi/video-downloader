@@ -15,6 +15,10 @@ import {
 import { FetchDeps } from "./fetch-deps";
 import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
 import { resolveInstagramProgram, toThrownError } from "./instagram-effect";
+import {
+  resolveLoomProgram,
+  toThrownError as toLoomThrownError,
+} from "./loom-effect";
 import { EMPTY_LINK } from "./messages";
 import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { hostMatches, isPlatformHost } from "./platforms";
@@ -24,6 +28,10 @@ import { byQuality, preferMp4, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
 import { resolveRumbleProgram, rumbleErrorMessage } from "./rumble-effect";
+import {
+  resolveThreadsProgram,
+  toThrownError as toThreadsThrownError,
+} from "./threads-effect";
 import {
   resolveTwitterProgram,
   toThrownError as toTwitterThrownError,
@@ -836,30 +844,32 @@ const matchThreads = (sourceUrl: string): { id: string } | undefined => {
   return id ? { id } : undefined;
 };
 
+// The Threads page scrape runs as an Effect program (FetchDeps Layer) and is
+// bridged back to promises here, so resolve() keeps its thrown-Error contract.
 const resolveThreads = async (
   sourceUrl: string,
   id: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res } = await fetchPublic(ctx, sourceUrl, PAGE_HEADERS);
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
+  });
 
-  assertOk(res, "Threads");
-
-  const html = await readCapped(res, MAX_PAGE_BYTES);
-
-  const videoUrl = extractOgVideo(html);
-
-  if (!videoUrl) {
-    throw new Error("No video found. Only video posts are downloadable.");
-  }
+  const streams = await Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveThreadsProgram({ sourceUrl }), layer),
+      toThreadsThrownError
+    )
+  );
 
   return [
     {
-      platform: "threads",
+      platform: "threads" as const,
       shortcode: id,
       sourceUrl,
-      thumbnail: extractThumbnail(html),
-      videoUrl,
+      thumbnail: streams.thumbnail,
+      videoUrl: streams.videoUrl,
     },
   ];
 };
@@ -1051,30 +1061,32 @@ const matchLoom = (sourceUrl: string): { id: string } | undefined => {
   return id ? { id } : undefined;
 };
 
+// The Loom page scrape runs as an Effect program (FetchDeps Layer) and is
+// bridged back to promises here, so resolve() keeps its thrown-Error contract.
 const resolveLoom = async (
   sourceUrl: string,
   id: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res } = await fetchPublic(ctx, sourceUrl, PAGE_HEADERS);
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
+  });
 
-  assertOk(res, "Loom");
-
-  const html = await readCapped(res, MAX_PAGE_BYTES);
-
-  const videoUrl = extractOgVideo(html);
-
-  if (!videoUrl) {
-    throw new Error("No video found. Only public videos are downloadable.");
-  }
+  const streams = await Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveLoomProgram({ sourceUrl }), layer),
+      toLoomThrownError
+    )
+  );
 
   return [
     {
-      platform: "loom",
+      platform: "loom" as const,
       shortcode: id,
       sourceUrl,
-      thumbnail: extractThumbnail(html),
-      videoUrl,
+      thumbnail: streams.thumbnail,
+      videoUrl: streams.videoUrl,
     },
   ];
 };

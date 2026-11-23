@@ -78,7 +78,16 @@ Bun.serve({
     }
 
     if (request.method === "GET") {
-      const file = insideDist(decodeURIComponent(url.pathname));
+      let pathname: string;
+
+      try {
+        pathname = decodeURIComponent(url.pathname);
+      } catch {
+        // a malformed escape ("/%") is a bad path, not a server fault
+        return notFound();
+      }
+
+      const file = insideDist(pathname);
 
       if (file !== undefined) {
         const hit = await serveFile(file);

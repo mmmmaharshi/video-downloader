@@ -102,6 +102,11 @@ const TikTokPayload = Schema.Struct({
   ),
 });
 
+// Falsy values from a page payload read as absent: an empty attribute is not a
+// usable url.
+const firstUrl = (...values: (string | undefined)[]): string | undefined =>
+  values.find((value) => value !== undefined && value !== "");
+
 // tolerant by design: a missing block or a shape mismatch reads as absent
 // (legacy swallowed parse failures too), falling through to og:video
 interface TikTokVideo {
@@ -174,8 +179,10 @@ export const resolveTikTokProgram = (
     // absent (legacy swallowed parse failures too), falling through to og:video
     const video = extractTikTokVideo(html);
 
-    let videoUrl = video?.playAddr ?? video?.downloadAddr;
-    let thumbnail = video?.cover;
+    // a payload can carry an empty string: that is absent, not a url, and it
+    // must not block the og:video fallback below
+    let videoUrl = firstUrl(video?.playAddr, video?.downloadAddr);
+    let thumbnail = firstUrl(video?.cover);
 
     videoUrl ??= extractOgVideo(html);
     thumbnail ??= extractThumbnail(html);

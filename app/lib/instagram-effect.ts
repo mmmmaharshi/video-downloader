@@ -171,9 +171,14 @@ export const resolveInstagramProgram = (
         }
       ).pipe(
         Effect.flatMap(({ res: er }) =>
-          Effect.promise(async () =>
-            er.ok ? (extractEscapedVideo(await readPageText(er)) ?? null) : null
-          )
+          // a body that breaks mid-read is "no embed", not a crashed resolve
+          er.ok
+            ? Effect.tryPromise({
+                catch: () => null,
+                try: async () =>
+                  extractEscapedVideo(await readPageText(er)) ?? null,
+              }).pipe(Effect.orElseSucceed(() => null))
+            : Effect.succeed(null)
         ),
         Effect.orElseSucceed(() => null)
       );

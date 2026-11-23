@@ -230,8 +230,8 @@ const fetchEmbedMp4s = (
 
     const endpoint = `https://rumble.com/embedJS/u3/${embedId}?request=video&ver=2&v=${embedId}`;
 
-    yield* rumbleGuard(endpoint, lookup);
-
+    // fetchGuarded checks the hop and dials the approved address, so a separate
+    // rumbleGuard here would resolve the same host twice for one request
     const headers = new Headers({
       ...PAGE_HEADERS,
       Accept: "application/json",

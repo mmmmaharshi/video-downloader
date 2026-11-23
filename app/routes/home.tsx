@@ -469,7 +469,7 @@ const Home = () => {
         <Typography color="muted">
           Paste any video link and hit Fetch to download it from Instagram, X
           (Twitter), YouTube, Facebook, Reddit, Streamable, Vimeo, TikTok,
-          Threads, Dailymotion, Loom, and direct video links.
+          Threads, Dailymotion, Loom, Rumble, and direct video links.
         </Typography>
       </main>
 

@@ -15,6 +15,7 @@ export const PLATFORMS = [
   "threads",
   "dailymotion",
   "loom",
+  "rumble",
   "direct",
 ] as const;
 
@@ -31,6 +32,7 @@ export const PLATFORM_HOSTS: Record<Platform, readonly string[]> = {
   instagram: ["instagram.com"],
   loom: ["loom.com"],
   reddit: ["reddit.com", "redd.it"],
+  rumble: ["rumble.com"],
   streamable: ["streamable.com"],
   threads: ["threads.com", "threads.net"],
   tiktok: ["tiktok.com"],

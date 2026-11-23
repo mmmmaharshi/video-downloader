@@ -4,12 +4,15 @@
 // exposes at most one, so IG resolves to a one-element list.
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
+import { z } from "zod";
+
 import { readCappedUtf8 } from "./capped-body";
 import { containerOf } from "./container";
 import { fetchGuarded } from "./guarded-fetch";
 import { EMPTY_LINK } from "./messages";
+import { pinnedFetch } from "./pinned-fetch";
 import { hostMatches, isPlatformHost } from "./platforms";
-import { defaultLookup } from "./public-host";
+import { defaultLookup, resolvePublicAddresses } from "./public-host";
 import type { HostLookup } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 import { CHROME_UA, UA } from "./user-agent";
@@ -1188,6 +1191,193 @@ const resolveDailymotion = async (
   return assets;
 };
 
+const matchRumble = (
+  sourceUrl: string
+): { direct: boolean; id: string } | undefined => {
+  let url: URL;
+
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return undefined;
+  }
+
+  if (!hostMatches("rumble", url.hostname.toLowerCase())) {
+    return undefined;
+  }
+
+  // Rumble ids carry their leading v (v1a2b3c); the embed page uses the same form
+  const embed = url.pathname.match(/^\/embed\/(?<id>v[A-Za-z0-9]+)\/?$/u)
+    ?.groups?.id;
+
+  if (embed) {
+    return { direct: true, id: embed };
+  }
+
+  const watch = url.pathname.match(/^\/v(?<id>[A-Za-z0-9]+)(?:[.-]|$)/u)?.groups
+    ?.id;
+
+  return watch ? { direct: false, id: `v${watch}` } : undefined;
+};
+
+// unauthenticated JSON behind the embed player: direct MP4s with meta heights
+const rumbleEmbedJsSchema = z.object({
+  ua: z
+    .object({
+      mp4: z
+        .array(
+          z.object({
+            meta: z
+              .object({ h: z.number(), w: z.number() })
+              .partial()
+              .optional(),
+            url: z.string(),
+          })
+        )
+        .optional(),
+    })
+    .optional(),
+});
+
+const fetchRumbleWatch = async (
+  ctx: FetchContext,
+  sourceUrl: string
+): Promise<{ cookie?: string; html: string }> => {
+  // Rumble answers the first anonymous visit with a 307 to itself plus an
+  // RNSC cookie; fetch has no cookie jar, so carry it by hand. Every hop
+  // re-checks through the same guard the shared redirect loop uses.
+  let url = sourceUrl;
+  let cookie: string | undefined;
+
+  for (let hop = 0; hop < 3; hop += 1) {
+    // eslint-disable-next-line no-await-in-loop -- each hop feeds the next check
+    const addresses = await resolvePublicAddresses(url, ctx.lookup);
+
+    const headers = new Headers(PAGE_HEADERS);
+
+    if (cookie) {
+      headers.set("Cookie", cookie);
+    }
+
+    // eslint-disable-next-line no-await-in-loop -- the response decides whether another hop is needed
+    const res = await pinnedFetch(ctx.doFetch, url, addresses, {
+      headers,
+      redirect: "manual",
+    });
+
+    if (res.status === 404) {
+      throw new Error(NOT_FOUND);
+    }
+
+    const location =
+      res.status >= 300 && res.status < 400
+        ? res.headers.get("location")
+        : null;
+
+    if (!location) {
+      assertOk(res, "Rumble");
+      // eslint-disable-next-line no-await-in-loop -- the reached page is the loop's product
+      const html = await readCapped(res, MAX_PAGE_BYTES);
+
+      return { cookie, html };
+    }
+
+    const [rnsc] = (res.headers.get("set-cookie") ?? "").split(";");
+
+    if (rnsc?.startsWith("RNSC=")) {
+      cookie = cookie ? `${cookie}; ${rnsc}` : rnsc;
+    }
+
+    // eslint-disable-next-line no-await-in-loop -- hops run in order; the next address depends on this location
+    await res.body?.cancel();
+
+    try {
+      url = new URL(location, url).href;
+    } catch {
+      throw new Error("This link redirects somewhere invalid.");
+    }
+  }
+
+  throw new Error("This link redirects too many times.");
+};
+
+const resolveRumble = async (
+  sourceUrl: string,
+  id: string,
+  direct: boolean,
+  ctx: FetchContext
+): Promise<VideoAsset[]> => {
+  let embedId = id;
+  let thumbnail: string | undefined;
+  let watchCookie: string | undefined;
+
+  if (!direct) {
+    const watch = await fetchRumbleWatch(ctx, sourceUrl);
+
+    const found = watch.html.match(
+      /rumble\.com\/embed\/(?<embedId>v[A-Za-z0-9]+)/u
+    )?.groups?.embedId;
+
+    if (!found) {
+      throw new Error("No downloadable video found for this post.");
+    }
+
+    embedId = found;
+    thumbnail = extractThumbnail(watch.html);
+    watchCookie = watch.cookie;
+  }
+
+  const endpoint = `https://rumble.com/embedJS/u3/${embedId}?request=video&ver=2&v=${embedId}`;
+
+  // the embed player shares the watch session; carry the RNSC cookie when the watch hop set one
+  const apiHeaders = new Headers({
+    ...PAGE_HEADERS,
+    Accept: "application/json",
+  });
+
+  if (watchCookie) {
+    apiHeaders.set("Cookie", watchCookie);
+  }
+
+  const { res } = await fetchPublic(ctx, endpoint, apiHeaders);
+
+  assertOk(res, "Rumble");
+
+  let payload: unknown;
+
+  try {
+    payload = await readCappedJson(res);
+  } catch {
+    throw new Error("Rumble returned an unexpected response. Try again later.");
+  }
+
+  const parsed = rumbleEmbedJsSchema.safeParse(payload);
+
+  if (!parsed.success) {
+    throw new Error("Rumble returned an unexpected response. Try again later.");
+  }
+
+  // renditions of one VOD, not separate videos: one labeled asset per rung,
+  // best first — the same picker YouTube gets. A live hls-only answer carries
+  // no mp4 rung and is not downloadable.
+  const assets = byQuality(
+    (parsed.data.ua?.mp4 ?? []).map((m) => ({ height: m.meta?.h, url: m.url }))
+  ).map((m) => ({
+    label: renditionLabel(m),
+    platform: "rumble" as const,
+    shortcode: id,
+    sourceUrl,
+    thumbnail,
+    videoUrl: m.url,
+  }));
+
+  if (!assets.length) {
+    throw new Error("No downloadable video found for this post.");
+  }
+
+  return assets;
+};
+
 const matchLoom = (sourceUrl: string): { id: string } | undefined => {
   let url: URL;
 
@@ -1313,6 +1503,12 @@ const resolveRaw = async (
 
   if (loom) {
     return resolveLoom(trimmed, loom.id, ctx);
+  }
+
+  const rumble = matchRumble(trimmed);
+
+  if (rumble) {
+    return resolveRumble(trimmed, rumble.id, rumble.direct, ctx);
   }
 
   const ytId = matchYouTubeId(trimmed);

@@ -13,6 +13,18 @@ type PinHost = (
 // Bun dials the address that appears in the URL, so put the checked address
 // there and keep the origin in Host and tls.serverName. A relative Location
 // resolves against the address, so callers follow redirects themselves.
+// Workers has no raw sockets: there the guard check still runs (DoH, via the
+// injected lookup), but the dial goes to the hostname itself — a TTL-0 rebind
+// between the two stays open (see ADR-0003). Only Workers takes that path:
+// Node and Bun both honor the pinned dial.
+const runsOnWorkers = (): boolean => {
+  try {
+    return navigator.userAgent.includes("Cloudflare");
+  } catch {
+    return false;
+  }
+};
+
 // eslint-disable-next-line require-await -- the seam stays async so a rejected approval surfaces as a rejection, not a sync throw
 export const pinnedFetch: PinHost = async (doFetch, url, addresses, init) => {
   const [address] = addresses;
@@ -20,6 +32,18 @@ export const pinnedFetch: PinHost = async (doFetch, url, addresses, init) => {
   // fail closed: an empty approval set must never turn into a hostname fetch
   if (!address) {
     throw new Error("Only public links are supported.");
+  }
+
+  if (runsOnWorkers()) {
+    const { headers, method, body, signal } = init;
+
+    return doFetch(url, {
+      body,
+      headers,
+      method,
+      redirect: "manual",
+      signal,
+    });
   }
 
   const target = new URL(url);

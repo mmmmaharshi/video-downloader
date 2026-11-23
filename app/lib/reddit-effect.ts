@@ -1,13 +1,12 @@
 import { Effect, Schema } from "effect";
 
-import { FetchDeps, classifyTransportError } from "./fetch-deps";
+import type { FetchDeps } from "./fetch-deps";
 import {
-  fetchGuarded,
-  FETCH_TIMEOUT_MS,
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { readPageText } from "./page-body";
+import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 import { unhandledError } from "./unhandled-error";
@@ -186,26 +185,17 @@ const fetchRedditJson = (
   url: string
 ): Effect.Effect<unknown, RedditError, FetchDeps> =>
   Effect.gen(function* fetchJson() {
-    const { doFetch, lookup } = yield* FetchDeps;
-
-    const { res } = yield* Effect.tryPromise({
-      catch: (cause) =>
-        classifyTransportError(cause, {
-          badRedirect: { _tag: "RedditBadRedirect" as const },
-          blocked: { _tag: "RedditGuardBlocked" as const },
-          tooManyRedirects: { _tag: "RedditTooManyRedirects" as const },
-          unreachable: { _tag: "RedditUnreachable" as const },
-          unresolved: { _tag: "RedditUnresolved" as const },
-        }),
-      try: () =>
-        fetchGuarded({ doFetch, lookup }, url, {
-          headers: {
-            Accept: "application/json",
-            "User-Agent": CHROME_UA,
-          },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        }),
-    });
+    const { res } = yield* fetchPage(
+      url,
+      { Accept: "application/json", "User-Agent": CHROME_UA },
+      {
+        badRedirect: { _tag: "RedditBadRedirect" as const },
+        blocked: { _tag: "RedditGuardBlocked" as const },
+        tooManyRedirects: { _tag: "RedditTooManyRedirects" as const },
+        unreachable: { _tag: "RedditUnreachable" as const },
+        unresolved: { _tag: "RedditUnresolved" as const },
+      }
+    );
 
     if (res.status === 404) {
       return yield* Effect.fail({ _tag: "RedditNotFound" as const });

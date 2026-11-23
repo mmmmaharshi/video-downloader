@@ -1,13 +1,12 @@
 import { Effect, Schema } from "effect";
 
-import { FetchDeps, classifyTransportError } from "./fetch-deps";
+import type { FetchDeps } from "./fetch-deps";
 import {
-  fetchGuarded,
-  FETCH_TIMEOUT_MS,
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { readPageText } from "./page-body";
+import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
@@ -126,33 +125,27 @@ export const resolveVimeoProgram = (
 ): Effect.Effect<VideoAsset[], VimeoError, FetchDeps> =>
   Effect.gen(function* program() {
     const { hash, id, sourceUrl } = input;
-    const { doFetch, lookup } = yield* FetchDeps;
-
     const config = new URL(`https://player.vimeo.com/video/${id}/config`);
 
     if (hash !== undefined) {
       config.searchParams.set("h", hash);
     }
 
-    const { res } = yield* Effect.tryPromise({
-      catch: (cause) =>
-        classifyTransportError(cause, {
-          badRedirect: { _tag: "VimeoBadRedirect" as const },
-          blocked: { _tag: "VimeoGuardBlocked" as const },
-          tooManyRedirects: { _tag: "VimeoTooManyRedirects" as const },
-          unreachable: { _tag: "VimeoUnreachable" as const },
-          unresolved: { _tag: "VimeoUnresolved" as const },
-        }),
-      try: () =>
-        fetchGuarded({ doFetch, lookup }, config.href, {
-          headers: {
-            Accept: "application/json",
-            Referer: `https://player.vimeo.com/video/${id}`,
-            "User-Agent": CHROME_UA,
-          },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        }),
-    });
+    const { res } = yield* fetchPage(
+      config.href,
+      {
+        Accept: "application/json",
+        Referer: `https://player.vimeo.com/video/${id}`,
+        "User-Agent": CHROME_UA,
+      },
+      {
+        badRedirect: { _tag: "VimeoBadRedirect" as const },
+        blocked: { _tag: "VimeoGuardBlocked" as const },
+        tooManyRedirects: { _tag: "VimeoTooManyRedirects" as const },
+        unreachable: { _tag: "VimeoUnreachable" as const },
+        unresolved: { _tag: "VimeoUnresolved" as const },
+      }
+    );
 
     if (res.status === 404) {
       return yield* Effect.fail({ _tag: "VimeoNotFound" as const });

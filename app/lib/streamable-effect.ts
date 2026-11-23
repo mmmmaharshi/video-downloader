@@ -1,13 +1,12 @@
 import { Effect, Schema } from "effect";
 
-import { FetchDeps, classifyTransportError } from "./fetch-deps";
+import type { FetchDeps } from "./fetch-deps";
 import {
-  fetchGuarded,
-  FETCH_TIMEOUT_MS,
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { readPageText } from "./page-body";
+import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4, byQuality, renditionLabel } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -106,28 +105,19 @@ export const resolveStreamableProgram = (
 ): Effect.Effect<VideoAsset[], StreamableError, FetchDeps> =>
   Effect.gen(function* program() {
     const { code, sourceUrl } = input;
-    const { doFetch, lookup } = yield* FetchDeps;
-
     const endpoint = `https://api.streamable.com/videos/${code}`;
 
-    const { res } = yield* Effect.tryPromise({
-      catch: (cause) =>
-        classifyTransportError(cause, {
-          badRedirect: { _tag: "StreamableBadRedirect" as const },
-          blocked: { _tag: "StreamableGuardBlocked" as const },
-          tooManyRedirects: { _tag: "StreamableTooManyRedirects" as const },
-          unreachable: { _tag: "StreamableUnreachable" as const },
-          unresolved: { _tag: "StreamableUnresolved" as const },
-        }),
-      try: () =>
-        fetchGuarded({ doFetch, lookup }, endpoint, {
-          headers: {
-            Accept: "application/json",
-            "User-Agent": CHROME_UA,
-          },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        }),
-    });
+    const { res } = yield* fetchPage(
+      endpoint,
+      { Accept: "application/json", "User-Agent": CHROME_UA },
+      {
+        badRedirect: { _tag: "StreamableBadRedirect" as const },
+        blocked: { _tag: "StreamableGuardBlocked" as const },
+        tooManyRedirects: { _tag: "StreamableTooManyRedirects" as const },
+        unreachable: { _tag: "StreamableUnreachable" as const },
+        unresolved: { _tag: "StreamableUnresolved" as const },
+      }
+    );
 
     if (res.status === 404) {
       return yield* Effect.fail({ _tag: "StreamableNotFound" as const });

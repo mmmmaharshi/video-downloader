@@ -1,13 +1,12 @@
 import { Effect, Schema } from "effect";
 
-import { FetchDeps, classifyTransportError } from "./fetch-deps";
+import type { FetchDeps } from "./fetch-deps";
 import {
-  fetchGuarded,
-  FETCH_TIMEOUT_MS,
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { readPageText } from "./page-body";
+import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4 } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -117,7 +116,6 @@ export const resolveTwitterProgram = (
 ): Effect.Effect<VideoAsset[], TwitterError, FetchDeps> =>
   Effect.gen(function* program() {
     const { id, sourceUrl } = input;
-    const { doFetch, lookup } = yield* FetchDeps;
 
     // the token is the web client's derivation from the tweet id; an absent token returns an empty payload
     // shortcut: X does not validate this token today and the derivation divides an id above 2^53 as a float — derive it exactly if X ever starts rejecting tokens
@@ -127,24 +125,17 @@ export const resolveTwitterProgram = (
 
     const endpoint = `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=en`;
 
-    const { res } = yield* Effect.tryPromise({
-      catch: (cause) =>
-        classifyTransportError(cause, {
-          badRedirect: { _tag: "TwitterBadRedirect" as const },
-          blocked: { _tag: "TwitterGuardBlocked" as const },
-          tooManyRedirects: { _tag: "TwitterTooManyRedirects" as const },
-          unreachable: { _tag: "TwitterUnreachable" as const },
-          unresolved: { _tag: "TwitterUnresolved" as const },
-        }),
-      try: () =>
-        fetchGuarded({ doFetch, lookup }, endpoint, {
-          headers: {
-            Accept: "application/json",
-            "User-Agent": CHROME_UA,
-          },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        }),
-    });
+    const { res } = yield* fetchPage(
+      endpoint,
+      { Accept: "application/json", "User-Agent": CHROME_UA },
+      {
+        badRedirect: { _tag: "TwitterBadRedirect" as const },
+        blocked: { _tag: "TwitterGuardBlocked" as const },
+        tooManyRedirects: { _tag: "TwitterTooManyRedirects" as const },
+        unreachable: { _tag: "TwitterUnreachable" as const },
+        unresolved: { _tag: "TwitterUnresolved" as const },
+      }
+    );
 
     if (res.status === 404) {
       return yield* Effect.fail({ _tag: "TwitterNotFound" as const });

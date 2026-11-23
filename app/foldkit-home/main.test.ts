@@ -4,6 +4,7 @@
 import { Command, given, message, model, story } from "foldkit/story";
 import { describe, expect, test } from "vitest";
 
+import { FRESH_MS } from "../lib/freshness";
 import { EMPTY_LINK } from "../lib/messages";
 import {
   ConvertGif,
@@ -11,6 +12,7 @@ import {
   GoDownload,
   init,
   Message,
+  ReadClock,
   ResolveUrl,
   SaveGif,
   update,
@@ -85,7 +87,14 @@ describe("foldkit-home", () => {
       given({ ...init().model, url: "  https://youtu.be/x  " }),
       message(Message.SubmittedForm()),
       Command.expectExact(ResolveUrl({ url: "https://youtu.be/x" })),
-      Command.resolve(ResolveUrl, Message.SucceededResolve({ assets: [] })),
+      Command.resolve(
+        ResolveUrl,
+        Message.SucceededResolve({
+          assets: [],
+          resolvedAt: 1000,
+          url: "https://youtu.be/x",
+        })
+      ),
       model((m) => {
         expect(m.status).toBe("ready");
       })
@@ -96,7 +105,13 @@ describe("foldkit-home", () => {
     story(
       update,
       given({ ...init().model, status: "loading", url: "https://youtu.be/x" }),
-      message(Message.SucceededResolve({ assets: [asset] })),
+      message(
+        Message.SucceededResolve({
+          assets: [asset],
+          resolvedAt: 1000,
+          url: "https://youtu.be/x",
+        })
+      ),
       Command.expectNone(),
       model((m) => {
         expect(m.status).toBe("ready");
@@ -127,7 +142,13 @@ describe("foldkit-home", () => {
         capabilities: { clipboard: false, worker: true },
         status: "loading",
       }),
-      message(Message.SucceededResolve({ assets: [gifAsset] })),
+      message(
+        Message.SucceededResolve({
+          assets: [gifAsset],
+          resolvedAt: 1000,
+          url: "https://x.com/u/status/1",
+        })
+      ),
       Command.expectExact(
         ConvertGif({
           downloadHref: "/api/download?url=xgif",
@@ -155,7 +176,13 @@ describe("foldkit-home", () => {
         capabilities: { clipboard: false, worker: false },
         status: "loading",
       }),
-      message(Message.SucceededResolve({ assets: [gifAsset] })),
+      message(
+        Message.SucceededResolve({
+          assets: [gifAsset],
+          resolvedAt: 1000,
+          url: "https://x.com/u/status/1",
+        })
+      ),
       Command.expectNone(),
       model((m) => {
         expect(m.conversions).toEqual({});
@@ -310,6 +337,89 @@ describe("foldkit-home", () => {
       Command.expectNone(),
       model((m) => {
         expect(m.conversions).toEqual({});
+      })
+    );
+  });
+
+  test("a fresh repeat skips the network", () => {
+    story(
+      update,
+      given({
+        ...init().model,
+        recent: { assets: [asset], at: 1000, url: "https://youtu.be/x" },
+        url: "https://youtu.be/x",
+      }),
+      message(Message.SubmittedForm()),
+      Command.expectExact(ReadClock({ url: "https://youtu.be/x" })),
+      Command.resolve(
+        ReadClock,
+        Message.SucceededClock({
+          now: 1000 + FRESH_MS - 1,
+          url: "https://youtu.be/x",
+        })
+      ),
+      model((m) => {
+        expect(m.status).toBe("ready");
+        expect(m.assets.map((a) => a.label)).toEqual(["720p"]);
+      })
+    );
+  });
+
+  test("a stale repeat fetches again", () => {
+    story(
+      update,
+      given({
+        ...init().model,
+        recent: { assets: [asset], at: 1000, url: "https://youtu.be/x" },
+        status: "ready",
+        url: "https://youtu.be/x",
+      }),
+      message(Message.SubmittedForm()),
+      Command.expectExact(ReadClock({ url: "https://youtu.be/x" })),
+      Command.resolve(
+        ReadClock,
+        Message.SucceededClock({
+          now: 1000 + FRESH_MS,
+          url: "https://youtu.be/x",
+        })
+      ),
+      Command.expectExact(ResolveUrl({ url: "https://youtu.be/x" })),
+      Command.resolve(
+        ResolveUrl,
+        Message.SucceededResolve({
+          assets: [asset],
+          resolvedAt: 1000 + FRESH_MS,
+          url: "https://youtu.be/x",
+        })
+      ),
+      model((m) => {
+        expect(m.status).toBe("ready");
+        expect(m.recent?.at).toBe(1000 + FRESH_MS);
+      })
+    );
+  });
+
+  test("a different link never consults the cache", () => {
+    story(
+      update,
+      given({
+        ...init().model,
+        recent: { assets: [asset], at: 1000, url: "https://youtu.be/x" },
+        url: "https://youtu.be/other",
+      }),
+      message(Message.SubmittedForm()),
+      Command.expectExact(ResolveUrl({ url: "https://youtu.be/other" })),
+      Command.resolve(
+        ResolveUrl,
+        Message.SucceededResolve({
+          assets: [],
+          resolvedAt: 2000,
+          url: "https://youtu.be/other",
+        })
+      ),
+      model((m) => {
+        expect(m.status).toBe("ready");
+        expect(m.recent?.url).toBe("https://youtu.be/other");
       })
     );
   });

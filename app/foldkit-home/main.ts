@@ -2,7 +2,6 @@
 // Model, verb-first Messages, exhaustive update, view, and Commands. The
 // Schema-typed boundary is the /api/resolve response, validated with the
 // shared Schema contract.
-// shortcut: no cached re-serve yet — each submit fetches.
 
 import { Effect, Schema } from "effect";
 import { AsyncData, Command } from "foldkit";
@@ -12,6 +11,7 @@ import { defineMessageUnion } from "foldkit/message";
 import { modifyFields } from "foldkit/struct";
 
 import { containerOf, isManifestContainer } from "../lib/container";
+import { FRESH_MS } from "../lib/freshness";
 import {
   canCopyGif,
   convertedReps,
@@ -55,6 +55,13 @@ export const Model = Schema.Struct({
   notice: Schema.String,
   pendingCopies: Schema.Array(Schema.String),
   pendingDownloads: Schema.Array(Schema.String),
+  recent: Schema.optional(
+    Schema.Struct({
+      assets: Schema.Array(Asset),
+      at: Schema.Number,
+      url: Schema.String,
+    })
+  ),
   status: Schema.Literals(["idle", "loading", "ready", "failed"]),
   url: Schema.String,
 });
@@ -72,6 +79,7 @@ export const Message = defineMessageUnion({
   FailedCopyGif: { videoUrl: Schema.String },
   FailedResolve: { error: Schema.String },
   SubmittedForm: {},
+  SucceededClock: { now: Schema.Number, url: Schema.String },
   SucceededConvertGif: {
     blob: Schema.instanceOf(Blob),
     videoUrl: Schema.String,
@@ -80,7 +88,11 @@ export const Message = defineMessageUnion({
     mode: Schema.Literals(["gif", "link"]),
     videoUrl: Schema.String,
   },
-  SucceededResolve: { assets: Schema.Array(Asset) },
+  SucceededResolve: {
+    assets: Schema.Array(Asset),
+    resolvedAt: Schema.Number,
+    url: Schema.String,
+  },
 });
 
 export type Message = typeof Message.Type;
@@ -117,13 +129,29 @@ export const ResolveUrl = Command.define("ResolveUrl", {
         return Message.FailedResolve({ error: decoded.error });
       }
 
-      return Message.SucceededResolve({ assets: decoded.assets });
+      return Message.SucceededResolve({
+        assets: decoded.assets,
+        resolvedAt: Date.now(),
+        url,
+      });
     }).pipe(
       Effect.orElseSucceed(() =>
         Message.FailedResolve({ error: NETWORK_ERROR })
       )
     ),
   messages: [Message.SucceededResolve, Message.FailedResolve],
+});
+
+// Update stays pure: the one timestamp it needs arrives through this Command,
+// so Stories pin time exactly and the cache gate never depends on the clock
+// where it cannot be observed.
+export const ReadClock = Command.define("ReadClock", {
+  args: { url: Schema.String },
+  execute: ({ url }) =>
+    Effect.sync(() => Date.now()).pipe(
+      Effect.map((now) => Message.SucceededClock({ now, url }))
+    ),
+  messages: [Message.SucceededClock],
 });
 
 export const ConvertGif = Command.define("ConvertGif", {
@@ -257,6 +285,56 @@ const gifFilename = (model: Model, videoUrl: string): string => {
       : `${asset.platform}-${asset.shortcode}`;
 
   return `${stem}.gif`;
+};
+
+// One place answers a resolved list, whether it came from the network or the
+// cache: prune conversions the new list dropped, prefetch the gif work the
+// kept list still lacks, and show the assets.
+const applyResolved = (
+  model: Model,
+  assets: readonly Asset[]
+): Update.Return<Model, Message> => {
+  const urls = new Set(assets.map((asset) => asset.videoUrl));
+
+  const kept = Object.fromEntries(
+    Object.entries(model.conversions).filter(([videoUrl]) => urls.has(videoUrl))
+  );
+
+  const converts = assets.flatMap((asset) =>
+    asset.gif === "video" &&
+    model.capabilities.worker &&
+    kept[asset.videoUrl] === undefined
+      ? [
+          ConvertGif({
+            downloadHref: asset.downloadHref,
+            videoUrl: asset.videoUrl,
+          }),
+        ]
+      : []
+  );
+
+  const loading = { ...kept };
+
+  for (const asset of assets) {
+    if (
+      asset.gif === "video" &&
+      model.capabilities.worker &&
+      loading[asset.videoUrl] === undefined
+    ) {
+      loading[asset.videoUrl] = GifConversion.Loading();
+    }
+  }
+
+  return {
+    commands: converts,
+    model: modifyFields(model, {
+      assets: () => [...assets],
+      conversions: () => loading,
+      error: () => "",
+      notice: () => "",
+      status: () => "ready",
+    }),
+  };
 };
 
 export const update = (
@@ -420,6 +498,18 @@ export const update = (
         };
       }
 
+      // a fresh answer for the same link skips the network; the clock read
+      // decides, so update never depends on a clock it cannot observe
+      if (model.recent?.url === url) {
+        return {
+          commands: [ReadClock({ url })],
+          model: modifyFields(model, {
+            error: () => "",
+            notice: () => "",
+          }),
+        };
+      }
+
       return {
         commands: [ResolveUrl({ url })],
         model: modifyFields(model, {
@@ -427,6 +517,18 @@ export const update = (
           notice: () => "",
           status: () => "loading",
         }),
+      };
+    },
+    SucceededClock: ({ now, url }) => {
+      const { recent } = model;
+
+      if (recent && recent.url === url && now - recent.at < FRESH_MS) {
+        return applyResolved(model, recent.assets);
+      }
+
+      return {
+        commands: [ResolveUrl({ url })],
+        model: modifyFields(model, { status: () => "loading" }),
       };
     },
     SucceededConvertGif: ({ blob, videoUrl }) => {
@@ -479,48 +581,13 @@ export const update = (
         pendingCopies: (urls) => without(urls, videoUrl),
       }),
     }),
-    SucceededResolve: ({ assets }) => {
-      const urls = new Set(assets.map((asset) => asset.videoUrl));
-
-      const kept = Object.fromEntries(
-        Object.entries(model.conversions).filter(([videoUrl]) =>
-          urls.has(videoUrl)
-        )
-      );
-
-      const converts = assets.flatMap((asset) =>
-        asset.gif === "video" &&
-        model.capabilities.worker &&
-        kept[asset.videoUrl] === undefined
-          ? [
-              ConvertGif({
-                downloadHref: asset.downloadHref,
-                videoUrl: asset.videoUrl,
-              }),
-            ]
-          : []
-      );
-
-      const loading = { ...kept };
-
-      for (const asset of assets) {
-        if (
-          asset.gif === "video" &&
-          model.capabilities.worker &&
-          loading[asset.videoUrl] === undefined
-        ) {
-          loading[asset.videoUrl] = GifConversion.Loading();
-        }
-      }
+    SucceededResolve: ({ assets, resolvedAt, url }) => {
+      const applied = applyResolved(model, assets);
 
       return {
-        commands: converts,
-        model: modifyFields(model, {
-          assets: () => assets,
-          conversions: () => loading,
-          error: () => "",
-          notice: () => "",
-          status: () => "ready",
+        ...applied,
+        model: modifyFields(applied.model, {
+          recent: () => ({ assets, at: resolvedAt, url }),
         }),
       };
     },

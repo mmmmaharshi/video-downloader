@@ -6,11 +6,13 @@ import type { ClientName, TubeAsset, TubeInfo } from "./youtube";
 
 // Module: YouTubeEffect — the anonymous MP4 extraction as an Effect program.
 // The IOS client returns plain playback URLs with no attestation; some videos
-// refuse anonymous playback on every IOS url, so a HEAD probe gates each
-// client and ANDROID is the fallback. Dependencies arrive as Layers (FetchDeps
-// for transport, YouTubeInfo for InnerTube); failures are a plain tagged
-// union, mapped to the legacy user-facing strings at the bridge in youtube.ts,
-// which keeps getYouTubeFormats' thrown-Error contract.
+// refuse anonymous playback on every IOS url, so a HEAD probe gates every
+// rung and ANDROID is the fallback. A sweep that answers OK but plays
+// nothing is usually throttling, not an unplayable video, so it runs once
+// more after a breath before reporting empty. Dependencies arrive as Layers
+// (FetchDeps for transport, YouTubeInfo for InnerTube); failures are a plain
+// tagged union, mapped to the legacy user-facing strings at the bridge in
+// youtube.ts, which keeps getYouTubeFormats' thrown-Error contract.
 
 export interface YouTubeGetInfo {
   readonly getInfo: (
@@ -107,62 +109,75 @@ export const getYouTubeFormatsProgram = (
   Effect.gen(function* program() {
     const { getInfo } = yield* YouTubeInfo;
 
-    let answered = false;
-    let failure: unknown;
-    let reason: string | undefined;
+    // at most two sweeps: the second answers a throttled first, and a video
+    // with truly no mp4 answer costs one extra second, not an endless probe
+    for (let sweep = 0; sweep < 2; sweep += 1) {
+      let answered = false;
+      let failure: unknown;
+      let reason: string | undefined;
 
-    for (const client of CLIENTS) {
-      // a per-client failure is data (fall through to the next client), not a
-      // program failure: the inner promise never rejects, it reports ok/cause
-      const attempt = yield* Effect.promise(() =>
-        Promise.resolve()
-          .then(() => getInfo(id, client))
-          .then(
-            (info) => ({ info, ok: true as const }),
-            // eslint-disable-next-line anti-slop/no-unknown-parameters -- the injected getInfo double can throw any value; the sentinel carries it opaquely as the unreachable cause without inspecting it
-            (error: unknown) => ({ cause: error, ok: false as const })
-          )
-      );
+      for (const client of CLIENTS) {
+        // a per-client failure is data (fall through to the next client), not a
+        // program failure: the inner promise never rejects, it reports ok/cause
+        const attempt = yield* Effect.promise(() =>
+          Promise.resolve()
+            .then(() => getInfo(id, client))
+            .then(
+              (info) => ({ info, ok: true as const }),
+              // eslint-disable-next-line anti-slop/no-unknown-parameters -- the injected getInfo double can throw any value; the sentinel carries it opaquely as the unreachable cause without inspecting it
+              (error: unknown) => ({ cause: error, ok: false as const })
+            )
+        );
 
-      if (!attempt.ok) {
-        failure = attempt.cause;
-        continue;
+        if (!attempt.ok) {
+          failure = attempt.cause;
+          continue;
+        }
+
+        answered = true;
+
+        const { info } = attempt;
+
+        if (info.playability !== "OK") {
+          reason ??= info.reason;
+          continue;
+        }
+
+        const mp4s = bestMp4s(info);
+
+        // the best rung usually decides, but a throttled head rung must not
+        // condemn the rest of the ladder: probe down it until one plays
+        let playable = false;
+
+        for (const candidate of mp4s) {
+          if (yield* probeHead(candidate.videoUrl)) {
+            playable = true;
+            break;
+          }
+        }
+
+        if (playable) {
+          return mp4s.map((m) => ({ ...m, title: info.title }));
+        }
       }
 
-      answered = true;
-
-      const { info } = attempt;
-
-      if (info.playability !== "OK") {
-        reason ??= info.reason;
-        continue;
+      if (!answered) {
+        return yield* Effect.fail({
+          _tag: "YouTubeUnreachable" as const,
+          cause: failure,
+        });
       }
 
-      const mp4s = bestMp4s(info);
-
-      if (!mp4s.length) {
-        continue;
+      if (reason !== undefined) {
+        return yield* Effect.fail({
+          _tag: "YouTubeUnavailable" as const,
+          reason,
+        });
       }
 
-      const playable = yield* probeHead(mp4s[0].videoUrl);
-
-      if (playable) {
-        return mp4s.map((m) => ({ ...m, title: info.title }));
+      if (sweep === 0) {
+        yield* Effect.sleep("1 second");
       }
-    }
-
-    if (!answered) {
-      return yield* Effect.fail({
-        _tag: "YouTubeUnreachable" as const,
-        cause: failure,
-      });
-    }
-
-    if (reason !== undefined) {
-      return yield* Effect.fail({
-        _tag: "YouTubeUnavailable" as const,
-        reason,
-      });
     }
 
     return [];

@@ -2,8 +2,9 @@
 // Interface: getYouTubeFormats(id, deps?) → TubeAsset[] (best rendition first).
 // The IOS client returns plain playback URLs with no attestation; the default WEB
 // client is gated and yields none. Some videos (typically label music) refuse anonymous
-// playback on every IOS url — all renditions 403 together — so a HEAD probe on the best
-// url gates each client and ANDROID (360p, playable) is the fallback.
+// playback on every IOS url, so a HEAD probe walks each ladder until a rung
+// plays and ANDROID (360p, playable) is the fallback. A sweep that answers OK
+// but plays nothing is usually throttling, so it runs once more before giving up.
 // Seam: getInfo + fetch (live Innertube in prod, stubs in tests).
 
 import { Effect, Layer } from "effect";

@@ -94,6 +94,47 @@ describe("youtube-effect", () => {
     expect(formats.map((f) => f.videoUrl)).toEqual([open]);
   });
 
+  test("probes past a gated best rung instead of abandoning the client", async () => {
+    const calls: string[] = [];
+    const gated = "https://x/gated-1080.mp4";
+    const open = "https://x/open-360.mp4";
+
+    const formats = await runFormats(
+      "dQw4w9WgXcQ",
+      layers(
+        (_id, client) => {
+          calls.push(client);
+
+          return info([mp4(gated, 1080), mp4(open, 360)]);
+        },
+        stubFetch((_url) => {
+          const gatedHead = _url.includes("gated");
+
+          return new Response(null, { status: gatedHead ? 403 : 200 });
+        })
+      )
+    );
+
+    expect(formats.map((f) => f.videoUrl)).toEqual([gated, open]);
+    expect(calls).toEqual(["IOS"]);
+  });
+
+  test("runs one more sweep when the first answers nothing playable", async () => {
+    let calls = 0;
+
+    const formats = await runFormats(
+      "dQw4w9WgXcQ",
+      layers(() => {
+        calls += 1;
+
+        return calls <= 2 ? info([]) : info([mp4("https://x/720.mp4", 720)]);
+      })
+    );
+
+    expect(formats.map((f) => f.videoUrl)).toEqual(["https://x/720.mp4"]);
+    expect(calls).toBe(3);
+  });
+
   test("reports an unplayable video with its reason", async () => {
     const error = await runFormatsError(
       "dQw4w9WgXcQ",

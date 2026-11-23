@@ -3,7 +3,12 @@ import { Context, Effect } from "effect";
 import { FetchDeps } from "./fetch-deps";
 import { fetchGuarded } from "./guarded-fetch";
 import { unhandledError } from "./unhandled-error";
-import type { ClientName, TubeAsset, TubeInfo } from "./youtube";
+import type {
+  ClientName,
+  TubeAsset,
+  TubeFormat,
+  TubeInfo,
+} from "./youtube-types";
 
 // Module: YouTubeEffect — the anonymous MP4 extraction as an Effect program.
 // The IOS client returns plain playback URLs with no attestation; some videos
@@ -67,14 +72,6 @@ export const toThrownError = (error: YouTubeError): Error => {
 };
 
 const CLIENTS: ClientName[] = ["IOS", "ANDROID"];
-
-interface TubeFormat {
-  readonly height?: number;
-  readonly mime_type: string;
-  readonly muxed?: boolean;
-  readonly url?: string;
-  readonly width?: number;
-}
 
 interface RungChoice {
   assets: TubeAsset[];

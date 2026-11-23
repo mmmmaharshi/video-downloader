@@ -6,7 +6,9 @@
 
 import { dohLookup } from "../app/lib/public-host";
 import type { HostLookup } from "../app/lib/public-host";
+import { API_DOWNLOAD, API_RESOLVE } from "../app/lib/routes";
 import { handleDownload, handleResolve } from "./api";
+import { readBounded } from "./form-body";
 import { overLimit } from "./rate-limit";
 import type { RateLimiterBinding } from "./rate-limit";
 
@@ -49,24 +51,36 @@ export const handleWorkerRequest = (
 
   const secret = env.DOWNLOAD_SECRET;
 
-  if (url.pathname === "/api/resolve" && request.method === "POST") {
-    if (Number(request.headers.get("content-length") ?? 0) > MAX_FORM_BYTES) {
-      return tooLarge();
-    }
-
+  if (url.pathname === API_RESOLVE && request.method === "POST") {
     const client =
       request.headers.get("cf-connecting-ip") ??
       request.headers.get("x-forwarded-for") ??
       "unknown";
 
-    return overLimit(client, env.RATE_LIMITER).then((limited) =>
-      limited
-        ? tooManyRequests()
-        : handleResolve(request, { fetch: doFetch, lookup, secret })
-    );
+    return (async (): Promise<Response> => {
+      if (await overLimit(client, env.RATE_LIMITER)) {
+        return tooManyRequests();
+      }
+
+      // the cap is enforced while reading, so a chunked body cannot slip past
+      const body = await readBounded(request, MAX_FORM_BYTES);
+
+      if (!body.ok) {
+        return tooLarge();
+      }
+
+      return handleResolve(
+        new Request(request.url, {
+          body: body.body,
+          headers: request.headers,
+          method: "POST",
+        }),
+        { fetch: doFetch, lookup, secret }
+      );
+    })();
   }
 
-  if (url.pathname === "/api/download") {
+  if (url.pathname === API_DOWNLOAD) {
     return handleDownload(request, { fetch: doFetch, lookup, secret });
   }
 

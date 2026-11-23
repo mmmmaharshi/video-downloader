@@ -20,6 +20,7 @@ import {
 import type { ClipboardReps } from "../lib/gif-convert";
 import { EMPTY_LINK } from "../lib/messages";
 import { resolveResultSchema, videoAssetFields } from "../lib/resolve-query";
+import { API_RESOLVE } from "../lib/routes";
 import { stemOf } from "../lib/stem";
 
 // eslint-disable-next-line no-redeclare -- Foldkit documents the Schema value and its Type alias under one name
@@ -101,7 +102,7 @@ export const ResolveUrl = Command.define("ResolveUrl", {
 
       const response = yield* Effect.tryPromise({
         catch: () => new Error(NETWORK_ERROR),
-        try: () => fetch("/api/resolve", { body: form, method: "POST" }),
+        try: () => fetch(API_RESOLVE, { body: form, method: "POST" }),
       });
 
       const json: unknown = yield* Effect.tryPromise({
@@ -277,6 +278,17 @@ const gifFilename = (model: Model, videoUrl: string): string => {
   return `${stemOf(model.assets, index)}.gif`;
 };
 
+// The one rule for "needs a conversion": a video gif, a worker to run it, and
+// no stored result yet.
+const needsConversion = (
+  model: Model,
+  asset: Asset,
+  conversions: Model["conversions"]
+): boolean =>
+  asset.gif === "video" &&
+  model.capabilities.worker &&
+  conversions[asset.videoUrl] === undefined;
+
 // One place answers a resolved list, whether it came from the network or the
 // cache: prune conversions the new list dropped, prefetch the gif work the
 // kept list still lacks, and show the assets.
@@ -291,9 +303,7 @@ const applyResolved = (
   );
 
   const converts = assets.flatMap((asset) =>
-    asset.gif === "video" &&
-    model.capabilities.worker &&
-    kept[asset.videoUrl] === undefined
+    needsConversion(model, asset, kept)
       ? [
           ConvertGif({
             downloadHref: asset.downloadHref,
@@ -306,11 +316,7 @@ const applyResolved = (
   const loading = { ...kept };
 
   for (const asset of assets) {
-    if (
-      asset.gif === "video" &&
-      model.capabilities.worker &&
-      loading[asset.videoUrl] === undefined
-    ) {
+    if (needsConversion(model, asset, loading)) {
       loading[asset.videoUrl] = GifConversion.Loading();
     }
   }

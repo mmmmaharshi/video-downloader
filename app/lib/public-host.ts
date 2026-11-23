@@ -156,11 +156,6 @@ const isBlockedAddress = (addr: string): boolean => {
   return true;
 };
 
-// The guard decision without dialing: manual-hop loops (Rumble's cookie loop)
-// classify each hop's addresses through it and stay fully typed.
-export const areAddressesPublic = (addresses: string[]): boolean =>
-  addresses.length > 0 && !addresses.some(isBlockedAddress);
-
 // The guard's user-facing messages: single source for resolvePublicAddresses
 // and the Effect programs that classify a failed fetch back into them.
 export const GUARD_BLOCKED_MESSAGE = "Only public links are supported.";

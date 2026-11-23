@@ -21,10 +21,10 @@ export const handleResolve = async (
   request: Request,
   deps: ApiDeps = {}
 ): Promise<Response> => {
-  const formData = await request.formData();
-  const url = String(formData.get("url") ?? "").trim();
-
   try {
+    const formData = await request.formData();
+    const url = String(formData.get("url") ?? "").trim();
+
     const assets = await resolve(url, {
       fetch: deps.fetch,
       lookup: deps.lookup,
@@ -41,11 +41,16 @@ export const handleResolve = async (
 
     return Response.json({ assets: resolved } satisfies ResolveResult);
   } catch (error) {
-    // an unexpected error is a bug, not a message for the user: keep it in the log
-    console.error(error);
-
+    // a bad paste, a blocked host, or an unreadable body is a message for the
+    // user; only a non-message failure is a bug worth a stack
     const msg =
       error instanceof Error ? error.message : "Failed to extract video";
+
+    if (error instanceof Error) {
+      console.warn(`resolve failed: ${msg}`);
+    } else {
+      console.error(error);
+    }
 
     return Response.json({ error: msg } satisfies ResolveResult);
   }

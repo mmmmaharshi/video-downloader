@@ -8,6 +8,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { FRESH_MS } from "./freshness";
 import type { VideoAsset } from "./resolve-query";
+import { API_DOWNLOAD } from "./routes";
 import { stemOf } from "./stem";
 
 export interface DownloadRequest {
@@ -59,7 +60,7 @@ export const toDownloadHref = (
   const exp = (deps.now ?? Date.now()) + FRESH_MS;
   const signature = sign(payloadOf(asset.videoUrl, stem, exp), deps);
 
-  return `/api/download?url=${encodeURIComponent(asset.videoUrl)}&name=${encodeURIComponent(stem)}&e=${exp}&s=${signature}`;
+  return `${API_DOWNLOAD}?url=${encodeURIComponent(asset.videoUrl)}&name=${encodeURIComponent(stem)}&e=${exp}&s=${signature}`;
 };
 
 export const fromDownloadRequest = (

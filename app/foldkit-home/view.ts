@@ -5,6 +5,7 @@
 import type { Html, HtmlBuilder, Document } from "foldkit/html";
 
 import { containerOf, isManifestContainer } from "../lib/container";
+import { SITE_TITLE, SITE_URL } from "../lib/site";
 import { conversionOf, Message } from "./main";
 import type { Asset, Model } from "./main";
 
@@ -250,7 +251,7 @@ export const viewDocument = (
   h: HtmlBuilder<Message>
 ): Document => ({
   body: view(model, h),
-  canonical: "https://download.maharshi.work/",
-  ogUrl: "https://download.maharshi.work/",
-  title: "Video Downloader — Save Online Videos",
+  canonical: SITE_URL,
+  ogUrl: SITE_URL,
+  title: SITE_TITLE,
 });

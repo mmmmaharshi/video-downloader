@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "vite build",
-    "dev": "vite",
+    "build": "VITE_CONFIG_NATIVE_IGNORE_WARNING=true vite build",
+    "dev": "VITE_CONFIG_NATIVE_IGNORE_WARNING=true vite",
     "start": "bun server/serve.ts",
     "typecheck": "tsc",
-    "test": "vitest run",
+    "test": "VITE_CONFIG_NATIVE_IGNORE_WARNING=true vitest run",
     "check": "ultracite check",
     "fix": "ultracite fix",
     "verify": "bun run typecheck && bun run test && bun run check && bun run build"

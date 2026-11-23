@@ -1,6 +1,8 @@
 # Agent Instructions
 
 - Always respond to the user with `$simple-english` `$i-have-adhd`.
+- Question the premise once, up front, when a simpler or sturdier path exists; then do what is chosen. Silence means the requested path is the best one found.
+- Analyze thoroughly, then recommend one option with its evidence. Do not hand back menus, and do not hedge.
 - Follow all guidelines defined in @CODING_STANDARDS.md for every code change, review, and architectural decision in this repository.
 - Use Bun (https://bun.sh/llms.txt) as the runtime and package manager for this project.
 - The stack is mid-migration to AFE on Cloudflare (see `docs/adr/0003-afe-on-cloudflare-with-scandinavian-ui.md`). Do not reintroduce the pieces ADR-0003 retires.
@@ -21,7 +23,10 @@
 ## Workflow
 
 - Don't run the dev server. Verify with `bun run verify`.
+- Make each change fully verifiable: prefer the real service and a real browser click-through over mocks and fixtures. If no check can fail, say so instead of faking verification.
+- Run long-running processes in the foreground so they end with the session. Detach one only when the user asks for a process that outlives the session.
 - Production deploys from the CI `deploy` job, after `verify` passes — not from the push. `vercel.json` turns Vercel's own git deploy off for every branch, so a red run ships nothing. Cloudflare plus Alchemy is the declared deploy target (ADR-0003); until the Alchemy stack lands, declare no infrastructure by hand.
+- The Cloudflare deploy needs `CLOUDFLARE_API_TOKEN` plus the account ID from the user. The `cf-cli`, `wrangler`, `frameworks-on-cloudflare`, `workers-best-practices`, and `workers-development` skills are installed — consult them before touching deploy config.
 - Don't push without the user's permission. Commit locally; the user pushes.
 
 ## Agent skills
@@ -45,3 +50,9 @@ Single-context: the domain doc is `CONTEXT.md` at the root — glossary and seam
 - The vendored anti-slop preset (`ultracite/oxlint/anti-slop`, 18 rules at error) is on: every `as` assertion needs a `SAFETY:` comment stating the checked invariant.
 - The `shadcn` preset (Tailwind design-system class rules) and the `gdp` preset (no type assertions anywhere outside `proofs/`, `as const` excepted — parse at boundaries instead) are also on.
 - Keep oxlint's `--type-aware` off; doctor expects the stock setup otherwise.
+
+## Editing these rules
+
+- Before adding a rule here or in `CODING_STANDARDS.md`, check it does not already exist; merge into or modify the existing one instead.
+- Use canonical engineering terms over explanatory jargon, and keep sentences short.
+- Only add a rule that changes behavior on real work. Structure wording per https://raw.githubusercontent.com/mattpocock/skills/refs/heads/main/skills/productivity/writing-for-agents/SKILL.md.

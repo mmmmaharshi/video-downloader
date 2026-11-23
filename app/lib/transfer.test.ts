@@ -370,12 +370,10 @@ describe("proxy", () => {
     const res = await proxy(CDN, "ABC123", { fetch: chunked, maxBytes: 10 });
     const { failure, received } = await drain(res);
 
-    expect(failure).toBeInstanceOf(Response);
-
-    if (failure instanceof Response) {
-      expect(failure.status).toBe(413);
-    }
-
+    // the status is already sent, so overflow shows up as a broken stream, not
+    // a late 413; the client keeps a truncated file at worst
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toContain("too large to download here");
     expect(received).toBeLessThanOrEqual(10);
   });
 
@@ -401,11 +399,8 @@ describe("proxy", () => {
     const { failure, received } = await drain(res);
 
     expect(res.status).toBe(206);
-    expect(failure).toBeInstanceOf(Response);
-
-    if (failure instanceof Response) {
-      expect(failure.status).toBe(413);
-    }
+    expect(failure).toBeInstanceOf(Error);
+    expect(String(failure)).toContain("too large to download here");
 
     expect(received).toBeLessThanOrEqual(10);
   });

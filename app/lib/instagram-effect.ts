@@ -8,7 +8,11 @@ import {
   PAGE_HEADERS,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
-import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
+import {
+  extractEscapedVideo,
+  extractOgVideo,
+  extractThumbnail,
+} from "./og-meta";
 import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { unhandledError } from "./unhandled-error";
@@ -188,17 +192,7 @@ export const resolveInstagramProgram = (
 
             const ehtml = await readPageText(er);
 
-            const evRaw =
-              ehtml.match(
-                /(?:\\"|")video_url(?:\\"|")\s*:\s*(?:\\"|")(?<url>[^"]+)(?:\\"|")/u
-              )?.groups?.url ??
-              ehtml.match(
-                /(?:\\"|")videoUrl(?:\\"|")\s*:\s*(?:\\"|")(?<url>[^"]+)(?:\\"|")/u
-              )?.groups?.url;
-
-            return evRaw === undefined
-              ? null
-              : normalizeUrl(evRaw).replaceAll("\\", "");
+            return extractEscapedVideo(ehtml) ?? null;
           },
           () => null
         )

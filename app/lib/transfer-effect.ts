@@ -4,6 +4,7 @@ import { readCappedUtf8 } from "./capped-body";
 import { containerOf, isManifestContainer } from "./container";
 import type { Container } from "./container";
 import { FetchDeps, guardAddresses } from "./fetch-deps";
+import { FETCH_TIMEOUT_MS } from "./guarded-fetch";
 import { pinnedFetch } from "./pinned-fetch";
 import { UA } from "./user-agent";
 
@@ -14,7 +15,7 @@ import { UA } from "./user-agent";
 // passthrough, and manifest absolutization move with the flow so the two
 // never disagree.
 
-const UPSTREAM_TIMEOUT_MS = 15_000;
+// the header-stall bound is the one every server fetch shares
 
 // stays inside the function's own wall clock; the platform still cuts a stream that overruns it
 const UPSTREAM_MAX_MS = 4 * 60_000;
@@ -45,6 +46,13 @@ export type TransferError =
   | TransferTooLarge
   | TransferUnreachable;
 
+// One 413 for both places that answer it: a known length refuses before the
+// body, and a manifest read refuses while buffering.
+const TOO_LARGE_MESSAGE = "This file is too large to download here";
+
+const tooLarge = (): Response =>
+  new Response(TOO_LARGE_MESSAGE, { status: 413 });
+
 // Legacy contracts, pinned by test: the bridge keeps proxy()'s thrown-Response
 // behavior while the program reasons in tags.
 export const toThrownResponse = (error: TransferError): Response => {
@@ -63,9 +71,7 @@ export const toThrownResponse = (error: TransferError): Response => {
     }
 
     case "TransferTooLarge": {
-      return new Response("This file is too large to download here", {
-        status: 413,
-      });
+      return tooLarge();
     }
 
     default: {
@@ -90,9 +96,10 @@ const boundedBody = (
         seen += chunk.byteLength;
 
         if (seen > limit) {
-          controller.error(
-            new Response("Download exceeds the byte cap", { status: 413 })
-          );
+          // headers are already on the wire, so the client sees a truncated
+          // download instead of a late 413; the length check above covers the
+          // hosts that declare their size
+          controller.error(new Error(TOO_LARGE_MESSAGE));
 
           return;
         }
@@ -112,9 +119,7 @@ const readCappedText = async (
   const { exceeded, text } = await readCappedUtf8(body, limit);
 
   if (exceeded) {
-    throw new Response("This file is too large to download here", {
-      status: 413,
-    });
+    throw tooLarge();
   }
 
   return text;
@@ -203,7 +208,7 @@ export const transferProgram = (
       catch: () => ({ _tag: "TransferUnreachable" as const }),
       try: () => {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+        const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
         const headers = new Headers({ "User-Agent": UA });
 
         // a seeking video asks for byte ranges; the upstream answers 206 and the

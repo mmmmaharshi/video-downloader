@@ -74,6 +74,19 @@ const INSTA_PATH_RE = /^\/(?:p|reels?|tv)\/(?<shortcode>[A-Za-z0-9_-]+)\/?$/u;
 
 const TWEET_PATH_RE = /^\/(?:[^/?#]+\/)*status(?:es)?\/(?<id>\d+)(?:[/?#]|$)/iu;
 
+// One URL/host read for every matcher: a link that cannot parse matches nothing.
+const parseTarget = (
+  sourceUrl: string
+): { host: string; url: URL } | undefined => {
+  try {
+    const url = new URL(sourceUrl);
+
+    return { host: url.hostname.toLowerCase(), url };
+  } catch {
+    return undefined;
+  }
+};
+
 const instagramShortcode = (url: string): string | undefined => {
   const parsed = URL.parse(url);
 
@@ -109,15 +122,13 @@ const canonicalReelUrl = (url: string): string =>
 const YT_ID_RE = /^[A-Za-z0-9_-]{11}$/u;
 
 const matchYouTubeId = (sourceUrl: string): string | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (host === "youtu.be") {
     const [id] = url.pathname.slice(1).split("/");
@@ -151,15 +162,13 @@ const matchYouTubeId = (sourceUrl: string): string | undefined => {
 const matchFacebookId = (
   sourceUrl: string
 ): { id: string; fetchUrl: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (host === "fb.watch") {
     const [code] = url.pathname.slice(1).split("/");
@@ -197,15 +206,13 @@ const matchFacebookId = (
 // Reddit posts with video: the .json endpoint exposes media.reddit_video.fallback_url
 // (the direct mp4) plus a thumbnail. Crossposts carry the media on crosspost_parent_list.
 const matchReddit = (sourceUrl: string): { id: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (!hostMatches("reddit", host)) {
     return undefined;
@@ -237,15 +244,13 @@ const matchReddit = (sourceUrl: string): { id: string } | undefined => {
 };
 
 const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (!hostMatches("streamable", host)) {
     return undefined;
@@ -267,15 +272,13 @@ const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
 const matchVimeo = (
   sourceUrl: string
 ): { hash?: string; id: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (!hostMatches("vimeo", host)) {
     return undefined;
@@ -301,15 +304,13 @@ const matchVimeo = (
 };
 
 const matchTikTok = (sourceUrl: string): { id: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (!hostMatches("tiktok", host)) {
     return undefined;
@@ -321,15 +322,13 @@ const matchTikTok = (sourceUrl: string): { id: string } | undefined => {
 };
 
 const matchThreads = (sourceUrl: string): { id: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (!hostMatches("threads", host)) {
     return undefined;
@@ -344,15 +343,13 @@ const matchThreads = (sourceUrl: string): { id: string } | undefined => {
 };
 
 const matchDailymotion = (sourceUrl: string): { id: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (host === "dai.ly") {
     const [id] = url.pathname.slice(1).split("/");
@@ -401,15 +398,13 @@ const matchRumble = (
 };
 
 const matchLoom = (sourceUrl: string): { id: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined) {
     return undefined;
   }
 
-  const host = url.hostname.toLowerCase();
+  const { host, url } = parsed;
 
   if (!hostMatches("loom", host)) {
     return undefined;

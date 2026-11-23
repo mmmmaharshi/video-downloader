@@ -26,3 +26,17 @@ export const extractThumbnail = (html: string): string | undefined =>
   html
     .match(/<meta\s+property="og:image"\s+content="(?<url>[^"]+)"/u)
     ?.groups?.url?.replaceAll("&amp;", "&");
+
+// Embed pages double-escape their JSON (\"video_url\"), so the same keys need
+// a second pattern set. Both live here, beside the plain ones.
+export const extractEscapedVideo = (html: string): string | undefined => {
+  const v =
+    html.match(
+      /(?:\\"|")video_url(?:\\"|")\s*:\s*(?:\\"|")(?<url>[^"]+)(?:\\"|")/u
+    )?.groups?.url ??
+    html.match(
+      /(?:\\"|")videoUrl(?:\\"|")\s*:\s*(?:\\"|")(?<url>[^"]+)(?:\\"|")/u
+    )?.groups?.url;
+
+  return v === undefined ? undefined : normalizeUrl(v).replaceAll("\\", "");
+};

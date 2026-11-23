@@ -12,7 +12,7 @@ import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
 import { unhandledError } from "./unhandled-error";
-import { CHROME_UA } from "./user-agent";
+import { JSON_HEADERS } from "./user-agent";
 
 // Module: DailymotionEffect — the Dailymotion metadata fetch as an Effect
 // program. Qualities map to named rungs; each rung prefers its mp4 file and
@@ -122,7 +122,7 @@ export const resolveDailymotionProgram = (
 
     const { res } = yield* fetchPage(
       `https://www.dailymotion.com/player/metadata/video/${id}`,
-      { Accept: "application/json", "User-Agent": CHROME_UA },
+      JSON_HEADERS,
       {
         badRedirect: { _tag: "DailymotionBadRedirect" as const },
         blocked: { _tag: "DailymotionGuardBlocked" as const },

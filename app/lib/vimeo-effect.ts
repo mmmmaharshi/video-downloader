@@ -12,7 +12,7 @@ import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
 import { unhandledError } from "./unhandled-error";
-import { CHROME_UA } from "./user-agent";
+import { JSON_HEADERS } from "./user-agent";
 
 // Module: VimeoEffect — the Vimeo player-config fetch as an Effect program.
 // The config answers unauthenticated JSON with progressive MP4s; where no
@@ -133,11 +133,7 @@ export const resolveVimeoProgram = (
 
     const { res } = yield* fetchPage(
       config.href,
-      {
-        Accept: "application/json",
-        Referer: `https://player.vimeo.com/video/${id}`,
-        "User-Agent": CHROME_UA,
-      },
+      { ...JSON_HEADERS, Referer: `https://player.vimeo.com/video/${id}` },
       {
         badRedirect: { _tag: "VimeoBadRedirect" as const },
         blocked: { _tag: "VimeoGuardBlocked" as const },

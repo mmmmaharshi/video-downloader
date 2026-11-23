@@ -11,7 +11,7 @@ import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4 } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
 import { unhandledError } from "./unhandled-error";
-import { CHROME_UA } from "./user-agent";
+import { JSON_HEADERS } from "./user-agent";
 
 // Module: TwitterEffect — the X syndication flow as an Effect program. The
 // token is the web client's derivation from the tweet id; an absent token
@@ -125,17 +125,13 @@ export const resolveTwitterProgram = (
 
     const endpoint = `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=en`;
 
-    const { res } = yield* fetchPage(
-      endpoint,
-      { Accept: "application/json", "User-Agent": CHROME_UA },
-      {
-        badRedirect: { _tag: "TwitterBadRedirect" as const },
-        blocked: { _tag: "TwitterGuardBlocked" as const },
-        tooManyRedirects: { _tag: "TwitterTooManyRedirects" as const },
-        unreachable: { _tag: "TwitterUnreachable" as const },
-        unresolved: { _tag: "TwitterUnresolved" as const },
-      }
-    );
+    const { res } = yield* fetchPage(endpoint, JSON_HEADERS, {
+      badRedirect: { _tag: "TwitterBadRedirect" as const },
+      blocked: { _tag: "TwitterGuardBlocked" as const },
+      tooManyRedirects: { _tag: "TwitterTooManyRedirects" as const },
+      unreachable: { _tag: "TwitterUnreachable" as const },
+      unresolved: { _tag: "TwitterUnresolved" as const },
+    });
 
     if (res.status === 404) {
       return yield* Effect.fail({ _tag: "TwitterNotFound" as const });

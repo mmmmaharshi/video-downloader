@@ -70,7 +70,8 @@ export interface MediaResolverDeps {
 }
 
 // Path shapes only: the host comes from the one list in Platforms.
-const INSTA_PATH_RE = /^\/(?:p|reels?|tv)\/(?<shortcode>[A-Za-z0-9_-]+)\/?$/u;
+const INSTA_PATH_RE =
+  /^\/(?<kind>p|reels?|tv)\/(?<shortcode>[A-Za-z0-9_-]+)\/?$/u;
 
 const TWEET_PATH_RE = /^\/(?:[^/?#]+\/)*status(?:es)?\/(?<id>\d+)(?:[/?#]|$)/iu;
 
@@ -87,14 +88,25 @@ const parseTarget = (
   }
 };
 
-const instagramShortcode = (url: string): string | undefined => {
+const instagramPost = (
+  url: string
+): { kind: string; shortcode: string } | undefined => {
   const parsed = URL.parse(url);
 
   if (!parsed || !hostMatches("instagram", parsed.hostname.toLowerCase())) {
     return undefined;
   }
 
-  return parsed.pathname.match(INSTA_PATH_RE)?.groups?.shortcode;
+  const groups = parsed.pathname.match(INSTA_PATH_RE)?.groups;
+
+  if (!groups?.kind || !groups.shortcode) {
+    return undefined;
+  }
+
+  // the embed route takes the singular form of the path the link used
+  const kind = groups.kind === "reels" ? "reel" : groups.kind;
+
+  return { kind, shortcode: groups.shortcode };
 };
 
 const tweetId = (url: string): string | undefined => {
@@ -411,20 +423,21 @@ const resolveDispatchProgram = (
   getFormats: YoutubeGetter
 ): Effect.Effect<VideoAsset[], Error, FetchDeps> =>
   Effect.gen(function* dispatch() {
-    const insta = instagramShortcode(trimmed);
+    const insta = instagramPost(trimmed);
 
     if (insta) {
+      const { kind, shortcode } = insta;
       const canonical = canonicalReelUrl(trimmed);
 
       const streams = yield* Effect.mapError(
-        resolveInstagramProgram({ shortcode: insta, sourceUrl: canonical }),
+        resolveInstagramProgram({ kind, shortcode, sourceUrl: canonical }),
         toThrownError
       );
 
       return [
         {
           platform: "instagram" as const,
-          shortcode: insta,
+          shortcode,
           sourceUrl: canonical,
           thumbnail: streams.thumbnail,
           videoUrl: streams.videoUrl,

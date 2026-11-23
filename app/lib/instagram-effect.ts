@@ -90,6 +90,7 @@ export const toThrownError = (error: InstagramError): Error =>
   new Error(instagramErrorMessage(error));
 
 export interface InstagramInput {
+  readonly kind: string;
   readonly shortcode: string;
   readonly sourceUrl: string;
 }
@@ -103,7 +104,7 @@ export const resolveInstagramProgram = (
   input: InstagramInput
 ): Effect.Effect<InstagramStreams, InstagramError, FetchDeps> =>
   Effect.gen(function* program() {
-    const { shortcode, sourceUrl } = input;
+    const { kind, shortcode, sourceUrl } = input;
 
     const { res, url } = yield* fetchPage(
       sourceUrl,
@@ -147,15 +148,7 @@ export const resolveInstagramProgram = (
     // embed fallback — double-escaped JSON in embed HTML. Best effort: a
     // failed embed is reported as no video below.
     if (videoUrl === undefined) {
-      let embedKind = "p";
-
-      if (sourceUrl.includes("/reel")) {
-        embedKind = "reel";
-      } else if (sourceUrl.includes("/tv/")) {
-        embedKind = "tv";
-      }
-
-      const endpoint = `https://www.instagram.com/${embedKind}/${shortcode}/embed/captioned/`;
+      const endpoint = `https://www.instagram.com/${kind}/${shortcode}/embed/captioned/`;
 
       // the embed page is a second scrape; a failure there means "no embed",
       // not a failed resolve, so the tag list is never reached

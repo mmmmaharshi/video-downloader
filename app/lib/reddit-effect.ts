@@ -10,7 +10,7 @@ import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 import { unhandledError } from "./unhandled-error";
-import { CHROME_UA } from "./user-agent";
+import { JSON_HEADERS } from "./user-agent";
 
 // Module: RedditEffect — the Reddit listing fetch as an Effect program. The
 // .json endpoint exposes media.reddit_video.fallback_url plus a thumbnail;
@@ -185,17 +185,13 @@ const fetchRedditJson = (
   url: string
 ): Effect.Effect<unknown, RedditError, FetchDeps> =>
   Effect.gen(function* fetchJson() {
-    const { res } = yield* fetchPage(
-      url,
-      { Accept: "application/json", "User-Agent": CHROME_UA },
-      {
-        badRedirect: { _tag: "RedditBadRedirect" as const },
-        blocked: { _tag: "RedditGuardBlocked" as const },
-        tooManyRedirects: { _tag: "RedditTooManyRedirects" as const },
-        unreachable: { _tag: "RedditUnreachable" as const },
-        unresolved: { _tag: "RedditUnresolved" as const },
-      }
-    );
+    const { res } = yield* fetchPage(url, JSON_HEADERS, {
+      badRedirect: { _tag: "RedditBadRedirect" as const },
+      blocked: { _tag: "RedditGuardBlocked" as const },
+      tooManyRedirects: { _tag: "RedditTooManyRedirects" as const },
+      unreachable: { _tag: "RedditUnreachable" as const },
+      unresolved: { _tag: "RedditUnresolved" as const },
+    });
 
     if (res.status === 404) {
       return yield* Effect.fail({ _tag: "RedditNotFound" as const });

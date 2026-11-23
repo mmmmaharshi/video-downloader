@@ -24,7 +24,10 @@ const runStreams = (
   shortcode = "ABC123"
 ) =>
   Effect.runPromise(
-    Effect.provide(resolveInstagramProgram({ shortcode, sourceUrl }), layer)
+    Effect.provide(
+      resolveInstagramProgram({ kind: "reel", shortcode, sourceUrl }),
+      layer
+    )
   );
 
 const runStreamsError = (
@@ -34,7 +37,10 @@ const runStreamsError = (
 ) =>
   Effect.runPromise(
     Effect.flip(
-      Effect.provide(resolveInstagramProgram({ shortcode, sourceUrl }), layer)
+      Effect.provide(
+        resolveInstagramProgram({ kind: "reel", shortcode, sourceUrl }),
+        layer
+      )
     )
   );
 

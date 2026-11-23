@@ -11,7 +11,7 @@ import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4, byQuality, renditionLabel } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
 import { unhandledError } from "./unhandled-error";
-import { CHROME_UA } from "./user-agent";
+import { JSON_HEADERS } from "./user-agent";
 
 // Module: StreamableEffect — the Streamable API fetch as an Effect program.
 // The metadata endpoint answers JSON with per-quality files; mp4 is preferred
@@ -107,17 +107,13 @@ export const resolveStreamableProgram = (
     const { code, sourceUrl } = input;
     const endpoint = `https://api.streamable.com/videos/${code}`;
 
-    const { res } = yield* fetchPage(
-      endpoint,
-      { Accept: "application/json", "User-Agent": CHROME_UA },
-      {
-        badRedirect: { _tag: "StreamableBadRedirect" as const },
-        blocked: { _tag: "StreamableGuardBlocked" as const },
-        tooManyRedirects: { _tag: "StreamableTooManyRedirects" as const },
-        unreachable: { _tag: "StreamableUnreachable" as const },
-        unresolved: { _tag: "StreamableUnresolved" as const },
-      }
-    );
+    const { res } = yield* fetchPage(endpoint, JSON_HEADERS, {
+      badRedirect: { _tag: "StreamableBadRedirect" as const },
+      blocked: { _tag: "StreamableGuardBlocked" as const },
+      tooManyRedirects: { _tag: "StreamableTooManyRedirects" as const },
+      unreachable: { _tag: "StreamableUnreachable" as const },
+      unresolved: { _tag: "StreamableUnresolved" as const },
+    });
 
     if (res.status === 404) {
       return yield* Effect.fail({ _tag: "StreamableNotFound" as const });

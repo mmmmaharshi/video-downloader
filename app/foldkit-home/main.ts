@@ -1,14 +1,14 @@
-// Module: FoldkitHome — the home view as a Foldkit element program.
-// Model, verb-first Messages, exhaustive update, view, and Commands. The React
-// home route embeds the runtime; the Schema-typed boundary is the /api/resolve
-// response, validated with the shared Zod contract.
+// Module: FoldkitHome — the home view as a Foldkit program.
+// Model, verb-first Messages, exhaustive update, view, and Commands. The
+// Schema-typed boundary is the /api/resolve response, validated with the
+// shared Schema contract.
 // shortcut: no cached re-serve (resolveKey/isFresh) and no GIF convert/copy
 // flows yet — each submit fetches, and every rendition offers a Download link.
 
 import { Effect, Schema } from "effect";
 import { Command } from "foldkit";
 import type { Update } from "foldkit";
-import type { Html, HtmlBuilder } from "foldkit/html";
+import type { Document, Html, HtmlBuilder } from "foldkit/html";
 import { defineMessageUnion } from "foldkit/message";
 import { modifyFields } from "foldkit/struct";
 
@@ -311,3 +311,16 @@ export const view = (model: Model, h: HtmlBuilder<Message>): Html =>
       ),
     ]
   );
+
+// The page-owning view: the same body, plus the document facts the runtime
+// keeps in <head> (title, canonical, og:url). Static description and card tags
+// live in index.html beside the mount point.
+export const viewDocument = (
+  model: Model,
+  h: HtmlBuilder<Message>
+): Document => ({
+  body: view(model, h),
+  canonical: "https://download.maharshi.work/",
+  ogUrl: "https://download.maharshi.work/",
+  title: "Video Downloader — Save Online Videos",
+});

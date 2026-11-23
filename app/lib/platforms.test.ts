@@ -65,7 +65,7 @@ describe("client boundary", () => {
     const files = await clientFiles();
 
     // if the scan finds nothing, the assertions below prove nothing
-    expect(files).toContain("routes/home.tsx");
+    expect(files).toContain("client/entry.ts");
 
     const found = await Promise.all(
       files.map(async (file) => {

@@ -2,7 +2,10 @@
 .env
 /node_modules/
 
-# React Router
+# Build output (Vite client bundle served by server/serve.ts)
+/dist/
+
+# React Router (retired with the shell cutover; entries kept until history says otherwise)
 /.react-router/
 /build/
 

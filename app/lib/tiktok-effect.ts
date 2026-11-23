@@ -3,7 +3,13 @@ import { z } from "zod";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  PAGE_HEADERS,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
@@ -37,14 +43,24 @@ export interface TikTokGuardBlocked {
   readonly _tag: "TikTokGuardBlocked";
 }
 
+export interface TikTokBadRedirect {
+  readonly _tag: "TikTokBadRedirect";
+}
+
+export interface TikTokTooManyRedirects {
+  readonly _tag: "TikTokTooManyRedirects";
+}
+
 export interface TikTokUnresolved {
   readonly _tag: "TikTokUnresolved";
 }
 
 export type TikTokError =
+  | TikTokBadRedirect
   | TikTokGuardBlocked
   | TikTokNoVideo
   | TikTokNotFound
+  | TikTokTooManyRedirects
   | TikTokUnreachable
   | TikTokUnresolved
   | TikTokUpstream;
@@ -67,6 +83,14 @@ export const tiktokErrorMessage = (error: TikTokError): string => {
 
     case "TikTokUnreachable": {
       return "TikTok is unreachable right now. Try again later.";
+    }
+
+    case "TikTokBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "TikTokTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "TikTokGuardBlocked": {
@@ -170,7 +194,9 @@ export const resolveTikTokProgram = (
     const { res } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "TikTokBadRedirect" as const },
           blocked: { _tag: "TikTokGuardBlocked" as const },
+          tooManyRedirects: { _tag: "TikTokTooManyRedirects" as const },
           unreachable: { _tag: "TikTokUnreachable" as const },
           unresolved: { _tag: "TikTokUnresolved" as const },
         }),

@@ -85,6 +85,12 @@ describe("threads-effect", () => {
     expect(toThrownError({ _tag: "ThreadsUnreachable" as const }).message).toBe(
       "Threads is unreachable right now. Try again later."
     );
+    expect(toThrownError({ _tag: "ThreadsBadRedirect" as const }).message).toBe(
+      "This link redirects somewhere invalid."
+    );
+    expect(
+      toThrownError({ _tag: "ThreadsTooManyRedirects" as const }).message
+    ).toBe("This link redirects too many times.");
     expect(
       toThrownError({ _tag: "ThreadsGuardBlocked" as const }).message
     ).toBe("Only public links are supported.");

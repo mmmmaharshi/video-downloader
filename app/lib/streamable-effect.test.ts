@@ -129,6 +129,12 @@ describe("streamable-effect", () => {
       toThrownError({ _tag: "StreamableUnreachable" as const }).message
     ).toBe("Streamable is unreachable right now. Try again later.");
     expect(
+      toThrownError({ _tag: "StreamableBadRedirect" as const }).message
+    ).toBe("This link redirects somewhere invalid.");
+    expect(
+      toThrownError({ _tag: "StreamableTooManyRedirects" as const }).message
+    ).toBe("This link redirects too many times.");
+    expect(
       toThrownError({ _tag: "StreamableGuardBlocked" as const }).message
     ).toBe("Only public links are supported.");
     expect(

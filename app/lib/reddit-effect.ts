@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 import { CHROME_UA } from "./user-agent";
@@ -40,14 +45,24 @@ export interface RedditGuardBlocked {
   readonly _tag: "RedditGuardBlocked";
 }
 
+export interface RedditBadRedirect {
+  readonly _tag: "RedditBadRedirect";
+}
+
+export interface RedditTooManyRedirects {
+  readonly _tag: "RedditTooManyRedirects";
+}
+
 export interface RedditUnresolved {
   readonly _tag: "RedditUnresolved";
 }
 
 export type RedditError =
+  | RedditBadRedirect
   | RedditGuardBlocked
   | RedditNoVideo
   | RedditNotFound
+  | RedditTooManyRedirects
   | RedditUnexpectedResponse
   | RedditUnreachable
   | RedditUnresolved
@@ -75,6 +90,14 @@ export const redditErrorMessage = (error: RedditError): string => {
 
     case "RedditUnreachable": {
       return "Reddit is unreachable right now. Try again later.";
+    }
+
+    case "RedditBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "RedditTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "RedditGuardBlocked": {
@@ -239,7 +262,9 @@ const fetchRedditJson = (
     const { res } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "RedditBadRedirect" as const },
           blocked: { _tag: "RedditGuardBlocked" as const },
+          tooManyRedirects: { _tag: "RedditTooManyRedirects" as const },
           unreachable: { _tag: "RedditUnreachable" as const },
           unresolved: { _tag: "RedditUnresolved" as const },
         }),

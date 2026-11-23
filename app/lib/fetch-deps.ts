@@ -1,6 +1,10 @@
 import { Context, Effect, Layer } from "effect";
 
 import {
+  INVALID_REDIRECT_MESSAGE,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
+import {
   areAddressesPublic,
   defaultLookup,
   GUARD_BLOCKED_MESSAGE,
@@ -57,24 +61,37 @@ export const guardAddresses = <E>(
     return addresses;
   });
 
-// A guarded fetch throws the guard's plain Errors on a blocked hop; a plain
-// fetch throws whatever the transport raised. Classify a failed fetch back
-// into typed failures so programs keep legacy-exact messages without matching
-// strings at every call site.
+// A guarded fetch throws the guard's plain Errors on a blocked hop, its own
+// control-flow Errors on a bad redirect chain, and whatever the transport
+// raised otherwise. Classify a failed fetch back into typed failures so
+// programs keep legacy-exact messages without matching strings at every
+// call site.
 export const classifyTransportError = <E>(
   cause: unknown,
   errors: {
+    readonly badRedirect: E;
     readonly blocked: E;
+    readonly tooManyRedirects: E;
     readonly unreachable: E;
     readonly unresolved: E;
   }
 ): E => {
-  if (cause instanceof Error && cause.message === GUARD_BLOCKED_MESSAGE) {
-    return errors.blocked;
-  }
+  if (cause instanceof Error) {
+    if (cause.message === GUARD_BLOCKED_MESSAGE) {
+      return errors.blocked;
+    }
 
-  if (cause instanceof Error && cause.message === GUARD_UNRESOLVED_MESSAGE) {
-    return errors.unresolved;
+    if (cause.message === GUARD_UNRESOLVED_MESSAGE) {
+      return errors.unresolved;
+    }
+
+    if (cause.message === INVALID_REDIRECT_MESSAGE) {
+      return errors.badRedirect;
+    }
+
+    if (cause.message === TOO_MANY_REDIRECTS_MESSAGE) {
+      return errors.tooManyRedirects;
+    }
   }
 
   return errors.unreachable;

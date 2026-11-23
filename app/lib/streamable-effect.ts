@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4, byQuality, renditionLabel } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -41,14 +46,24 @@ export interface StreamableGuardBlocked {
   readonly _tag: "StreamableGuardBlocked";
 }
 
+export interface StreamableBadRedirect {
+  readonly _tag: "StreamableBadRedirect";
+}
+
+export interface StreamableTooManyRedirects {
+  readonly _tag: "StreamableTooManyRedirects";
+}
+
 export interface StreamableUnresolved {
   readonly _tag: "StreamableUnresolved";
 }
 
 export type StreamableError =
+  | StreamableBadRedirect
   | StreamableGuardBlocked
   | StreamableNoVideo
   | StreamableNotFound
+  | StreamableTooManyRedirects
   | StreamableUnexpectedResponse
   | StreamableUnreachable
   | StreamableUnresolved
@@ -76,6 +91,14 @@ export const streamableErrorMessage = (error: StreamableError): string => {
 
     case "StreamableUnreachable": {
       return "Streamable is unreachable right now. Try again later.";
+    }
+
+    case "StreamableBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "StreamableTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "StreamableGuardBlocked": {
@@ -152,7 +175,9 @@ export const resolveStreamableProgram = (
     const { res } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "StreamableBadRedirect" as const },
           blocked: { _tag: "StreamableGuardBlocked" as const },
+          tooManyRedirects: { _tag: "StreamableTooManyRedirects" as const },
           unreachable: { _tag: "StreamableUnreachable" as const },
           unresolved: { _tag: "StreamableUnresolved" as const },
         }),

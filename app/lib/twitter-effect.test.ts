@@ -181,6 +181,12 @@ describe("twitter-effect", () => {
   });
 
   test("every tag maps to its legacy message", () => {
+    expect(toThrownError({ _tag: "TwitterBadRedirect" as const }).message).toBe(
+      "This link redirects somewhere invalid."
+    );
+    expect(
+      toThrownError({ _tag: "TwitterTooManyRedirects" as const }).message
+    ).toBe("This link redirects too many times.");
     expect(
       toThrownError({ _tag: "TwitterGuardBlocked" as const }).message
     ).toBe("Only public links are supported.");

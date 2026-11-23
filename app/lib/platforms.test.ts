@@ -17,6 +17,7 @@ const SERVER_ONLY_MODULES = [
   "download-link",
   "facebook-effect",
   "fetch-deps",
+  "generic-effect",
   "guarded-fetch",
   "instagram-effect",
   "loom-effect",
@@ -31,6 +32,7 @@ const SERVER_ONLY_MODULES = [
   "transfer",
   "transfer-effect",
   "twitter-effect",
+  "vimeo-effect",
   "youtube",
   "youtube-effect",
 ];

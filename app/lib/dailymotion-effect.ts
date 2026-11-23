@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
@@ -42,14 +47,24 @@ export interface DailymotionGuardBlocked {
   readonly _tag: "DailymotionGuardBlocked";
 }
 
+export interface DailymotionBadRedirect {
+  readonly _tag: "DailymotionBadRedirect";
+}
+
+export interface DailymotionTooManyRedirects {
+  readonly _tag: "DailymotionTooManyRedirects";
+}
+
 export interface DailymotionUnresolved {
   readonly _tag: "DailymotionUnresolved";
 }
 
 export type DailymotionError =
+  | DailymotionBadRedirect
   | DailymotionGuardBlocked
   | DailymotionNoVideo
   | DailymotionNotFound
+  | DailymotionTooManyRedirects
   | DailymotionUnexpectedResponse
   | DailymotionUnreachable
   | DailymotionUnresolved
@@ -77,6 +92,14 @@ export const dailymotionErrorMessage = (error: DailymotionError): string => {
 
     case "DailymotionUnreachable": {
       return "Dailymotion is unreachable right now. Try again later.";
+    }
+
+    case "DailymotionBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "DailymotionTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "DailymotionGuardBlocked": {
@@ -153,7 +176,9 @@ export const resolveDailymotionProgram = (
     const { res } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "DailymotionBadRedirect" as const },
           blocked: { _tag: "DailymotionGuardBlocked" as const },
+          tooManyRedirects: { _tag: "DailymotionTooManyRedirects" as const },
           unreachable: { _tag: "DailymotionUnreachable" as const },
           unresolved: { _tag: "DailymotionUnresolved" as const },
         }),
@@ -189,13 +214,11 @@ export const resolveDailymotionProgram = (
 
     const parsed = dailymotionMetadataSchema.safeParse(payload);
 
-    if (!parsed.success) {
-      return yield* Effect.fail({
-        _tag: "DailymotionUnexpectedResponse" as const,
-      });
-    }
+    // a shape mismatch reads as absent (legacy unguarded access did the same):
+    // a file the schema cannot see is a video we cannot download
+    const data = parsed.success ? parsed.data : undefined;
 
-    const qualities = parsed.data.qualities ?? {};
+    const qualities = data?.qualities ?? {};
 
     const renditions: Rendition[] = Object.entries(qualities).flatMap(
       ([key, entries]): Rendition[] => {
@@ -223,8 +246,8 @@ export const resolveDailymotionProgram = (
       platform: "dailymotion" as const,
       shortcode: id,
       sourceUrl,
-      thumbnail: parsed.data.poster_url ?? parsed.data.thumbnail_url,
-      title: parsed.data.title,
+      thumbnail: data?.poster_url ?? data?.thumbnail_url,
+      title: data?.title,
       videoUrl: rendition.url,
     }));
 

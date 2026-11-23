@@ -6,7 +6,6 @@
 
 import { Effect, Layer } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { containerOf } from "./container";
 import {
   resolveDailymotionProgram,
@@ -17,14 +16,17 @@ import {
   toThrownError as toFacebookThrownError,
 } from "./facebook-effect";
 import { FetchDeps } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
+import {
+  resolveGenericProgram,
+  toThrownError as toGenericThrownError,
+} from "./generic-effect";
 import { resolveInstagramProgram, toThrownError } from "./instagram-effect";
 import {
   resolveLoomProgram,
   toThrownError as toLoomThrownError,
 } from "./loom-effect";
 import { EMPTY_LINK } from "./messages";
-import { extractOgVideo, extractThumbnail } from "./og-meta";
+import { extractThumbnail } from "./og-meta";
 import { hostMatches, isPlatformHost } from "./platforms";
 import { defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
@@ -33,7 +35,6 @@ import {
   toThrownError as toRedditThrownError,
 } from "./reddit-effect";
 import { byQuality, renditionLabel } from "./renditions";
-import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
 import { resolveRumbleProgram, rumbleErrorMessage } from "./rumble-effect";
 import {
@@ -52,7 +53,10 @@ import {
   resolveTwitterProgram,
   toThrownError as toTwitterThrownError,
 } from "./twitter-effect";
-import { CHROME_UA } from "./user-agent";
+import {
+  resolveVimeoProgram,
+  toThrownError as toVimeoThrownError,
+} from "./vimeo-effect";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
 
@@ -97,63 +101,8 @@ const tweetId = (url: string): string | undefined => {
   return parsed.pathname.match(TWEET_PATH_RE)?.groups?.id;
 };
 
-const NOT_FOUND = "Post not found. Check the URL.";
-
-// probing for a file, not a page: accept whatever the host serves
-const FILE_HEADERS = { ...PAGE_HEADERS, Accept: "*/*" };
-
-// A page carrying og:video is small; a mislabelled binary is not. Read only the
-// head of the body, so a 1GB file cannot be decoded into a string.
-const MAX_PAGE_BYTES = 512 * 1024;
-
-// an oversized page is truncated to its head; the JSON helpers below fail the
-// parse instead. Both policies share one byte-accurate read.
-const readCapped = async (res: Response, cap: number): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, cap);
-
-  return text;
-};
-
-// JSON has no streaming parser here: read a capped string, then parse it. An
-// oversized body fails the parse instead of being buffered without a limit.
-const readCappedJson = async (res: Response) =>
-  JSON.parse(await readCapped(res, MAX_PAGE_BYTES));
-
-// one policy for every platform fetch: the guarded loop owns the hops, this
-// wrapper owns the header stall timeout
-const fetchPublic = (
-  ctx: FetchContext,
-  url: string,
-  headers: BunFetchRequestInit["headers"]
-): Promise<{ res: Response; url: string }> =>
-  fetchGuarded(ctx, url, {
-    headers,
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-  });
-
 // a supported host with an unrecognized path is a mistyped platform link,
 // not a generic page — fail fast instead of fetching it
-const slugOf = (sourceUrl: string): string => {
-  const segments = new URL(sourceUrl).pathname.split("/");
-  let last = "";
-
-  for (const segment of segments) {
-    if (segment) {
-      last = segment;
-    }
-  }
-
-  let stem: string;
-
-  try {
-    stem = decodeURIComponent(last).replace(/\.[a-z0-9]+$/iu, "");
-  } catch {
-    stem = last.replace(/\.[a-z0-9]+$/iu, "");
-  }
-
-  return stem || "video";
-};
-
 const isKnownMediaHost = (sourceUrl: string): boolean =>
   isPlatformHost(new URL(sourceUrl).hostname.toLowerCase());
 
@@ -200,16 +149,6 @@ const matchYouTubeId = (sourceUrl: string): string | undefined => {
   }
 
   return undefined;
-};
-
-const assertOk = (res: Response, upstream: string): void => {
-  if (res.status === 404) {
-    throw new Error(NOT_FOUND);
-  }
-
-  if (!res.ok) {
-    throw new Error(`${upstream} returned ${res.status}. Try again later.`);
-  }
 };
 
 // The Instagram flow runs as an Effect program (FetchDeps Layer) and is bridged
@@ -316,70 +255,24 @@ const resolveFacebook = (
   );
 };
 
-// Catch-all for any other link: a video or gif content-type resolves the link
-// itself, otherwise the page's og:video tag is the last resort. The body of a
-// video response is never read — only headers — so large files cost nothing.
-const NO_VIDEO_FOUND =
-  "No video found at this link. Only pages, video files, and GIFs are downloadable.";
-
-const resolveGeneric = async (
+// The catch-all fetch runs as an Effect program (FetchDeps Layer) and is
+// bridged back to promises here, so resolve() keeps its thrown-Error contract.
+// A video response's body is never read — only headers — so large files cost nothing.
+const resolveGeneric = (
   sourceUrl: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res, url } = await fetchPublic(ctx, sourceUrl, FILE_HEADERS);
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
+  });
 
-  if (res.status === 404) {
-    throw new Error(NOT_FOUND);
-  }
-
-  if (!res.ok) {
-    throw new Error(`This link returned ${res.status}. Try again later.`);
-  }
-
-  const shortcode = slugOf(url);
-  const contentType = (res.headers.get("content-type") ?? "").toLowerCase();
-
-  if (contentType.startsWith("video/") || contentType.startsWith("image/gif")) {
-    await res.body?.cancel();
-
-    return [
-      {
-        gif: containerOf(url, contentType) === "gif" ? "file" : undefined,
-        platform: "direct",
-        shortcode,
-        sourceUrl,
-        thumbnail: undefined,
-        videoUrl: url,
-      },
-    ];
-  }
-
-  // only a page carries og:video; anything else is a file or an API body
-  const isPage =
-    contentType === "" ||
-    /^(?:text\/|application\/(?:xhtml\+xml|xml))/u.test(contentType);
-
-  if (!isPage) {
-    throw new Error(NO_VIDEO_FOUND);
-  }
-
-  const html = await readCapped(res, MAX_PAGE_BYTES);
-  const videoUrl = extractOgVideo(html);
-
-  if (!videoUrl) {
-    throw new Error(NO_VIDEO_FOUND);
-  }
-
-  return [
-    {
-      gif: undefined,
-      platform: "direct",
-      shortcode,
-      sourceUrl,
-      thumbnail: extractThumbnail(html),
-      videoUrl,
-    },
-  ];
+  return Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveGenericProgram({ sourceUrl }), layer),
+      toGenericThrownError
+    )
+  );
 };
 
 const resolveYouTube = async (
@@ -583,87 +476,25 @@ const matchVimeo = (
   return undefined;
 };
 
-interface VimeoProgressive {
-  height?: number;
-  quality?: string;
-  url?: string;
-  width?: number;
-}
-
-interface VimeoConfig {
-  request?: {
-    files?: { progressive?: VimeoProgressive[]; hls?: { url?: string } };
-  };
-  video?: {
-    files?: { progressive?: VimeoProgressive[] };
-    thumbnail_url?: string;
-    title?: string;
-  };
-}
-
-const resolveVimeo = async (
+// The Vimeo player-config fetch runs as an Effect program (FetchDeps Layer)
+// and is bridged back to promises here, so resolve() keeps its thrown-Error contract.
+const resolveVimeo = (
   sourceUrl: string,
   id: string,
   hash: string | undefined,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const configUrl = new URL(`https://player.vimeo.com/video/${id}/config`);
-
-  if (hash) {
-    configUrl.searchParams.set("h", hash);
-  }
-
-  const { res } = await fetchPublic(ctx, configUrl.href, {
-    Accept: "application/json",
-    Referer: `https://player.vimeo.com/video/${id}`,
-    "User-Agent": CHROME_UA,
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
   });
 
-  assertOk(res, "Vimeo");
-
-  let data: VimeoConfig;
-
-  try {
-    data = await readCappedJson(res);
-  } catch {
-    throw new Error("Vimeo returned an unexpected response. Try again later.");
-  }
-
-  const progressive = (
-    data.video?.files?.progressive ??
-    data.request?.files?.progressive ??
-    []
-  ).filter((p): p is VimeoProgressive & { url: string } => p.url !== undefined);
-
-  const hls = data.request?.files?.hls?.url;
-
-  const renditions: Rendition[] = progressive.map((p) => ({
-    height: p.height,
-    label: p.quality,
-    url: p.url,
-    width: p.width,
-  }));
-
-  // Vimeo only ships HLS where no progressive file exists
-  if (renditions.length === 0 && hls) {
-    renditions.push({ url: hls });
-  }
-
-  const assets = byQuality(renditions).map((r) => ({
-    label: renditionLabel(r),
-    platform: "vimeo" as const,
-    shortcode: id,
-    sourceUrl,
-    thumbnail: data.video?.thumbnail_url,
-    title: data.video?.title,
-    videoUrl: r.url,
-  }));
-
-  if (!assets.length) {
-    throw new Error("No video found. Only public videos are downloadable.");
-  }
-
-  return assets;
+  return Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveVimeoProgram({ hash, id, sourceUrl }), layer),
+      toVimeoThrownError
+    )
+  );
 };
 
 const matchTikTok = (sourceUrl: string): { id: string } | undefined => {

@@ -146,6 +146,12 @@ describe("reddit-effect", () => {
     expect(toThrownError({ _tag: "RedditUnreachable" as const }).message).toBe(
       "Reddit is unreachable right now. Try again later."
     );
+    expect(toThrownError({ _tag: "RedditBadRedirect" as const }).message).toBe(
+      "This link redirects somewhere invalid."
+    );
+    expect(
+      toThrownError({ _tag: "RedditTooManyRedirects" as const }).message
+    ).toBe("This link redirects too many times.");
     expect(toThrownError({ _tag: "RedditGuardBlocked" as const }).message).toBe(
       "Only public links are supported."
     );

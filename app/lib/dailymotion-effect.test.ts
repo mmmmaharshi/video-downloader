@@ -13,13 +13,30 @@ const DM_MP4 = "https://cdn.dailymotion.com/v/x8abc123.mp4";
 const DM_MP4_HD = "https://cdn.dailymotion.com/v/x8abc123_hd.mp4";
 const DM_HLS = "https://cdn.dailymotion.com/v/x8abc123.m3u8";
 
+interface DailymotionFile {
+  readonly height?: number;
+  readonly quality?: string;
+  readonly type?: string;
+  readonly url: string;
+  readonly width?: number;
+}
+
 const dmJson = (
-  qualities: Record<string, { type?: string; url: string }[]>,
-  extra?: Record<string, string>
+  qualities: { readonly [quality: string]: readonly DailymotionFile[] },
+  extra?: {
+    readonly poster_url?: string;
+    readonly thumbnail_url?: string;
+    readonly title?: string;
+  }
 ) =>
   stubFetch(() =>
     Response.json(
-      { qualities, ...extra },
+      {
+        poster_url: extra?.poster_url,
+        qualities,
+        thumbnail_url: extra?.thumbnail_url,
+        title: extra?.title,
+      },
       { headers: { "content-type": "application/json" }, status: 200 }
     )
   );
@@ -113,6 +130,12 @@ describe("dailymotion-effect", () => {
     expect(
       toThrownError({ _tag: "DailymotionUnreachable" as const }).message
     ).toBe("Dailymotion is unreachable right now. Try again later.");
+    expect(
+      toThrownError({ _tag: "DailymotionBadRedirect" as const }).message
+    ).toBe("This link redirects somewhere invalid.");
+    expect(
+      toThrownError({ _tag: "DailymotionTooManyRedirects" as const }).message
+    ).toBe("This link redirects too many times.");
     expect(
       toThrownError({ _tag: "DailymotionGuardBlocked" as const }).message
     ).toBe("Only public links are supported.");

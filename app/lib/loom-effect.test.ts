@@ -94,6 +94,12 @@ describe("loom-effect", () => {
     expect(toThrownError({ _tag: "LoomUnreachable" as const }).message).toBe(
       "Loom is unreachable right now. Try again later."
     );
+    expect(toThrownError({ _tag: "LoomBadRedirect" as const }).message).toBe(
+      "This link redirects somewhere invalid."
+    );
+    expect(
+      toThrownError({ _tag: "LoomTooManyRedirects" as const }).message
+    ).toBe("This link redirects too many times.");
     expect(toThrownError({ _tag: "LoomUnresolved" as const }).message).toBe(
       "Could not resolve this link. Check the URL."
     );

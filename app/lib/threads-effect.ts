@@ -2,7 +2,13 @@ import { Effect } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  PAGE_HEADERS,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 
@@ -37,10 +43,20 @@ export interface ThreadsUnresolved {
   readonly _tag: "ThreadsUnresolved";
 }
 
+export interface ThreadsBadRedirect {
+  readonly _tag: "ThreadsBadRedirect";
+}
+
+export interface ThreadsTooManyRedirects {
+  readonly _tag: "ThreadsTooManyRedirects";
+}
+
 export type ThreadsError =
+  | ThreadsBadRedirect
   | ThreadsGuardBlocked
   | ThreadsNoVideo
   | ThreadsNotFound
+  | ThreadsTooManyRedirects
   | ThreadsUnreachable
   | ThreadsUnresolved
   | ThreadsUpstream;
@@ -63,6 +79,14 @@ export const threadsErrorMessage = (error: ThreadsError): string => {
 
     case "ThreadsUnreachable": {
       return "Threads is unreachable right now. Try again later.";
+    }
+
+    case "ThreadsBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "ThreadsTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "ThreadsGuardBlocked": {
@@ -115,7 +139,9 @@ export const resolveThreadsProgram = (
     const { res } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "ThreadsBadRedirect" as const },
           blocked: { _tag: "ThreadsGuardBlocked" as const },
+          tooManyRedirects: { _tag: "ThreadsTooManyRedirects" as const },
           unreachable: { _tag: "ThreadsUnreachable" as const },
           unresolved: { _tag: "ThreadsUnresolved" as const },
         }),

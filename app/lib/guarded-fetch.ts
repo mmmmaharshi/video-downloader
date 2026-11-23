@@ -10,6 +10,14 @@ import { CHROME_UA } from "./user-agent";
 
 const MAX_REDIRECTS = 4;
 
+// the shared fetch loop's own control-flow failures, named here so Effect
+// programs can map a failed fetch back to the exact legacy message instead
+// of collapsing everything into "unreachable"
+export const TOO_MANY_REDIRECTS_MESSAGE = "This link redirects too many times.";
+
+export const INVALID_REDIRECT_MESSAGE =
+  "This link redirects somewhere invalid.";
+
 // header-stall bound shared by every guarded page fetch
 export const FETCH_TIMEOUT_MS = 15_000;
 
@@ -55,9 +63,9 @@ export const fetchGuarded = async (
     try {
       current = new URL(location, current).href;
     } catch {
-      throw new Error("This link redirects somewhere invalid.");
+      throw new Error(INVALID_REDIRECT_MESSAGE);
     }
   }
 
-  throw new Error("This link redirects too many times.");
+  throw new Error(TOO_MANY_REDIRECTS_MESSAGE);
 };

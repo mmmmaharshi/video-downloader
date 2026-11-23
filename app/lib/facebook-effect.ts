@@ -2,7 +2,13 @@ import { Effect } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  PAGE_HEADERS,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { Rendition } from "./renditions";
@@ -43,15 +49,25 @@ export interface FacebookGuardBlocked {
   readonly _tag: "FacebookGuardBlocked";
 }
 
+export interface FacebookBadRedirect {
+  readonly _tag: "FacebookBadRedirect";
+}
+
+export interface FacebookTooManyRedirects {
+  readonly _tag: "FacebookTooManyRedirects";
+}
+
 export interface FacebookUnresolved {
   readonly _tag: "FacebookUnresolved";
 }
 
 export type FacebookError =
+  | FacebookBadRedirect
   | FacebookGuardBlocked
   | FacebookLoginRedirect
   | FacebookNoVideo
   | FacebookNotFound
+  | FacebookTooManyRedirects
   | FacebookUnreachable
   | FacebookUnresolved
   | FacebookUpstream;
@@ -78,6 +94,14 @@ export const facebookErrorMessage = (error: FacebookError): string => {
 
     case "FacebookUnreachable": {
       return "Facebook is unreachable right now. Try again later.";
+    }
+
+    case "FacebookBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "FacebookTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "FacebookGuardBlocked": {
@@ -134,7 +158,9 @@ export const resolveFacebookProgram = (
     const { res, url } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "FacebookBadRedirect" as const },
           blocked: { _tag: "FacebookGuardBlocked" as const },
+          tooManyRedirects: { _tag: "FacebookTooManyRedirects" as const },
           unreachable: { _tag: "FacebookUnreachable" as const },
           unresolved: { _tag: "FacebookUnresolved" as const },
         }),

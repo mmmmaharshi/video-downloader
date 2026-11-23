@@ -3,7 +3,12 @@ import { z } from "zod";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4 } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -42,14 +47,24 @@ export interface TwitterGuardBlocked {
   readonly _tag: "TwitterGuardBlocked";
 }
 
+export interface TwitterBadRedirect {
+  readonly _tag: "TwitterBadRedirect";
+}
+
+export interface TwitterTooManyRedirects {
+  readonly _tag: "TwitterTooManyRedirects";
+}
+
 export interface TwitterUnresolved {
   readonly _tag: "TwitterUnresolved";
 }
 
 export type TwitterError =
+  | TwitterBadRedirect
   | TwitterGuardBlocked
   | TwitterNoVideo
   | TwitterNotFound
+  | TwitterTooManyRedirects
   | TwitterUnexpectedResponse
   | TwitterUnreachable
   | TwitterUnresolved
@@ -77,6 +92,14 @@ export const twitterErrorMessage = (error: TwitterError): string => {
 
     case "TwitterUnreachable": {
       return "X is unreachable right now. Try again later.";
+    }
+
+    case "TwitterBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "TwitterTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "TwitterGuardBlocked": {
@@ -163,7 +186,9 @@ export const resolveTwitterProgram = (
     const { res } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "TwitterBadRedirect" as const },
           blocked: { _tag: "TwitterGuardBlocked" as const },
+          tooManyRedirects: { _tag: "TwitterTooManyRedirects" as const },
           unreachable: { _tag: "TwitterUnreachable" as const },
           unresolved: { _tag: "TwitterUnresolved" as const },
         }),

@@ -2,7 +2,13 @@ import { Effect } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  PAGE_HEADERS,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { UA } from "./user-agent";
@@ -43,16 +49,26 @@ export interface InstagramGuardBlocked {
   readonly _tag: "InstagramGuardBlocked";
 }
 
+export interface InstagramBadRedirect {
+  readonly _tag: "InstagramBadRedirect";
+}
+
+export interface InstagramTooManyRedirects {
+  readonly _tag: "InstagramTooManyRedirects";
+}
+
 export interface InstagramUnresolved {
   readonly _tag: "InstagramUnresolved";
 }
 
 export type InstagramError =
+  | InstagramBadRedirect
   | InstagramGuardBlocked
   | InstagramLoginRedirect
   | InstagramLoginWall
   | InstagramNotFound
   | InstagramNoVideo
+  | InstagramTooManyRedirects
   | InstagramUnreachable
   | InstagramUnresolved
   | InstagramUpstream;
@@ -83,6 +99,14 @@ export const instagramErrorMessage = (error: InstagramError): string => {
 
     case "InstagramUnreachable": {
       return "Instagram is unreachable right now. Try again later.";
+    }
+
+    case "InstagramBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "InstagramTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "InstagramGuardBlocked": {
@@ -133,7 +157,9 @@ const fetchPage = (
     return yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "InstagramBadRedirect" as const },
           blocked: { _tag: "InstagramGuardBlocked" as const },
+          tooManyRedirects: { _tag: "InstagramTooManyRedirects" as const },
           unreachable: { _tag: "InstagramUnreachable" as const },
           unresolved: { _tag: "InstagramUnresolved" as const },
         }),

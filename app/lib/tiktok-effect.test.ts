@@ -134,6 +134,12 @@ describe("tiktok-effect", () => {
     expect(toThrownError({ _tag: "TikTokUnreachable" as const }).message).toBe(
       "TikTok is unreachable right now. Try again later."
     );
+    expect(toThrownError({ _tag: "TikTokBadRedirect" as const }).message).toBe(
+      "This link redirects somewhere invalid."
+    );
+    expect(
+      toThrownError({ _tag: "TikTokTooManyRedirects" as const }).message
+    ).toBe("This link redirects too many times.");
     expect(toThrownError({ _tag: "TikTokGuardBlocked" as const }).message).toBe(
       "Only public links are supported."
     );

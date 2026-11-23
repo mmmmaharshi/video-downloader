@@ -191,6 +191,12 @@ describe("facebook-effect", () => {
     expect(
       toThrownError({ _tag: "FacebookUnreachable" as const }).message
     ).toBe("Facebook is unreachable right now. Try again later.");
+    expect(
+      toThrownError({ _tag: "FacebookBadRedirect" as const }).message
+    ).toBe("This link redirects somewhere invalid.");
+    expect(
+      toThrownError({ _tag: "FacebookTooManyRedirects" as const }).message
+    ).toBe("This link redirects too many times.");
     expect(toThrownError({ _tag: "FacebookUnresolved" as const }).message).toBe(
       "Could not resolve this link. Check the URL."
     );

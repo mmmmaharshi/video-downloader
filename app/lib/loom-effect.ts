@@ -2,7 +2,13 @@ import { Effect } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  PAGE_HEADERS,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 
@@ -37,10 +43,20 @@ export interface LoomUnresolved {
   readonly _tag: "LoomUnresolved";
 }
 
+export interface LoomBadRedirect {
+  readonly _tag: "LoomBadRedirect";
+}
+
+export interface LoomTooManyRedirects {
+  readonly _tag: "LoomTooManyRedirects";
+}
+
 export type LoomError =
+  | LoomBadRedirect
   | LoomGuardBlocked
   | LoomNoVideo
   | LoomNotFound
+  | LoomTooManyRedirects
   | LoomUnreachable
   | LoomUnresolved
   | LoomUpstream;
@@ -63,6 +79,14 @@ export const loomErrorMessage = (error: LoomError): string => {
 
     case "LoomUnreachable": {
       return "Loom is unreachable right now. Try again later.";
+    }
+
+    case "LoomBadRedirect": {
+      return INVALID_REDIRECT_MESSAGE;
+    }
+
+    case "LoomTooManyRedirects": {
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "LoomGuardBlocked": {
@@ -115,7 +139,9 @@ export const resolveLoomProgram = (
     const { res } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "LoomBadRedirect" as const },
           blocked: { _tag: "LoomGuardBlocked" as const },
+          tooManyRedirects: { _tag: "LoomTooManyRedirects" as const },
           unreachable: { _tag: "LoomUnreachable" as const },
           unresolved: { _tag: "LoomUnresolved" as const },
         }),

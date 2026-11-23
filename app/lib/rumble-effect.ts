@@ -7,7 +7,13 @@ import {
   classifyTransportError,
   guardAddresses,
 } from "./fetch-deps";
-import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
+import {
+  fetchGuarded,
+  FETCH_TIMEOUT_MS,
+  INVALID_REDIRECT_MESSAGE,
+  PAGE_HEADERS,
+  TOO_MANY_REDIRECTS_MESSAGE,
+} from "./guarded-fetch";
 import type { GuardedFetch } from "./guarded-fetch";
 import { pinnedFetch } from "./pinned-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
@@ -94,11 +100,11 @@ export const rumbleErrorMessage = (error: RumbleError): string => {
     }
 
     case "RumbleTooManyRedirects": {
-      return "This link redirects too many times.";
+      return TOO_MANY_REDIRECTS_MESSAGE;
     }
 
     case "RumbleBadRedirect": {
-      return "This link redirects somewhere invalid.";
+      return INVALID_REDIRECT_MESSAGE;
     }
 
     default: {
@@ -285,7 +291,9 @@ const fetchEmbedMp4s = (
     const { res } = yield* Effect.tryPromise({
       catch: (cause) =>
         classifyTransportError(cause, {
+          badRedirect: { _tag: "RumbleBadRedirect" as const },
           blocked: { _tag: "RumbleGuardBlocked" as const },
+          tooManyRedirects: { _tag: "RumbleTooManyRedirects" as const },
           unreachable: { _tag: "RumbleUnexpectedResponse" as const },
           unresolved: { _tag: "RumbleUnresolved" as const },
         }),

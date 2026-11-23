@@ -21,7 +21,7 @@ Domain language for seams. Names here drive module boundaries — grep the term,
 
 ## Seams
 
-- `MediaResolver ↔ fetch` — local-substitutable, ports & adapters. Tests inject fixture map; prod injects global fetch. Every ported resolver (all but Vimeo, the generic catch-all, and the dispatch itself) provisions the same pair as a FetchDeps Layer inside an Effect program, bridged back to promises with identical user-facing errors.
+- `MediaResolver ↔ fetch` — local-substitutable, ports & adapters. Tests inject fixture map; prod injects global fetch. One dispatch program serves every resolver off a single FetchDeps Layer: pure URL matching picks the branch, each platform maps its typed failures to the legacy thrown-Error strings, and resolve() provides the Layer and runs the program once.
 - `Transfer ↔ fetch` — in-process. Tests inject recorded CDN body.
 - `PublicHost ↔ lookup` — local-substitutable. Tests inject address lists; prod resolves real DNS.
 - `PinnedFetch ↔ fetch` — in-process. Tests inject a recording fetch; prod dials the approved address.

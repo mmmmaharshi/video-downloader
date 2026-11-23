@@ -69,13 +69,6 @@ export interface MediaResolverDeps {
   lookup?: HostLookup;
 }
 
-// One guarded transport for every network read in this module: the lookup
-// proves the host, PinnedFetch makes the socket use that proof.
-interface FetchContext {
-  doFetch: typeof fetch;
-  lookup: HostLookup;
-}
-
 // Path shapes only: the host comes from the one list in Platforms.
 const INSTA_PATH_RE = /^\/(?:p|reels?|tv)\/(?<shortcode>[A-Za-z0-9_-]+)\/?$/u;
 
@@ -151,36 +144,6 @@ const matchYouTubeId = (sourceUrl: string): string | undefined => {
   return undefined;
 };
 
-// The Instagram flow runs as an Effect program (FetchDeps Layer) and is bridged
-// back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveInstagram = async (
-  sourceUrl: string,
-  shortcode: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  const streams = await Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveInstagramProgram({ shortcode, sourceUrl }), layer),
-      toThrownError
-    )
-  );
-
-  return [
-    {
-      platform: "instagram" as const,
-      shortcode,
-      sourceUrl,
-      thumbnail: streams.thumbnail,
-      videoUrl: streams.videoUrl,
-    },
-  ];
-};
-
 // Facebook ships the video file only on the full (browser-header) page variant:
 // browser_native_hd/sd_url inside the ScheduledServerJS payload, with og:video
 // and hd_src/sd_src as fallbacks. Supported shapes: /reel/<id>, /watch/?v=<id>,
@@ -231,100 +194,6 @@ const matchFacebookId = (
   return undefined;
 };
 
-// The Facebook page scrape runs as an Effect program (FetchDeps Layer) and is
-// bridged back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveFacebook = (
-  sourceUrl: string,
-  id: string,
-  fetchUrl: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  return Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(
-        resolveFacebookProgram({ fetchUrl, id, sourceUrl }),
-        layer
-      ),
-      toFacebookThrownError
-    )
-  );
-};
-
-// The catch-all fetch runs as an Effect program (FetchDeps Layer) and is
-// bridged back to promises here, so resolve() keeps its thrown-Error contract.
-// A video response's body is never read — only headers — so large files cost nothing.
-const resolveGeneric = (
-  sourceUrl: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  return Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveGenericProgram({ sourceUrl }), layer),
-      toGenericThrownError
-    )
-  );
-};
-
-const resolveYouTube = async (
-  sourceUrl: string,
-  id: string,
-  getFormats: (
-    id: string,
-    deps?: YouTubeDeps
-  ) => Promise<TubeAsset[]> | TubeAsset[]
-): Promise<VideoAsset[]> => {
-  // renditions of one video, not separate videos: one labeled asset per distinct quality
-  const formats = await getFormats(id);
-
-  const assets = byQuality(
-    formats.map((f) => ({ height: f.height, title: f.title, url: f.videoUrl }))
-  ).map((f) => ({
-    label: renditionLabel(f),
-    platform: "youtube" as const,
-    shortcode: id,
-    sourceUrl,
-    thumbnail: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-    title: f.title,
-    videoUrl: f.url,
-  }));
-
-  if (!assets.length) {
-    throw new Error("No downloadable video found for this post.");
-  }
-
-  return assets;
-};
-
-// The X syndication flow runs as an Effect program (FetchDeps Layer) and is
-// bridged back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveTwitter = (
-  sourceUrl: string,
-  id: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  return Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveTwitterProgram({ id, sourceUrl }), layer),
-      toTwitterThrownError
-    )
-  );
-};
-
 // Reddit posts with video: the .json endpoint exposes media.reddit_video.fallback_url
 // (the direct mp4) plus a thumbnail. Crossposts carry the media on crosspost_parent_list.
 const matchReddit = (
@@ -369,29 +238,6 @@ const matchReddit = (
   return undefined;
 };
 
-// The Reddit listing fetch runs as an Effect program (FetchDeps Layer) and is
-// bridged back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveReddit = (
-  sourceUrl: string,
-  id: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  return Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(
-        resolveRedditProgram({ fetchUrl: sourceUrl, id, sourceUrl }),
-        layer
-      ),
-      toRedditThrownError
-    )
-  );
-};
-
 const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
   let url: URL;
 
@@ -418,26 +264,6 @@ const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
   }
 
   return { code };
-};
-
-// The Streamable API fetch runs as an Effect program (FetchDeps Layer) and is
-// bridged back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveStreamable = (
-  sourceUrl: string,
-  code: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  return Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveStreamableProgram({ code, sourceUrl }), layer),
-      toStreamableThrownError
-    )
-  );
 };
 
 const matchVimeo = (
@@ -476,27 +302,6 @@ const matchVimeo = (
   return undefined;
 };
 
-// The Vimeo player-config fetch runs as an Effect program (FetchDeps Layer)
-// and is bridged back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveVimeo = (
-  sourceUrl: string,
-  id: string,
-  hash: string | undefined,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  return Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveVimeoProgram({ hash, id, sourceUrl }), layer),
-      toVimeoThrownError
-    )
-  );
-};
-
 const matchTikTok = (sourceUrl: string): { id: string } | undefined => {
   let url: URL;
 
@@ -515,26 +320,6 @@ const matchTikTok = (sourceUrl: string): { id: string } | undefined => {
   const id = url.pathname.match(/\/video\/(?<id>\d+)/u)?.groups?.id;
 
   return id ? { id } : undefined;
-};
-
-// The TikTok page scrape runs as an Effect program (FetchDeps Layer) and is
-// bridged back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveTikTok = (
-  sourceUrl: string,
-  id: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  return Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveTikTokProgram({ id, sourceUrl }), layer),
-      toTikTokThrownError
-    )
-  );
 };
 
 const matchThreads = (sourceUrl: string): { id: string } | undefined => {
@@ -558,36 +343,6 @@ const matchThreads = (sourceUrl: string): { id: string } | undefined => {
     url.pathname.split("/").filter(Boolean).at(-1);
 
   return id ? { id } : undefined;
-};
-
-// The Threads page scrape runs as an Effect program (FetchDeps Layer) and is
-// bridged back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveThreads = async (
-  sourceUrl: string,
-  id: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  const streams = await Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveThreadsProgram({ sourceUrl }), layer),
-      toThreadsThrownError
-    )
-  );
-
-  return [
-    {
-      platform: "threads" as const,
-      shortcode: id,
-      sourceUrl,
-      thumbnail: streams.thumbnail,
-      videoUrl: streams.videoUrl,
-    },
-  ];
 };
 
 const matchDailymotion = (sourceUrl: string): { id: string } | undefined => {
@@ -616,27 +371,6 @@ const matchDailymotion = (sourceUrl: string): { id: string } | undefined => {
   )?.groups?.id;
 
   return id ? { id } : undefined;
-};
-
-// The Dailymotion metadata fetch runs as an Effect program (FetchDeps Layer)
-// and is bridged back to promises here, so resolve() keeps its thrown-Error
-// contract.
-const resolveDailymotion = (
-  sourceUrl: string,
-  id: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  return Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveDailymotionProgram({ id, sourceUrl }), layer),
-      toDailymotionThrownError
-    )
-  );
 };
 
 const matchRumble = (
@@ -668,43 +402,6 @@ const matchRumble = (
   return watch ? { direct: false, id: `v${watch}` } : undefined;
 };
 
-// The Rumble flow runs as an Effect program (FetchDeps Layer) and is bridged
-// back to promises here, so resolve() keeps its thrown-Error contract while
-// the platform reasons in typed RumbleError tags.
-const resolveRumble = async (
-  sourceUrl: string,
-  id: string,
-  direct: boolean,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
-  });
-
-  const streams = await Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveRumbleProgram({ direct, id, sourceUrl }), layer),
-      (error) => new Error(rumbleErrorMessage(error))
-    )
-  );
-
-  const { html, mp4s } = streams;
-
-  // renditions of one VOD, not separate videos: one labeled asset per rung,
-  // best first — the same picker YouTube gets.
-  return byQuality(mp4s.map((m) => ({ height: m.meta?.h, url: m.url }))).map(
-    (m) => ({
-      label: renditionLabel(m),
-      platform: "rumble" as const,
-      shortcode: id,
-      sourceUrl,
-      thumbnail: html === undefined ? undefined : extractThumbnail(html),
-      videoUrl: m.url,
-    })
-  );
-};
-
 const matchLoom = (sourceUrl: string): { id: string } | undefined => {
   let url: URL;
 
@@ -726,39 +423,245 @@ const matchLoom = (sourceUrl: string): { id: string } | undefined => {
   return id ? { id } : undefined;
 };
 
-// The Loom page scrape runs as an Effect program (FetchDeps Layer) and is
-// bridged back to promises here, so resolve() keeps its thrown-Error contract.
-const resolveLoom = async (
-  sourceUrl: string,
-  id: string,
-  ctx: FetchContext
-): Promise<VideoAsset[]> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: ctx.doFetch,
-    lookup: ctx.lookup,
+type YoutubeGetter = NonNullable<MediaResolverDeps["youtube"]>;
+
+// One Effect program for every resolver: pure URL matching picks the branch
+// and each platform program maps its typed failures to the legacy thrown-Error
+// strings. resolveRaw provides the single FetchDeps Layer and runs this once,
+// so the seam owns one Layer and one error channel instead of thirteen bridges.
+// eslint-disable-next-line complexity -- dispatch over supported providers
+const resolveDispatchProgram = (
+  trimmed: string,
+  getFormats: YoutubeGetter
+): Effect.Effect<VideoAsset[], Error, FetchDeps> =>
+  Effect.gen(function* dispatch() {
+    const insta = instagramShortcode(trimmed);
+
+    if (insta) {
+      const canonical = canonicalReelUrl(trimmed);
+
+      const streams = yield* Effect.mapError(
+        resolveInstagramProgram({ shortcode: insta, sourceUrl: canonical }),
+        toThrownError
+      );
+
+      return [
+        {
+          platform: "instagram" as const,
+          shortcode: insta,
+          sourceUrl: canonical,
+          thumbnail: streams.thumbnail,
+          videoUrl: streams.videoUrl,
+        },
+      ];
+    }
+
+    const fb = matchFacebookId(trimmed);
+
+    if (fb) {
+      return yield* Effect.mapError(
+        resolveFacebookProgram({
+          fetchUrl: fb.fetchUrl,
+          id: fb.id,
+          sourceUrl: trimmed,
+        }),
+        toFacebookThrownError
+      );
+    }
+
+    const tweet = tweetId(trimmed);
+
+    if (tweet) {
+      return yield* Effect.mapError(
+        resolveTwitterProgram({ id: tweet, sourceUrl: trimmed }),
+        toTwitterThrownError
+      );
+    }
+
+    const reddit = matchReddit(trimmed);
+
+    if (reddit) {
+      return yield* Effect.mapError(
+        resolveRedditProgram({
+          fetchUrl: trimmed,
+          id: reddit.id,
+          sourceUrl: trimmed,
+        }),
+        toRedditThrownError
+      );
+    }
+
+    const streamable = matchStreamable(trimmed);
+
+    if (streamable) {
+      return yield* Effect.mapError(
+        resolveStreamableProgram({ code: streamable.code, sourceUrl: trimmed }),
+        toStreamableThrownError
+      );
+    }
+
+    const vimeo = matchVimeo(trimmed);
+
+    if (vimeo) {
+      return yield* Effect.mapError(
+        resolveVimeoProgram({
+          hash: vimeo.hash,
+          id: vimeo.id,
+          sourceUrl: trimmed,
+        }),
+        toVimeoThrownError
+      );
+    }
+
+    const tiktok = matchTikTok(trimmed);
+
+    if (tiktok) {
+      return yield* Effect.mapError(
+        resolveTikTokProgram({ id: tiktok.id, sourceUrl: trimmed }),
+        toTikTokThrownError
+      );
+    }
+
+    const threads = matchThreads(trimmed);
+
+    if (threads) {
+      const streams = yield* Effect.mapError(
+        resolveThreadsProgram({ sourceUrl: trimmed }),
+        toThreadsThrownError
+      );
+
+      return [
+        {
+          platform: "threads" as const,
+          shortcode: threads.id,
+          sourceUrl: trimmed,
+          thumbnail: streams.thumbnail,
+          videoUrl: streams.videoUrl,
+        },
+      ];
+    }
+
+    const dailymotion = matchDailymotion(trimmed);
+
+    if (dailymotion) {
+      return yield* Effect.mapError(
+        resolveDailymotionProgram({ id: dailymotion.id, sourceUrl: trimmed }),
+        toDailymotionThrownError
+      );
+    }
+
+    const loom = matchLoom(trimmed);
+
+    if (loom) {
+      const streams = yield* Effect.mapError(
+        resolveLoomProgram({ sourceUrl: trimmed }),
+        toLoomThrownError
+      );
+
+      return [
+        {
+          platform: "loom" as const,
+          shortcode: loom.id,
+          sourceUrl: trimmed,
+          thumbnail: streams.thumbnail,
+          videoUrl: streams.videoUrl,
+        },
+      ];
+    }
+
+    const rumble = matchRumble(trimmed);
+
+    if (rumble) {
+      const streams = yield* Effect.mapError(
+        resolveRumbleProgram({
+          direct: rumble.direct,
+          id: rumble.id,
+          sourceUrl: trimmed,
+        }),
+        (error) => new Error(rumbleErrorMessage(error))
+      );
+
+      const { html, mp4s } = streams;
+
+      // renditions of one VOD, not separate videos: one labeled asset per rung,
+      // best first — the same picker YouTube gets.
+      return byQuality(
+        mp4s.map((m) => ({ height: m.meta?.h, url: m.url }))
+      ).map((m) => ({
+        label: renditionLabel(m),
+        platform: "rumble" as const,
+        shortcode: rumble.id,
+        sourceUrl: trimmed,
+        thumbnail: html === undefined ? undefined : extractThumbnail(html),
+        videoUrl: m.url,
+      }));
+    }
+
+    const ytId = matchYouTubeId(trimmed);
+
+    if (ytId) {
+      // the injectable formats seam stays a promise function: lift it so a sync
+      // throw rejects like an async one, and keep a thrown Error as-is (the
+      // seam's contract is Error; a non-Error double reports unreachable).
+      const formats = yield* Effect.tryPromise({
+        catch: (cause) =>
+          cause instanceof Error
+            ? cause
+            : new Error("YouTube is unreachable right now. Try again later."),
+        try: () => Promise.resolve().then(() => getFormats(ytId)),
+      });
+
+      // renditions of one video, not separate videos: one labeled asset per rung
+      const assets = byQuality(
+        formats.map((f) => ({
+          height: f.height,
+          title: f.title,
+          url: f.videoUrl,
+        }))
+      ).map((f) => ({
+        label: renditionLabel(f),
+        platform: "youtube" as const,
+        shortcode: ytId,
+        sourceUrl: trimmed,
+        thumbnail: `https://i.ytimg.com/vi/${ytId}/hqdefault.jpg`,
+        title: f.title,
+        videoUrl: f.url,
+      }));
+
+      if (!assets.length) {
+        return yield* Effect.fail(
+          new Error("No downloadable video found for this post.")
+        );
+      }
+
+      return assets;
+    }
+
+    if (!URL.parse(trimmed)) {
+      return yield* Effect.fail(
+        new Error("Invalid URL. Paste a link to a video page or file.")
+      );
+    }
+
+    if (isKnownMediaHost(trimmed)) {
+      return yield* Effect.fail(
+        new Error(
+          "Invalid URL. On this host only a video post or file link is downloadable."
+        )
+      );
+    }
+
+    // A video response's body is never read — only headers — so large files
+    // cost nothing.
+    return yield* Effect.mapError(
+      resolveGenericProgram({ sourceUrl: trimmed }),
+      toGenericThrownError
+    );
   });
-
-  const streams = await Effect.runPromise(
-    Effect.mapError(
-      Effect.provide(resolveLoomProgram({ sourceUrl }), layer),
-      toLoomThrownError
-    )
-  );
-
-  return [
-    {
-      platform: "loom" as const,
-      shortcode: id,
-      sourceUrl,
-      thumbnail: streams.thumbnail,
-      videoUrl: streams.videoUrl,
-    },
-  ];
-};
 
 // async only so sync validation throws reject the promise instead of
 // throwing synchronously — callers uniformly await
-// eslint-disable-next-line require-await, complexity -- dispatch over supported providers; async for uniform await contract
+// eslint-disable-next-line require-await -- async for uniform await contract; the dispatch holds the complexity
 const resolveRaw = async (
   sourceUrl: string,
   deps: MediaResolverDeps = {}
@@ -769,94 +672,17 @@ const resolveRaw = async (
     throw new Error(EMPTY_LINK);
   }
 
-  const ctx: FetchContext = {
+  const layer = Layer.succeed(FetchDeps)({
     doFetch: deps.fetch ?? fetch,
     lookup: deps.lookup ?? defaultLookup,
-  };
+  });
 
-  const insta = instagramShortcode(trimmed);
-
-  if (insta) {
-    return resolveInstagram(canonicalReelUrl(trimmed), insta, ctx);
-  }
-
-  const fb = matchFacebookId(trimmed);
-
-  if (fb) {
-    return resolveFacebook(trimmed, fb.id, fb.fetchUrl, ctx);
-  }
-
-  const tweet = tweetId(trimmed);
-
-  if (tweet) {
-    return resolveTwitter(trimmed, tweet, ctx);
-  }
-
-  const reddit = matchReddit(trimmed);
-
-  if (reddit) {
-    return resolveReddit(trimmed, reddit.id, ctx);
-  }
-
-  const streamable = matchStreamable(trimmed);
-
-  if (streamable) {
-    return resolveStreamable(trimmed, streamable.code, ctx);
-  }
-
-  const vimeo = matchVimeo(trimmed);
-
-  if (vimeo) {
-    return resolveVimeo(trimmed, vimeo.id, vimeo.hash, ctx);
-  }
-
-  const tiktok = matchTikTok(trimmed);
-
-  if (tiktok) {
-    return resolveTikTok(trimmed, tiktok.id, ctx);
-  }
-
-  const threads = matchThreads(trimmed);
-
-  if (threads) {
-    return resolveThreads(trimmed, threads.id, ctx);
-  }
-
-  const dailymotion = matchDailymotion(trimmed);
-
-  if (dailymotion) {
-    return resolveDailymotion(trimmed, dailymotion.id, ctx);
-  }
-
-  const loom = matchLoom(trimmed);
-
-  if (loom) {
-    return resolveLoom(trimmed, loom.id, ctx);
-  }
-
-  const rumble = matchRumble(trimmed);
-
-  if (rumble) {
-    return resolveRumble(trimmed, rumble.id, rumble.direct, ctx);
-  }
-
-  const ytId = matchYouTubeId(trimmed);
-
-  if (ytId) {
-    return resolveYouTube(trimmed, ytId, deps.youtube ?? getYouTubeFormats);
-  }
-
-  if (!URL.parse(trimmed)) {
-    throw new Error("Invalid URL. Paste a link to a video page or file.");
-  }
-
-  if (isKnownMediaHost(trimmed)) {
-    throw new Error(
-      "Invalid URL. On this host only a video post or file link is downloadable."
-    );
-  }
-
-  return resolveGeneric(trimmed, ctx);
+  return Effect.runPromise(
+    Effect.provide(
+      resolveDispatchProgram(trimmed, deps.youtube ?? getYouTubeFormats),
+      layer
+    )
+  );
 };
 
 // One owner for the gif fact. A resolver that only saw a URL (an og:video from

@@ -10,6 +10,9 @@ import { CHROME_UA } from "./user-agent";
 
 const MAX_REDIRECTS = 4;
 
+// header-stall bound shared by every guarded page fetch
+export const FETCH_TIMEOUT_MS = 15_000;
+
 // page-fetch policy shared by every resolver and the Rumble Effect program:
 // a page document with a browser-like identity
 export const PAGE_HEADERS = {

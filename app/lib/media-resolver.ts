@@ -9,14 +9,16 @@ import { Effect, Layer } from "effect";
 import { readCappedUtf8 } from "./capped-body";
 import { containerOf } from "./container";
 import { FetchDeps } from "./fetch-deps";
-import { fetchGuarded, PAGE_HEADERS } from "./guarded-fetch";
+import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
+import { resolveInstagramProgram, toThrownError } from "./instagram-effect";
 import { EMPTY_LINK } from "./messages";
+import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
 import { hostMatches, isPlatformHost } from "./platforms";
 import { defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 import { resolveRumbleProgram, rumbleErrorMessage } from "./rumble-effect";
-import { CHROME_UA, UA } from "./user-agent";
+import { CHROME_UA } from "./user-agent";
 import { getYouTubeFormats } from "./youtube";
 import type { TubeAsset, YouTubeDeps } from "./youtube";
 
@@ -65,8 +67,6 @@ const NOT_FOUND = "Post not found. Check the URL.";
 
 const LOGIN_REQUIRED =
   "Private or login-required post. Only public posts are supported.";
-
-const FETCH_TIMEOUT_MS = 15_000;
 
 // probing for a file, not a page: accept whatever the host serves
 const FILE_HEADERS = { ...PAGE_HEADERS, Accept: "*/*" };
@@ -130,12 +130,6 @@ const isKnownMediaHost = (sourceUrl: string): boolean =>
 // fetches while /reel/ serves the same post: fetch the canonical singular form.
 const canonicalReelUrl = (url: string): string =>
   url.replace("instagram.com/reels/", "instagram.com/reel/");
-
-const normalizeUrl = (raw: string): string =>
-  raw
-    .replaceAll("\\u0026", "&")
-    .replaceAll("\\/", "/")
-    .replaceAll("&amp;", "&");
 
 // mp4 is the one container every browser plays: prefer those renditions, but
 // fall back to whatever the host offers (HLS/DASH manifests, webm) rather than
@@ -224,24 +218,6 @@ const matchYouTubeId = (sourceUrl: string): string | undefined => {
   return undefined;
 };
 
-const extractOgVideo = (html: string): string | undefined => {
-  const v =
-    html.match(
-      /<meta\s+property="og:video:secure_url"\s+content="(?<url>[^"]+)"/u
-    )?.groups?.url ??
-    html.match(/<meta\s+property="og:video"\s+content="(?<url>[^"]+)"/u)?.groups
-      ?.url ??
-    html.match(/"video_url"\s*:\s*"(?<url>[^"]+)"/u)?.groups?.url ??
-    html.match(/"videoUrl"\s*:\s*"(?<url>[^"]+)"/u)?.groups?.url;
-
-  return v ? normalizeUrl(v) : undefined;
-};
-
-const extractThumbnail = (html: string): string | undefined =>
-  html
-    .match(/<meta\s+property="og:image"\s+content="(?<url>[^"]+)"/u)
-    ?.groups?.url?.replaceAll("&amp;", "&");
-
 const assertOk = (res: Response, upstream: string): void => {
   if (res.status === 404) {
     throw new Error(NOT_FOUND);
@@ -252,81 +228,32 @@ const assertOk = (res: Response, upstream: string): void => {
   }
 };
 
+// The Instagram flow runs as an Effect program (FetchDeps Layer) and is bridged
+// back to promises here, so resolve() keeps its thrown-Error contract.
 const resolveInstagram = async (
   sourceUrl: string,
   shortcode: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res, url } = await fetchPublic(ctx, sourceUrl, PAGE_HEADERS);
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
+  });
 
-  // more specific than the status itself: a login redirect is a private post, not a bad link
-  if (
-    (res.redirected && res.url.includes("/accounts/login")) ||
-    url.includes("/accounts/login")
-  ) {
-    throw new Error(LOGIN_REQUIRED);
-  }
-
-  assertOk(res, "Instagram");
-
-  const html = await readCapped(res, MAX_PAGE_BYTES);
-
-  if (html.includes("/accounts/login") && !html.includes("og:video")) {
-    throw new Error("Private post or requires login. Only public posts work.");
-  }
-
-  let videoUrl = extractOgVideo(html);
-
-  // embed fallback — double-escaped JSON in embed HTML
-  if (!videoUrl) {
-    try {
-      let embedKind = "p";
-
-      if (sourceUrl.includes("/reel")) {
-        embedKind = "reel";
-      } else if (sourceUrl.includes("/tv/")) {
-        embedKind = "tv";
-      }
-
-      const embedUrl = `https://www.instagram.com/${embedKind}/${shortcode}/embed/captioned/`;
-
-      const { res: er } = await fetchPublic(ctx, embedUrl, {
-        "User-Agent": UA,
-      });
-
-      if (er.ok) {
-        const ehtml = await readCapped(er, MAX_PAGE_BYTES);
-
-        const evRaw =
-          ehtml.match(
-            /(?:\\"|")video_url(?:\\"|")\s*:\s*(?:\\"|")(?<url>[^"]+)(?:\\"|")/u
-          )?.groups?.url ??
-          ehtml.match(
-            /(?:\\"|")videoUrl(?:\\"|")\s*:\s*(?:\\"|")(?<url>[^"]+)(?:\\"|")/u
-          )?.groups?.url;
-
-        if (evRaw) {
-          videoUrl = normalizeUrl(evRaw).replaceAll("\\", "");
-        }
-      }
-    } catch {
-      // the embed is a best-effort fallback; a failed one is reported below
-    }
-  }
-
-  if (!videoUrl) {
-    throw new Error(
-      "No video found. Only video/reel posts are downloadable, or IG changed its page."
-    );
-  }
+  const streams = await Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveInstagramProgram({ shortcode, sourceUrl }), layer),
+      toThrownError
+    )
+  );
 
   return [
     {
-      platform: "instagram",
+      platform: "instagram" as const,
       shortcode,
       sourceUrl,
-      thumbnail: extractThumbnail(html),
-      videoUrl,
+      thumbnail: streams.thumbnail,
+      videoUrl: streams.videoUrl,
     },
   ];
 };

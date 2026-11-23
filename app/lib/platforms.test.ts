@@ -16,6 +16,7 @@ const SERVER_ONLY_MODULES = [
   "download-link",
   "fetch-deps",
   "guarded-fetch",
+  "instagram-effect",
   "media-resolver",
   "pinned-fetch",
   "public-host",

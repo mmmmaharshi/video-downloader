@@ -17,6 +17,6 @@ RUN bun run build
 FROM oven/bun:1.4-alpine
 COPY ./package.json ./bun.lock /app/
 COPY --from=production-dependencies-env /app/node_modules /app/node_modules
-COPY --from=build-env /app/build /app/build
+COPY --from=build-env /app/dist /app/dist
 WORKDIR /app
 CMD ["bun", "run", "start"]

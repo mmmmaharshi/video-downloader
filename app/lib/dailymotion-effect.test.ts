@@ -23,6 +23,7 @@ interface DailymotionFile {
 const dmJson = (
   qualities: { readonly [quality: string]: readonly DailymotionFile[] },
   extra?: {
+    readonly error?: { readonly title?: string };
     readonly poster_url?: string;
     readonly thumbnail_url?: string;
     readonly title?: string;
@@ -31,6 +32,7 @@ const dmJson = (
   stubFetch(() =>
     Response.json(
       {
+        error: extra?.error,
         poster_url: extra?.poster_url,
         qualities,
         thumbnail_url: extra?.thumbnail_url,
@@ -99,6 +101,19 @@ describe("dailymotion-effect", () => {
     expect(error._tag).toBe("DailymotionNoVideo");
     expect(toThrownError(error).message).toBe(
       "No video found. Only public videos are downloadable."
+    );
+  });
+
+  test("reports the provider's own reason instead of a generic miss", async () => {
+    const error = await runVideosError(
+      layersFor(
+        dmJson({}, { error: { title: "Video geo-restricted by the owner." } })
+      )
+    );
+
+    expect(error._tag).toBe("DailymotionUnavailable");
+    expect(toThrownError(error).message).toBe(
+      "This video is unavailable: Video geo-restricted by the owner."
     );
   });
 

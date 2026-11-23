@@ -58,12 +58,18 @@ export interface DailymotionUnresolved {
   readonly _tag: "DailymotionUnresolved";
 }
 
+export interface DailymotionUnavailable {
+  readonly _tag: "DailymotionUnavailable";
+  readonly reason: string;
+}
+
 export type DailymotionError =
   | DailymotionBadRedirect
   | DailymotionGuardBlocked
   | DailymotionNoVideo
   | DailymotionNotFound
   | DailymotionTooManyRedirects
+  | DailymotionUnavailable
   | DailymotionUnexpectedResponse
   | DailymotionUnreachable
   | DailymotionUnresolved
@@ -87,6 +93,11 @@ export const dailymotionErrorMessage = (error: DailymotionError): string => {
 
     case "DailymotionNoVideo": {
       return "No video found. Only public videos are downloadable.";
+    }
+
+    case "DailymotionUnavailable": {
+      // the provider's title usually ends with its own period
+      return `This video is unavailable: ${error.reason.replace(/\.+$/u, "")}.`;
     }
 
     case "DailymotionUnreachable": {
@@ -123,6 +134,11 @@ export const toThrownError = (error: DailymotionError): Error =>
   new Error(dailymotionErrorMessage(error));
 
 const DailymotionMetadata = Schema.Struct({
+  // the provider states why it refuses (geo-restriction, takedown) rather than
+  // omitting qualities silently
+  error: Schema.optional(
+    Schema.Struct({ title: Schema.optional(Schema.String) })
+  ),
   poster_url: Schema.optional(Schema.String),
   qualities: Schema.optional(
     Schema.Record(
@@ -255,6 +271,17 @@ export const resolveDailymotionProgram = (
     }));
 
     if (!assets.length) {
+      const reason = data?.error?.title;
+
+      // the provider's own words beat a generic miss: a geo-blocked video is
+      // not "only public videos are downloadable"
+      if (reason !== undefined) {
+        return yield* Effect.fail({
+          _tag: "DailymotionUnavailable" as const,
+          reason,
+        });
+      }
+
       return yield* Effect.fail({ _tag: "DailymotionNoVideo" as const });
     }
 

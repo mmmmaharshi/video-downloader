@@ -7,7 +7,7 @@ import {
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
-import { readPageJson } from "./page-body";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4, byQuality, renditionLabel } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -142,7 +142,7 @@ export const resolveStreamableProgram = (
 
     const payload = yield* Effect.tryPromise({
       catch: () => ({ _tag: "StreamableUnexpectedResponse" as const }),
-      try: () => readPageJson(res, JSON.parse),
+      try: async () => JSON.parse(await readPageText(res)),
     });
 
     // a shape mismatch reads as empty, the way the untyped read did: a video

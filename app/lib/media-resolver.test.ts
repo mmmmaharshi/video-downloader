@@ -19,24 +19,6 @@ const page = (body: string, init?: ResponseInit) =>
 
 // Response.url and .redirected are read-only, so a login-redirect fixture
 // subclasses to supply them. The resolvers read only ok/redirected/status/text/url.
-class LoginRedirectResponse extends Response {
-  private readonly loginUrl: string;
-
-  constructor(loginUrl: string) {
-    super("", { status: 200 });
-    this.loginUrl = loginUrl;
-  }
-
-  // eslint-disable-next-line class-methods-use-this -- instance getter override; a static would not shadow the base property
-  override get redirected(): boolean {
-    return true;
-  }
-
-  override get url(): string {
-    return this.loginUrl;
-  }
-}
-
 describe("resolve", () => {
   test("reads video and thumbnail from the post page", async () => {
     const [asset] = await resolve(REEL, {
@@ -181,13 +163,18 @@ describe("resolve", () => {
   });
 
   test("rejects a login redirect", async () => {
-    const redirected = new LoginRedirectResponse(
-      "https://www.instagram.com/accounts/login/"
+    const hop = stubFetch((url) =>
+      url.includes("/accounts/login")
+        ? page("")
+        : new Response(null, {
+            headers: { location: "https://www.instagram.com/accounts/login/" },
+            status: 302,
+          })
     );
 
-    await expect(
-      resolve(REEL, { fetch: stubFetch(() => redirected) })
-    ).rejects.toThrow("Private or login-required post");
+    await expect(resolve(REEL, { fetch: hop })).rejects.toThrow(
+      "Private or login-required post"
+    );
   });
 
   test("rejects a login wall in the html", async () => {
@@ -1211,13 +1198,18 @@ describe("resolve — Facebook", () => {
   });
 
   test("rejects a login redirect", async () => {
-    const redirected = new LoginRedirectResponse(
-      "https://www.facebook.com/login.php"
+    const hop = stubFetch((url) =>
+      url.includes("/login")
+        ? page("")
+        : new Response(null, {
+            headers: { location: "https://www.facebook.com/login.php" },
+            status: 302,
+          })
     );
 
-    await expect(
-      resolve(FB_REEL, { fetch: stubFetch(() => redirected) })
-    ).rejects.toThrow("Private or login-required post");
+    await expect(resolve(FB_REEL, { fetch: hop })).rejects.toThrow(
+      "Private or login-required post"
+    );
   });
 
   test("rejects a page with no video", async () => {

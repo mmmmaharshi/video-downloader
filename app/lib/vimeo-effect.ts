@@ -7,7 +7,7 @@ import {
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
-import { readPageJson } from "./page-body";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
@@ -167,7 +167,7 @@ export const resolveVimeoProgram = (
 
     const payload = yield* Effect.tryPromise({
       catch: () => ({ _tag: "VimeoUnexpectedResponse" as const }),
-      try: () => readPageJson(res, JSON.parse),
+      try: async () => JSON.parse(await readPageText(res)),
     });
 
     let decoded: typeof VimeoConfig.Type;

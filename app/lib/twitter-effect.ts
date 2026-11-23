@@ -7,7 +7,7 @@ import {
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
-import { readPageJson } from "./page-body";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4 } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -159,7 +159,7 @@ export const resolveTwitterProgram = (
 
     const payload = yield* Effect.tryPromise({
       catch: () => ({ _tag: "TwitterUnexpectedResponse" as const }),
-      try: () => readPageJson(res, JSON.parse),
+      try: async () => JSON.parse(await readPageText(res)),
     });
 
     let tweet: typeof Tweet.Type;

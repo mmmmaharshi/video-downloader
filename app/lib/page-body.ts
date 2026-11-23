@@ -13,8 +13,3 @@ export const readPageText = async (res: Response): Promise<string> => {
 
   return text;
 };
-
-export const readPageJson = async <T>(
-  res: Response,
-  parse: (text: string) => T
-): Promise<T> => parse(await readPageText(res));

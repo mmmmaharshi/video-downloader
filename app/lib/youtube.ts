@@ -45,6 +45,12 @@ interface ClientContext {
   readonly osVersion: string;
 }
 
+// One source per identity fact: the UA strings interpolate these, so a
+// version bump cannot leave the header and the UA disagreeing.
+const ANDROID_VERSION = "20.10.38";
+const IOS_VERSION = "20.10.4";
+const IOS_DEVICE = "iPhone16,2";
+
 const CLIENTS: Record<
   ClientName,
   { client: ClientContext; key: string; userAgent: string }
@@ -53,25 +59,23 @@ const CLIENTS: Record<
     client: {
       androidSdkVersion: 34,
       clientName: "ANDROID",
-      clientVersion: "20.10.38",
+      clientVersion: ANDROID_VERSION,
       osName: "Android",
       osVersion: "14",
     },
     key: "AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w",
-    userAgent:
-      "com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip",
+    userAgent: `com.google.android.youtube/${ANDROID_VERSION} (Linux; U; Android 14) gzip`,
   },
   IOS: {
     client: {
       clientName: "IOS",
-      clientVersion: "20.10.4",
-      deviceModel: "iPhone16,2",
+      clientVersion: IOS_VERSION,
+      deviceModel: IOS_DEVICE,
       osName: "iPhone",
       osVersion: "18.3.2.22D82",
     },
     key: "AIzaSyB-63vPrdThhKuerbB2N_l7Kwwcxj6yUAc",
-    userAgent:
-      "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+    userAgent: `com.google.ios.youtube/${IOS_VERSION} (${IOS_DEVICE}; U; CPU iOS 18_3_2 like Mac OS X;)`,
   },
 };
 

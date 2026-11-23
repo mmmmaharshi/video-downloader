@@ -117,10 +117,7 @@ export const resolveFacebookProgram = (
 
     // a login redirect is the only reliable private signal: public pages carry
     // login links in their chrome, so page text never decides this
-    if (
-      (res.redirected && res.url.includes("facebook.com/login")) ||
-      url.includes("facebook.com/login")
-    ) {
+    if (url.includes("facebook.com/login")) {
       return yield* Effect.fail({ _tag: "FacebookLoginRedirect" as const });
     }
 

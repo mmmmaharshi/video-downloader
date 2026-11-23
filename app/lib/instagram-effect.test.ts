@@ -15,24 +15,6 @@ const page = (body: string, init?: ResponseInit) =>
 
 // Response.url and .redirected are read-only, so a login-redirect fixture
 // subclasses to supply them. The program reads only ok/redirected/status/text/url.
-class LoginRedirectResponse extends Response {
-  private readonly loginUrl: string;
-
-  constructor(loginUrl: string) {
-    super("", { status: 200 });
-    this.loginUrl = loginUrl;
-  }
-
-  // eslint-disable-next-line class-methods-use-this -- instance getter override; a static would not shadow the base property
-  override get redirected(): boolean {
-    return true;
-  }
-
-  override get url(): string {
-    return this.loginUrl;
-  }
-}
-
 const layersFor = (doFetch: ReturnType<typeof stubFetch>) =>
   Layer.succeed(FetchDeps)({ doFetch, lookup: publicHost });
 
@@ -95,11 +77,15 @@ describe("instagram-effect", () => {
   test("a login redirect fails typed", async () => {
     const error = await runStreamsError(
       layersFor(
-        stubFetch(
-          () =>
-            new LoginRedirectResponse(
-              "https://www.instagram.com/accounts/login/"
-            )
+        stubFetch((url) =>
+          url.includes("/accounts/login")
+            ? page("")
+            : new Response(null, {
+                headers: {
+                  location: "https://www.instagram.com/accounts/login/",
+                },
+                status: 302,
+              })
         )
       )
     );

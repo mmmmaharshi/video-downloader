@@ -7,7 +7,7 @@ import {
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
-import { readPageJson } from "./page-body";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 import { unhandledError } from "./unhandled-error";
@@ -220,7 +220,7 @@ const fetchRedditJson = (
 
     return yield* Effect.tryPromise({
       catch: () => ({ _tag: "RedditUnexpectedResponse" as const }),
-      try: () => readPageJson(res, JSON.parse),
+      try: async () => JSON.parse(await readPageText(res)),
     });
   });
 

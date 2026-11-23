@@ -126,14 +126,18 @@ describe("facebook-effect", () => {
   });
 
   test("rejects a login redirect", async () => {
-    const redirected = new Response("", { status: 200 });
-
-    Object.defineProperties(redirected, {
-      redirected: { value: true },
-      url: { value: "https://www.facebook.com/login.php" },
-    });
-
-    const error = await runVideosError(layersFor(stubFetch(() => redirected)));
+    const error = await runVideosError(
+      layersFor(
+        stubFetch((url) =>
+          url.includes("/login")
+            ? page("")
+            : new Response(null, {
+                headers: { location: "https://www.facebook.com/login.php" },
+                status: 302,
+              })
+        )
+      )
+    );
 
     expect(error._tag).toBe("FacebookLoginRedirect");
     expect(toThrownError(error).message).toBe(

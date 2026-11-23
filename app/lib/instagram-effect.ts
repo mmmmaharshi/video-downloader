@@ -118,10 +118,7 @@ export const resolveInstagramProgram = (
     );
 
     // more specific than the status itself: a login redirect is a private post, not a bad link
-    if (
-      (res.redirected && res.url.includes("/accounts/login")) ||
-      url.includes("/accounts/login")
-    ) {
+    if (url.includes("/accounts/login")) {
       return yield* Effect.fail({ _tag: "InstagramLoginRedirect" as const });
     }
 

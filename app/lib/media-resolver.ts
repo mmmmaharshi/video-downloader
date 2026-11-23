@@ -232,14 +232,6 @@ const matchReddit = (sourceUrl: string): { id: string } | undefined => {
     return { id: comments };
   }
 
-  const rComments = url.pathname.match(
-    /\/r\/[^/]+\/comments\/(?<id>[a-z0-9]+)/iu
-  )?.groups?.id;
-
-  if (rComments) {
-    return { id: rComments };
-  }
-
   return undefined;
 };
 

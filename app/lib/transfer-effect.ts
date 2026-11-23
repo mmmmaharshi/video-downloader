@@ -291,7 +291,7 @@ export const transferProgram = (
         catch: (cause) =>
           cause instanceof Response
             ? { _tag: "TransferTooLarge" as const }
-            : { _tag: "TransferBadUpstream" as const, status: 0 },
+            : { _tag: "TransferUnreachable" as const },
         try: () => readCappedText(body, Math.min(MANIFEST_MAX_BYTES, limit)),
       });
 

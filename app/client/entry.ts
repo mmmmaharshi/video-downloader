@@ -6,7 +6,8 @@ import { Runtime } from "foldkit";
 import "../app.css";
 import "@fontsource-variable/geist-pixel/elsh.css";
 
-import { Model, init, update, viewDocument } from "../foldkit-home/main";
+import { Model, init, update } from "../foldkit-home/main";
+import { viewDocument } from "../foldkit-home/view";
 
 const root = document.querySelector<HTMLElement>("#root");
 

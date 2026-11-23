@@ -42,17 +42,14 @@ describe("foldkit-home", () => {
   test("starts idle with a blank form", () => {
     const { model: initial } = init();
 
+    // observable claims only: no result, no error, nothing in flight
+    expect(initial.status).toBe("idle");
+    expect(initial.url).toBe("");
     expect(initial.assets).toEqual([]);
-    expect(initial.conversions).toEqual({});
-    expect(initial.copying).toEqual([]);
     expect(initial.error).toBe("");
     expect(initial.notice).toBe("");
     expect(initial.pendingCopies).toEqual([]);
     expect(initial.pendingDownloads).toEqual([]);
-    expect(initial.status).toBe("idle");
-    expect(initial.url).toBe("");
-    // init probes the runtime: no Worker or clipboard under node
-    expect(initial.capabilities).toEqual({ clipboard: false, worker: false });
   });
 
   test("typing stores the url without fetching", () => {

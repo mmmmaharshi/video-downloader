@@ -2,6 +2,7 @@
 // the original origin. Server-only; the address approval lives in PublicHost.
 
 import { ipVersion } from "./public-host";
+import { runsOnWorkers } from "./runtime";
 
 type PinHost = (
   doFetch: typeof fetch,
@@ -17,13 +18,6 @@ type PinHost = (
 // injected lookup), but the dial goes to the hostname itself — a TTL-0 rebind
 // between the two stays open (see ADR-0003). Only Workers takes that path:
 // Node and Bun both honor the pinned dial.
-const runsOnWorkers = (): boolean => {
-  try {
-    return navigator.userAgent.includes("Cloudflare");
-  } catch {
-    return false;
-  }
-};
 
 // eslint-disable-next-line require-await -- the seam stays async so a rejected approval surfaces as a rejection, not a sync throw
 export const pinnedFetch: PinHost = async (doFetch, url, addresses, init) => {

@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import {
   fetchGuarded,
@@ -8,6 +7,7 @@ import {
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
+import { readPageJson } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4 } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -120,23 +120,6 @@ export const twitterErrorMessage = (error: TwitterError): string => {
 export const toThrownError = (error: TwitterError): Error =>
   new Error(twitterErrorMessage(error));
 
-// Head-read budget shared with MediaResolver pages: an endpoint answer is
-// small, a mislabelled binary is not. Kept local (not imported) so this
-// program has no import edge into media-resolver, which owns the dispatch that
-// calls back into it — an import there would be a cycle.
-const TWITTER_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, TWITTER_PAGE_BYTES);
-
-  return text;
-};
-
-// eslint-disable-next-line anti-slop/no-unknown-returns -- JSON.parse is unknown by nature; the Schema decode at the single call site is the boundary
-const readJson = async (res: Response): Promise<unknown> =>
-  JSON.parse(await readText(res));
-
-// this endpoint answers with HTML on some failure paths and with {} when the token is missing
 const Tweet = Schema.Struct({
   id_str: Schema.optional(Schema.String),
   mediaDetails: Schema.optional(
@@ -214,7 +197,7 @@ export const resolveTwitterProgram = (
 
     const payload = yield* Effect.tryPromise({
       catch: () => ({ _tag: "TwitterUnexpectedResponse" as const }),
-      try: () => readJson(res),
+      try: () => readPageJson(res, JSON.parse),
     });
 
     let tweet: typeof Tweet.Type;

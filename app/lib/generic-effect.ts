@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { containerOf } from "./container";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import {
@@ -11,6 +10,7 @@ import {
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail } from "./og-meta";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 
@@ -115,14 +115,6 @@ export const genericErrorMessage = (error: GenericError): string => {
 export const toThrownError = (error: GenericError): Error =>
   new Error(genericErrorMessage(error));
 
-const GENERIC_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, GENERIC_PAGE_BYTES);
-
-  return text;
-};
-
 const slugOf = (sourceUrl: string): string => {
   const segments = new URL(sourceUrl).pathname.split("/");
   let last = "";
@@ -214,7 +206,7 @@ export const resolveGenericProgram = (
 
     const html = yield* Effect.tryPromise({
       catch: () => ({ _tag: "GenericUnreachable" as const }),
-      try: () => readText(res),
+      try: () => readPageText(res),
     });
 
     const videoUrl = extractOgVideo(html);

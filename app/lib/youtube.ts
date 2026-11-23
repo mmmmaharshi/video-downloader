@@ -6,6 +6,7 @@
 // plays and ANDROID (360p, playable) is the fallback. A sweep that answers OK
 // but plays nothing is usually throttling, so it runs once more before giving up.
 // Seam: getInfo + fetch (live Innertube in prod, stubs in tests).
+// The vocabulary is re-exported from youtube-types so callers keep one path.
 
 import { Effect, Layer, Schema } from "effect";
 
@@ -17,37 +18,17 @@ import {
   toThrownError,
   YouTubeInfo,
 } from "./youtube-effect";
-
-export interface TubeAsset {
-  videoUrl: string;
-  height: number;
-  title?: string;
-}
+import type {
+  ClientName,
+  TubeAsset,
+  TubeFormat,
+  TubeInfo,
+} from "./youtube-types";
 
 export interface YouTubeDeps {
   getInfo?: (id: string, client: ClientName) => Promise<TubeInfo> | TubeInfo;
   fetch?: typeof fetch;
   lookup?: HostLookup;
-}
-
-export type ClientName = "IOS" | "ANDROID";
-
-interface TubeFormat {
-  url?: string;
-  mime_type: string;
-  width?: number;
-  height?: number;
-  // true for a progressive stream: video and audio in one file. Adaptive
-  // streams carry one track, so offering one as the only option downloads
-  // a silent video.
-  muxed?: boolean;
-}
-
-export interface TubeInfo {
-  playability: string;
-  reason?: string;
-  title?: string;
-  formats: TubeFormat[];
 }
 
 // One recent POST per client — no session object, no Node APIs, so the same
@@ -191,3 +172,10 @@ export const getYouTubeFormats = async (
     )
   );
 };
+
+export type {
+  ClientName,
+  TubeAsset,
+  TubeFormat,
+  TubeInfo,
+} from "./youtube-types";

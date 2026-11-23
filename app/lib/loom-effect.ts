@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import {
   fetchGuarded,
@@ -10,6 +9,7 @@ import {
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail } from "./og-meta";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 
 // Module: LoomEffect — the Loom page scrape as an Effect program. The post
@@ -108,18 +108,6 @@ export const loomErrorMessage = (error: LoomError): string => {
 export const toThrownError = (error: LoomError): Error =>
   new Error(loomErrorMessage(error));
 
-// Head-read budget shared with MediaResolver pages: a post page is small, a
-// mislabelled binary is not. Kept local (not imported) so this program has no
-// import edge into media-resolver, which owns the dispatch that calls back
-// into it — an import there would be a cycle.
-const LOOM_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, LOOM_PAGE_BYTES);
-
-  return text;
-};
-
 export interface LoomInput {
   readonly sourceUrl: string;
 }
@@ -165,7 +153,7 @@ export const resolveLoomProgram = (
 
     const html = yield* Effect.tryPromise({
       catch: () => ({ _tag: "LoomUnreachable" as const }),
-      try: () => readText(res),
+      try: () => readPageText(res),
     });
 
     const videoUrl = extractOgVideo(html);

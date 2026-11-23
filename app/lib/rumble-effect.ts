@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import {
   FetchDeps,
   classifyTransportError,
@@ -14,6 +13,7 @@ import {
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import type { GuardedFetch } from "./guarded-fetch";
+import { readPageText } from "./page-body";
 import { pinnedFetch } from "./pinned-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { HostLookup } from "./public-host";
@@ -112,18 +112,6 @@ export const rumbleErrorMessage = (error: RumbleError): string => {
       throw new Error(`Unhandled RumbleError: ${JSON.stringify(exhaustive)}`);
     }
   }
-};
-
-// Head-read budget shared with MediaResolver pages: a page carrying its data
-// is small, a mislabelled binary is not. Kept local (not imported) so this
-// program has no import edge into media-resolver, which owns the dispatch that
-// calls back into it — an import there would be a cycle.
-const RUMBLE_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, RUMBLE_PAGE_BYTES);
-
-  return text;
 };
 
 const rumbleGuard = (
@@ -225,7 +213,7 @@ const fetchWatchPage = (
 
         const html = yield* Effect.tryPromise({
           catch: () => ({ _tag: "RumbleUnexpectedResponse" as const }),
-          try: () => readText(res),
+          try: () => readPageText(res),
         });
 
         return { cookie, html };
@@ -319,7 +307,7 @@ const fetchEmbedMp4s = (
     const payload = yield* Effect.tryPromise({
       catch: () => ({ _tag: "RumbleUnexpectedResponse" as const }),
       // eslint-disable-next-line require-await -- async keeps the JSON parse inside the rejection boundary
-      try: async () => JSON.parse(await readText(res)),
+      try: async () => JSON.parse(await readPageText(res)),
     });
 
     let embedJs: typeof EmbedJs.Type;

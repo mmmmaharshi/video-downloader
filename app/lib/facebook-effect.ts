@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import {
   fetchGuarded,
@@ -10,6 +9,7 @@ import {
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -123,18 +123,6 @@ export const facebookErrorMessage = (error: FacebookError): string => {
 export const toThrownError = (error: FacebookError): Error =>
   new Error(facebookErrorMessage(error));
 
-// Head-read budget shared with MediaResolver pages: a video page is small, a
-// mislabelled binary is not. Kept local (not imported) so this program has no
-// import edge into media-resolver, which owns the dispatch that calls back
-// into it — an import there would be a cycle.
-const FACEBOOK_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, FACEBOOK_PAGE_BYTES);
-
-  return text;
-};
-
 const extractFbFile = (html: string, key: string): string | undefined => {
   const v = html.match(new RegExp(`"${key}"\\s*:\\s*"(?<value>[^"]+)"`, "u"))
     ?.groups?.value;
@@ -193,7 +181,7 @@ export const resolveFacebookProgram = (
 
     const html = yield* Effect.tryPromise({
       catch: () => ({ _tag: "FacebookUnreachable" as const }),
-      try: () => readText(res),
+      try: () => readPageText(res),
     });
 
     // Facebook names two rungs of the same video; og:video is the sd-grade last

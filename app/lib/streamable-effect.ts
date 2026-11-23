@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import {
   fetchGuarded,
@@ -8,6 +7,7 @@ import {
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
+import { readPageJson } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4, byQuality, renditionLabel } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -136,27 +136,6 @@ const StreamableResponse = Schema.Struct({
   title: Schema.optional(Schema.String),
 });
 
-// Head-read budget shared with MediaResolver pages: an endpoint answer is
-// small, a mislabelled binary is not. Kept local (not imported) so this
-// program has no import edge into media-resolver, which owns the dispatch that
-// calls back into it — an import there would be a cycle.
-const STREAMABLE_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, STREAMABLE_PAGE_BYTES);
-
-  return text;
-};
-
-const readJson = async <T>(
-  res: Response,
-  parse: (text: string) => T
-): Promise<T> => {
-  const text = await readText(res);
-
-  return parse(text);
-};
-
 export interface StreamableInput {
   readonly code: string;
   readonly sourceUrl: string;
@@ -203,7 +182,7 @@ export const resolveStreamableProgram = (
 
     const payload = yield* Effect.tryPromise({
       catch: () => ({ _tag: "StreamableUnexpectedResponse" as const }),
-      try: () => readJson(res, JSON.parse),
+      try: () => readPageJson(res, JSON.parse),
     });
 
     // a shape mismatch reads as empty, the way the untyped read did: a video

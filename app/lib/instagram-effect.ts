@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import {
   fetchGuarded,
@@ -10,6 +9,7 @@ import {
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { UA } from "./user-agent";
 
@@ -130,18 +130,6 @@ export const instagramErrorMessage = (error: InstagramError): string => {
 export const toThrownError = (error: InstagramError): Error =>
   new Error(instagramErrorMessage(error));
 
-// Head-read budget shared with MediaResolver pages: a page carrying og:video
-// is small, a mislabelled binary is not. Kept local (not imported) so this
-// program has no import edge into media-resolver, which owns the dispatch that
-// calls back into it — an import there would be a cycle.
-const INSTAGRAM_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, INSTAGRAM_PAGE_BYTES);
-
-  return text;
-};
-
 interface InstagramPage {
   readonly res: Response;
   readonly url: string;
@@ -211,7 +199,7 @@ export const resolveInstagramProgram = (
 
     const html = yield* Effect.tryPromise({
       catch: () => ({ _tag: "InstagramUnreachable" as const }),
-      try: () => readText(res),
+      try: () => readPageText(res),
     });
 
     if (html.includes("/accounts/login") && !html.includes("og:video")) {
@@ -242,7 +230,7 @@ export const resolveInstagramProgram = (
               return null;
             }
 
-            const ehtml = await readText(er);
+            const ehtml = await readPageText(er);
 
             const evRaw =
               ehtml.match(

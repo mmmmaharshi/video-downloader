@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import {
   fetchGuarded,
@@ -8,6 +7,7 @@ import {
   INVALID_REDIRECT_MESSAGE,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
+import { readPageJson } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 import { CHROME_UA } from "./user-agent";
@@ -214,27 +214,6 @@ const pickRedditVideo = (
   return { thumbnail: pickThumbnail(data), title: data?.title, videoUrl };
 };
 
-// Head-read budget shared with MediaResolver pages: an endpoint answer is
-// small, a mislabelled binary is not. Kept local (not imported) so this
-// program has no import edge into media-resolver, which owns the dispatch that
-// calls back into it — an import there would be a cycle.
-const REDDIT_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, REDDIT_PAGE_BYTES);
-
-  return text;
-};
-
-const readJson = async <T>(
-  res: Response,
-  parse: (text: string) => T
-): Promise<T> => {
-  const text = await readText(res);
-
-  return parse(text);
-};
-
 export interface RedditInput {
   readonly fetchUrl: string;
   readonly id: string;
@@ -279,7 +258,7 @@ const fetchRedditJson = (
 
     return yield* Effect.tryPromise({
       catch: () => ({ _tag: "RedditUnexpectedResponse" as const }),
-      try: () => readJson(res, JSON.parse),
+      try: () => readPageJson(res, JSON.parse),
     });
   });
 

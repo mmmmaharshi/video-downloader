@@ -1,6 +1,5 @@
 import { Effect, Schema } from "effect";
 
-import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
 import {
   fetchGuarded,
@@ -10,6 +9,7 @@ import {
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail } from "./og-meta";
+import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 
@@ -111,18 +111,6 @@ export const tiktokErrorMessage = (error: TikTokError): string => {
 export const toThrownError = (error: TikTokError): Error =>
   new Error(tiktokErrorMessage(error));
 
-// Head-read budget shared with MediaResolver pages: a post page is small, a
-// mislabelled binary is not. Kept local (not imported) so this program has no
-// import edge into media-resolver, which owns the dispatch that calls back
-// into it — an import there would be a cycle.
-const TIKTOK_PAGE_BYTES = 512 * 1024;
-
-const readText = async (res: Response): Promise<string> => {
-  const { text } = await readCappedUtf8(res.body, TIKTOK_PAGE_BYTES);
-
-  return text;
-};
-
 const TikTokPayload = Schema.Struct({
   __DEFAULT_SCOPE__: Schema.optional(
     Schema.Struct({
@@ -219,7 +207,7 @@ export const resolveTikTokProgram = (
 
     const html = yield* Effect.tryPromise({
       catch: () => ({ _tag: "TikTokUnreachable" as const }),
-      try: () => readText(res),
+      try: () => readPageText(res),
     });
 
     // tolerant by design: a missing block or a shape mismatch reads as

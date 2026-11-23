@@ -20,7 +20,7 @@ export const videoAssetFields = {
 
 const videoAssetSchema = Schema.Struct(videoAssetFields);
 
-const resolvedAssetSchema = Schema.Struct({
+export const resolvedAssetSchema = Schema.Struct({
   ...videoAssetFields,
   downloadHref: Schema.String,
 });

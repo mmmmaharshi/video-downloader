@@ -19,15 +19,12 @@ import {
 } from "../lib/gif-convert";
 import type { ClipboardReps } from "../lib/gif-convert";
 import { EMPTY_LINK } from "../lib/messages";
-import { resolveResultSchema, videoAssetFields } from "../lib/resolve-query";
+import { resolveResultSchema, resolvedAssetSchema } from "../lib/resolve-query";
 import { API_RESOLVE } from "../lib/routes";
 import { stemOf } from "../lib/stem";
 
 // eslint-disable-next-line no-redeclare -- Foldkit documents the Schema value and its Type alias under one name
-export const Asset = Schema.Struct({
-  ...videoAssetFields,
-  downloadHref: Schema.String,
-});
+export const Asset = resolvedAssetSchema;
 
 export type Asset = typeof Asset.Type;
 
@@ -447,7 +444,10 @@ export const update = (
                 error: "Conversion failed, getting the original instead.",
               }),
             }),
+            // a copy queued behind the same conversion must not stay "Copying…"
+            copying: (urls) => without(urls, videoUrl),
             notice: () => "Conversion failed, getting the original instead.",
+            pendingCopies: (urls) => without(urls, videoUrl),
             pendingDownloads: (urls) => without(urls, videoUrl),
           }),
         };

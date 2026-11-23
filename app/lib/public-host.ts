@@ -141,6 +141,11 @@ const isBlockedAddress = (addr: string): boolean => {
   return true;
 };
 
+// The guard decision without dialing: the Rumble Effect program classifies the
+// resolved addresses itself so its failures stay typed instead of thrown.
+export const areAddressesPublic = (addresses: string[]): boolean =>
+  addresses.length > 0 && !addresses.some(isBlockedAddress);
+
 // Resolve and validate in one step so the caller can pin the connection to the
 // very addresses the guard approved. Discarding them reintroduces DNS rebinding.
 export const resolvePublicAddresses = async (

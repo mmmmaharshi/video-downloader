@@ -1,13 +1,22 @@
 // Module: GuardedFetch — one check-then-dial loop for every server fetch.
 // Each hop is validated against the public-address guard before its socket is
-// pinned, so a DNS change between check and dial cannot reach a private host.
+// pinned, so a DNS change between check and dial cannot redirect the socket.
 // Redirects stay manual: the loop resolves the next hop and checks it again.
 
 import { pinnedFetch } from "./pinned-fetch";
 import type { HostLookup } from "./public-host";
 import { resolvePublicAddresses } from "./public-host";
+import { CHROME_UA } from "./user-agent";
 
 const MAX_REDIRECTS = 4;
+
+// page-fetch policy shared by every resolver and the Rumble Effect program:
+// a page document with a browser-like identity
+export const PAGE_HEADERS = {
+  Accept: "text/html,application/xhtml+xml",
+  "Accept-Language": "en-US,en;q=0.9",
+  "User-Agent": CHROME_UA,
+};
 
 export interface GuardedFetch {
   doFetch: typeof fetch;

@@ -14,10 +14,12 @@ const APP_DIR = fileURLToPath(new URL("..", import.meta.url));
 // hydration in dev while typecheck and the prod build stay green.
 const SERVER_ONLY_MODULES = [
   "download-link",
+  "fetch-deps",
   "guarded-fetch",
   "media-resolver",
   "pinned-fetch",
   "public-host",
+  "rumble-effect",
   "transfer",
   "youtube",
 ];

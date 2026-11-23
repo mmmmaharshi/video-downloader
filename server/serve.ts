@@ -43,16 +43,39 @@ const serveFile = async (file: string): Promise<Response | undefined> => {
 
 const notFound = (): Response => new Response("Not found", { status: 404 });
 
+// One line per API call, errors loud: without an alerting pipeline the server
+// log is the only place a production failure surfaces before users report it.
+const logApi = (request: Request, res: Response, started: number): void => {
+  const ms = Math.round(performance.now() - started);
+  const line = `${request.method} ${new URL(request.url).pathname} -> ${res.status} (${ms}ms)`;
+
+  if (res.status >= 500) {
+    console.error(line);
+  } else {
+    console.log(line);
+  }
+};
+
 Bun.serve({
   fetch: async (request) => {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/resolve" && request.method === "POST") {
-      return handleResolve(request);
+      const started = performance.now();
+      const res = await handleResolve(request);
+
+      logApi(request, res, started);
+
+      return res;
     }
 
     if (url.pathname === "/api/download") {
-      return handleDownload(request);
+      const started = performance.now();
+      const res = await handleDownload(request);
+
+      logApi(request, res, started);
+
+      return res;
     }
 
     if (isDevtoolsProbe(url.pathname)) {

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { Schema } from "effect";
+
 import { toDownloadHref } from "./download-link";
 import { stubFetch } from "./fake-fetch";
 import { resolve } from "./media-resolver";
@@ -29,7 +31,9 @@ describe("resolve-query", () => {
       }),
     }));
 
-    expect(resolveResultSchema.parse({ assets: withHref })).toEqual({
+    expect(
+      Schema.decodeUnknownSync(resolveResultSchema)({ assets: withHref })
+    ).toEqual({
       assets: withHref,
     });
   });

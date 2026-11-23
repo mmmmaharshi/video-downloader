@@ -71,17 +71,19 @@ export const ResolveUrl = Command.define("ResolveUrl", {
         try: () => response.json(),
       });
 
-      const parsed = resolveResultSchema.safeParse(json);
+      let decoded: typeof resolveResultSchema.Type;
 
-      if (!parsed.success) {
+      try {
+        decoded = Schema.decodeUnknownSync(resolveResultSchema)(json);
+      } catch {
         return Message.FailedResolve({ error: "Bad response. Try again." });
       }
 
-      if ("error" in parsed.data) {
-        return Message.FailedResolve({ error: parsed.data.error });
+      if ("error" in decoded) {
+        return Message.FailedResolve({ error: decoded.error });
       }
 
-      return Message.SucceededResolve({ assets: parsed.data.assets });
+      return Message.SucceededResolve({ assets: decoded.assets });
     }).pipe(
       Effect.orElseSucceed(() =>
         Message.FailedResolve({ error: NETWORK_ERROR })

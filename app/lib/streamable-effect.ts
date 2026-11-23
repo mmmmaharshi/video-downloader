@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
@@ -122,19 +121,19 @@ export const streamableErrorMessage = (error: StreamableError): string => {
 export const toThrownError = (error: StreamableError): Error =>
   new Error(streamableErrorMessage(error));
 
-const streamableResponseSchema = z.object({
-  files: z
-    .record(
-      z.string(),
-      z.object({
-        height: z.number().optional(),
-        url: z.string().optional(),
-        width: z.number().optional(),
+const StreamableResponse = Schema.Struct({
+  files: Schema.optional(
+    Schema.Record(
+      Schema.String,
+      Schema.Struct({
+        height: Schema.optional(Schema.Number),
+        url: Schema.optional(Schema.String),
+        width: Schema.optional(Schema.Number),
       })
     )
-    .optional(),
-  thumbnail_url: z.string().optional(),
-  title: z.string().optional(),
+  ),
+  thumbnail_url: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
 });
 
 // Head-read budget shared with MediaResolver pages: an endpoint answer is
@@ -207,11 +206,15 @@ export const resolveStreamableProgram = (
       try: () => readJson(res, JSON.parse),
     });
 
-    const parsed = streamableResponseSchema.safeParse(payload);
-
     // a shape mismatch reads as empty, the way the untyped read did: a video
     // list with no playable file is a missing video, not a broken upstream
-    const data = parsed.success ? parsed.data : {};
+    let data: typeof StreamableResponse.Type;
+
+    try {
+      data = Schema.decodeUnknownSync(StreamableResponse)(payload);
+    } catch {
+      data = {};
+    }
 
     const files = Object.values(data.files ?? {}).filter(
       (f): f is { height?: number; url: string; width?: number } =>

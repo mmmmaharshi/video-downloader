@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
@@ -121,33 +120,37 @@ export const vimeoErrorMessage = (error: VimeoError): string => {
 export const toThrownError = (error: VimeoError): Error =>
   new Error(vimeoErrorMessage(error));
 
-const vimeoProgressiveSchema = z.object({
-  height: z.number().optional(),
-  quality: z.string().optional(),
-  url: z.string().optional(),
-  width: z.number().optional(),
+const VimeoProgressive = Schema.Struct({
+  height: Schema.optional(Schema.Number),
+  quality: Schema.optional(Schema.String),
+  url: Schema.optional(Schema.String),
+  width: Schema.optional(Schema.Number),
 });
 
-const vimeoConfigSchema = z.object({
-  request: z
-    .object({
-      files: z
-        .object({
-          hls: z.object({ url: z.string().optional() }).optional(),
-          progressive: z.array(vimeoProgressiveSchema).optional(),
+const VimeoConfig = Schema.Struct({
+  request: Schema.optional(
+    Schema.Struct({
+      files: Schema.optional(
+        Schema.Struct({
+          hls: Schema.optional(
+            Schema.Struct({ url: Schema.optional(Schema.String) })
+          ),
+          progressive: Schema.optional(Schema.Array(VimeoProgressive)),
         })
-        .optional(),
+      ),
     })
-    .optional(),
-  video: z
-    .object({
-      files: z
-        .object({ progressive: z.array(vimeoProgressiveSchema).optional() })
-        .optional(),
-      thumbnail_url: z.string().optional(),
-      title: z.string().optional(),
+  ),
+  video: Schema.optional(
+    Schema.Struct({
+      files: Schema.optional(
+        Schema.Struct({
+          progressive: Schema.optional(Schema.Array(VimeoProgressive)),
+        })
+      ),
+      thumbnail_url: Schema.optional(Schema.String),
+      title: Schema.optional(Schema.String),
     })
-    .optional(),
+  ),
 });
 
 // Head-read budget shared with MediaResolver pages: an endpoint answer is
@@ -226,15 +229,17 @@ export const resolveVimeoProgram = (
       try: () => readJson(res, JSON.parse),
     });
 
-    const parsed = vimeoConfigSchema.safeParse(payload);
+    let decoded: typeof VimeoConfig.Type;
 
-    if (!parsed.success) {
+    try {
+      decoded = Schema.decodeUnknownSync(VimeoConfig)(payload);
+    } catch {
       return yield* Effect.fail({ _tag: "VimeoUnexpectedResponse" as const });
     }
 
     const progressive = (
-      parsed.data.video?.files?.progressive ??
-      parsed.data.request?.files?.progressive ??
+      decoded.video?.files?.progressive ??
+      decoded.request?.files?.progressive ??
       []
     ).filter(
       (
@@ -247,7 +252,7 @@ export const resolveVimeoProgram = (
       } => entry.url !== undefined
     );
 
-    const hls = parsed.data.request?.files?.hls?.url;
+    const hls = decoded.request?.files?.hls?.url;
 
     const renditions: Rendition[] = progressive.map((entry) => ({
       height: entry.height,
@@ -266,8 +271,8 @@ export const resolveVimeoProgram = (
       platform: "vimeo" as const,
       shortcode: id,
       sourceUrl,
-      thumbnail: parsed.data.video?.thumbnail_url,
-      title: parsed.data.video?.title,
+      thumbnail: decoded.video?.thumbnail_url,
+      title: decoded.video?.title,
       videoUrl: rendition.url,
     }));
 

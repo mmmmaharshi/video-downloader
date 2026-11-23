@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
@@ -119,60 +118,49 @@ export const redditErrorMessage = (error: RedditError): string => {
 export const toThrownError = (error: RedditError): Error =>
   new Error(redditErrorMessage(error));
 
-const redditListingSchema = z.array(
-  z.object({
-    data: z
-      .object({
-        children: z
-          .array(
-            z
-              .object({
-                data: z
-                  .object({
-                    crosspost_parent_list: z
-                      .array(
-                        z.object({
-                          id: z.string().optional(),
-                          media: z
-                            .object({
-                              reddit_video: z
-                                .object({
-                                  fallback_url: z.string().optional(),
-                                  hls_url: z.string().optional(),
-                                })
-                                .optional(),
-                            })
-                            .optional(),
-                          thumbnail: z.string().optional(),
-                          title: z.string().optional(),
-                        })
-                      )
-                      .optional(),
-                    id: z.string().optional(),
-                    media: z
-                      .object({
-                        reddit_video: z
-                          .object({
-                            fallback_url: z.string().optional(),
-                            hls_url: z.string().optional(),
-                          })
-                          .optional(),
-                      })
-                      .optional(),
-                    thumbnail: z.string().optional(),
-                    title: z.string().optional(),
-                  })
-                  .optional(),
-              })
-              .optional()
-          )
-          .optional(),
+const RedditVideoSchema = Schema.Struct({
+  fallback_url: Schema.optional(Schema.String),
+  hls_url: Schema.optional(Schema.String),
+});
+
+const RedditMediaSchema = Schema.Struct({
+  reddit_video: Schema.optional(RedditVideoSchema),
+});
+
+const RedditPostSchema = Schema.Struct({
+  crosspost_parent_list: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        id: Schema.optional(Schema.String),
+        media: Schema.optional(RedditMediaSchema),
+        thumbnail: Schema.optional(Schema.String),
+        title: Schema.optional(Schema.String),
       })
-      .optional(),
+    )
+  ),
+  id: Schema.optional(Schema.String),
+  media: Schema.optional(RedditMediaSchema),
+  thumbnail: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
+});
+
+const RedditChildSchema = Schema.Struct({
+  data: Schema.optional(RedditPostSchema),
+});
+
+const RedditListingSchema = Schema.Array(
+  Schema.Struct({
+    data: Schema.optional(
+      Schema.Struct({
+        children: Schema.optional(
+          Schema.Array(Schema.optional(RedditChildSchema))
+        ),
+      })
+    ),
   })
 );
 
-type RedditListing = z.infer<typeof redditListingSchema>;
+type RedditListing = typeof RedditListingSchema.Type;
 
 interface RedditPost {
   readonly crosspost_parent_list?: readonly RedditPost[];
@@ -306,9 +294,15 @@ export const resolveRedditProgram = (
 
     const payload = yield* fetchRedditJson(withJson);
 
-    const parsed = redditListingSchema.safeParse(payload);
+    let listing: RedditListing | undefined;
 
-    const video = pickRedditVideo(parsed.success ? parsed.data : undefined);
+    try {
+      listing = Schema.decodeUnknownSync(RedditListingSchema)(payload);
+    } catch {
+      listing = undefined;
+    }
+
+    const video = pickRedditVideo(listing);
 
     if (video === undefined) {
       return yield* Effect.fail({ _tag: "RedditNoVideo" as const });

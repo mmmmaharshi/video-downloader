@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
@@ -133,34 +132,34 @@ const readText = async (res: Response): Promise<string> => {
   return text;
 };
 
-// eslint-disable-next-line anti-slop/no-unknown-returns -- JSON.parse is unknown by nature; the Zod safeParse at the single call site is the boundary
+// eslint-disable-next-line anti-slop/no-unknown-returns -- JSON.parse is unknown by nature; the Schema decode at the single call site is the boundary
 const readJson = async (res: Response): Promise<unknown> =>
   JSON.parse(await readText(res));
 
 // this endpoint answers with HTML on some failure paths and with {} when the token is missing
-const tweetSchema = z.object({
-  id_str: z.string().optional(),
-  mediaDetails: z
-    .array(
-      z.object({
-        media_url_https: z.string().optional(),
-        type: z.string().optional(),
-        video_info: z
-          .object({
-            variants: z
-              .array(
-                z.object({
-                  bitrate: z.number().optional(),
-                  content_type: z.string(),
-                  url: z.string().optional(),
+const Tweet = Schema.Struct({
+  id_str: Schema.optional(Schema.String),
+  mediaDetails: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        media_url_https: Schema.optional(Schema.String),
+        type: Schema.optional(Schema.String),
+        video_info: Schema.optional(
+          Schema.Struct({
+            variants: Schema.optional(
+              Schema.Array(
+                Schema.Struct({
+                  bitrate: Schema.optional(Schema.Number),
+                  content_type: Schema.String,
+                  url: Schema.optional(Schema.String),
                 })
               )
-              .optional(),
+            ),
           })
-          .optional(),
+        ),
       })
     )
-    .optional(),
+  ),
 });
 
 export interface TwitterInput {
@@ -218,14 +217,20 @@ export const resolveTwitterProgram = (
       try: () => readJson(res),
     });
 
-    const parsed = tweetSchema.safeParse(payload);
+    let tweet: typeof Tweet.Type;
 
-    if (!parsed.success || parsed.data.id_str === undefined) {
+    try {
+      tweet = Schema.decodeUnknownSync(Tweet)(payload);
+    } catch {
+      return yield* Effect.fail({ _tag: "TwitterUnexpectedResponse" as const });
+    }
+
+    if (tweet.id_str === undefined) {
       return yield* Effect.fail({ _tag: "TwitterUnexpectedResponse" as const });
     }
 
     // an animated_gif is an mp4 on X too; it carries a single variant with bitrate 0
-    const videos = (parsed.data.mediaDetails ?? []).filter(
+    const videos = (tweet.mediaDetails ?? []).filter(
       (m) => m.type === "video" || m.type === "animated_gif"
     );
 
@@ -240,7 +245,7 @@ export const resolveTwitterProgram = (
       const mp4s = variants.filter((v) => v.content_type === "video/mp4");
 
       // eslint-disable-next-line unicorn/no-array-sort -- sorts a fresh copy
-      const sorted = [...preferMp4(mp4s, variants)].sort(
+      const sorted = [...preferMp4([...mp4s], [...variants])].sort(
         (a, b) => (b.bitrate ?? 0) - (a.bitrate ?? 0)
       );
 

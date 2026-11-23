@@ -7,7 +7,7 @@
 import { lookup as dnsLookup } from "node:dns/promises";
 import { isIP } from "node:net";
 
-import { z } from "zod";
+import { Schema } from "effect";
 
 // DNS seam: production resolves for real, tests inject addresses.
 // Both sync and async doubles work — every use site awaits.
@@ -24,8 +24,8 @@ export const defaultLookup: HostLookup = async (hostname) => {
 // host must not slip past an A-only check. The caller still re-checks every
 // redirect hop; a TTL-0 rebind between this check and the Worker's fetch stays
 // open (see ADR-0003) because cf.resolveOverride only pins names in our zone.
-const dohResponseSchema = z.object({
-  Answer: z.array(z.object({ data: z.string() })).optional(),
+const DohResponse = Schema.Struct({
+  Answer: Schema.optional(Schema.Array(Schema.Struct({ data: Schema.String }))),
 });
 
 const dohQuery = async (
@@ -42,13 +42,13 @@ const dohQuery = async (
     throw new Error(`DoH ${recordType} query failed with ${res.status}`);
   }
 
-  const parsed = dohResponseSchema.safeParse(await res.json());
-
-  if (!parsed.success) {
+  try {
+    return (
+      Schema.decodeUnknownSync(DohResponse)(await res.json()).Answer ?? []
+    ).map((record) => record.data);
+  } catch {
     return [];
   }
-
-  return (parsed.data.Answer ?? []).map((record) => record.data);
 };
 
 export type DohFetch = (

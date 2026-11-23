@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import {
@@ -243,22 +242,24 @@ const fetchWatchPage = (
   });
 
 // unauthenticated JSON behind the embed player: direct MP4s with meta heights
-const embedJsSchema = z.object({
-  ua: z
-    .object({
-      mp4: z
-        .array(
-          z.object({
-            meta: z
-              .object({ h: z.number(), w: z.number() })
-              .partial()
-              .optional(),
-            url: z.string(),
+const EmbedJs = Schema.Struct({
+  ua: Schema.optional(
+    Schema.Struct({
+      mp4: Schema.optional(
+        Schema.Array(
+          Schema.Struct({
+            meta: Schema.optional(
+              Schema.Struct({
+                h: Schema.optional(Schema.Number),
+                w: Schema.optional(Schema.Number),
+              })
+            ),
+            url: Schema.String,
           })
         )
-        .optional(),
+      ),
     })
-    .optional(),
+  ),
 });
 
 export interface RumbleMp4 {
@@ -321,13 +322,15 @@ const fetchEmbedMp4s = (
       try: async () => JSON.parse(await readText(res)),
     });
 
-    const parsed = embedJsSchema.safeParse(payload);
+    let embedJs: typeof EmbedJs.Type;
 
-    if (!parsed.success) {
+    try {
+      embedJs = Schema.decodeUnknownSync(EmbedJs)(payload);
+    } catch {
       return yield* Effect.fail({ _tag: "RumbleUnexpectedResponse" as const });
     }
 
-    return parsed.data.ua?.mp4 ?? [];
+    return embedJs.ua?.mp4 ?? [];
   });
 
 export interface RumbleInput {

@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
@@ -123,21 +122,21 @@ export const dailymotionErrorMessage = (error: DailymotionError): string => {
 export const toThrownError = (error: DailymotionError): Error =>
   new Error(dailymotionErrorMessage(error));
 
-const dailymotionMetadataSchema = z.object({
-  poster_url: z.string().optional(),
-  qualities: z
-    .record(
-      z.string(),
-      z.array(
-        z.object({
-          type: z.string().optional(),
-          url: z.string().optional(),
+const DailymotionMetadata = Schema.Struct({
+  poster_url: Schema.optional(Schema.String),
+  qualities: Schema.optional(
+    Schema.Record(
+      Schema.String,
+      Schema.Array(
+        Schema.Struct({
+          type: Schema.optional(Schema.String),
+          url: Schema.optional(Schema.String),
         })
       )
     )
-    .optional(),
-  thumbnail_url: z.string().optional(),
-  title: z.string().optional(),
+  ),
+  thumbnail_url: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
 });
 
 // Head-read budget shared with MediaResolver pages: an endpoint answer is
@@ -212,11 +211,15 @@ export const resolveDailymotionProgram = (
       try: () => readJson(res, JSON.parse),
     });
 
-    const parsed = dailymotionMetadataSchema.safeParse(payload);
-
     // a shape mismatch reads as absent (legacy unguarded access did the same):
     // a file the schema cannot see is a video we cannot download
-    const data = parsed.success ? parsed.data : undefined;
+    let data: typeof DailymotionMetadata.Type | undefined;
+
+    try {
+      data = Schema.decodeUnknownSync(DailymotionMetadata)(payload);
+    } catch {
+      data = undefined;
+    }
 
     const qualities = data?.qualities ?? {};
 

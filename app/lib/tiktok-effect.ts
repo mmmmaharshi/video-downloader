@@ -1,5 +1,4 @@
-import { Effect } from "effect";
-import { z } from "zod";
+import { Effect, Schema } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { FetchDeps, classifyTransportError } from "./fetch-deps";
@@ -124,30 +123,30 @@ const readText = async (res: Response): Promise<string> => {
   return text;
 };
 
-const tiktokPayloadSchema = z.object({
-  __DEFAULT_SCOPE__: z
-    .object({
-      "webapp.video-detail": z
-        .object({
-          itemInfo: z
-            .object({
-              itemStruct: z
-                .object({
-                  video: z
-                    .object({
-                      cover: z.string().optional(),
-                      downloadAddr: z.string().optional(),
-                      playAddr: z.string().optional(),
+const TikTokPayload = Schema.Struct({
+  __DEFAULT_SCOPE__: Schema.optional(
+    Schema.Struct({
+      "webapp.video-detail": Schema.optional(
+        Schema.Struct({
+          itemInfo: Schema.optional(
+            Schema.Struct({
+              itemStruct: Schema.optional(
+                Schema.Struct({
+                  video: Schema.optional(
+                    Schema.Struct({
+                      cover: Schema.optional(Schema.String),
+                      downloadAddr: Schema.optional(Schema.String),
+                      playAddr: Schema.optional(Schema.String),
                     })
-                    .optional(),
+                  ),
                 })
-                .optional(),
+              ),
             })
-            .optional(),
+          ),
         })
-        .optional(),
+      ),
     })
-    .optional(),
+  ),
 });
 
 // tolerant by design: a missing block or a shape mismatch reads as absent
@@ -168,12 +167,12 @@ const extractTikTokVideo = (html: string): TikTokVideo | undefined => {
   }
 
   try {
-    const parsed = tiktokPayloadSchema.safeParse(JSON.parse(embedded));
+    const decoded = Schema.decodeUnknownSync(TikTokPayload)(
+      JSON.parse(embedded)
+    );
 
-    return parsed.success
-      ? parsed.data.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo
-          ?.itemStruct?.video
-      : undefined;
+    return decoded.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo
+      ?.itemStruct?.video;
   } catch {
     return undefined;
   }

@@ -21,7 +21,7 @@ Domain language for seams. Names here drive module boundaries — grep the term,
 
 ## Seams
 
-- `MediaResolver ↔ fetch` — local-substitutable, ports & adapters. Tests inject fixture map; prod injects global fetch. Rumble provisions the same pair as a FetchDeps Layer inside an Effect program, bridged back to promises with identical user-facing errors.
+- `MediaResolver ↔ fetch` — local-substitutable, ports & adapters. Tests inject fixture map; prod injects global fetch. Rumble, YouTube, Instagram, Facebook, Twitter, Loom, Threads, Streamable, TikTok, and Transfer each provision the same pair as a FetchDeps Layer inside an Effect program, bridged back to promises with identical user-facing errors.
 - `Transfer ↔ fetch` — in-process. Tests inject recorded CDN body.
 - `PublicHost ↔ lookup` — local-substitutable. Tests inject address lists; prod resolves real DNS.
 - `PinnedFetch ↔ fetch` — in-process. Tests inject a recording fetch; prod dials the approved address.

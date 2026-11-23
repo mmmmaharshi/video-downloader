@@ -7,7 +7,7 @@ import {
   classifyTransportError,
   guardAddresses,
 } from "./fetch-deps";
-import { fetchGuarded, PAGE_HEADERS } from "./guarded-fetch";
+import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
 import type { GuardedFetch } from "./guarded-fetch";
 import { pinnedFetch } from "./pinned-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
@@ -289,7 +289,11 @@ const fetchEmbedMp4s = (
           unreachable: { _tag: "RumbleUnexpectedResponse" as const },
           unresolved: { _tag: "RumbleUnresolved" as const },
         }),
-      try: () => fetchGuarded(http, endpoint, { headers }),
+      try: () =>
+        fetchGuarded(http, endpoint, {
+          headers,
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        }),
     });
 
     if (res.status === 404) {

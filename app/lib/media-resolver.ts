@@ -24,14 +24,22 @@ import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { hostMatches, isPlatformHost } from "./platforms";
 import { defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
-import { byQuality, preferMp4, renditionLabel } from "./renditions";
+import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
 import { resolveRumbleProgram, rumbleErrorMessage } from "./rumble-effect";
 import {
+  resolveStreamableProgram,
+  toThrownError as toStreamableThrownError,
+} from "./streamable-effect";
+import {
   resolveThreadsProgram,
   toThrownError as toThreadsThrownError,
 } from "./threads-effect";
+import {
+  resolveTikTokProgram,
+  toThrownError as toTikTokThrownError,
+} from "./tiktok-effect";
 import {
   resolveTwitterProgram,
   toThrownError as toTwitterThrownError,
@@ -557,66 +565,24 @@ const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
   return { code };
 };
 
-interface StreamableFile {
-  height?: number;
-  url?: string;
-  width?: number;
-}
-
-interface StreamableResponse {
-  files?: Record<string, StreamableFile>;
-  thumbnail_url?: string;
-  title?: string;
-}
-
-const resolveStreamable = async (
+// The Streamable API fetch runs as an Effect program (FetchDeps Layer) and is
+// bridged back to promises here, so resolve() keeps its thrown-Error contract.
+const resolveStreamable = (
   sourceUrl: string,
   code: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res } = await fetchPublic(
-    ctx,
-    `https://api.streamable.com/videos/${code}`,
-    {
-      Accept: "application/json",
-      "User-Agent": CHROME_UA,
-    }
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
+  });
+
+  return Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveStreamableProgram({ code, sourceUrl }), layer),
+      toStreamableThrownError
+    )
   );
-
-  assertOk(res, "Streamable");
-
-  let data: StreamableResponse;
-
-  try {
-    data = await readCappedJson(res);
-  } catch {
-    throw new Error(
-      "Streamable returned an unexpected response. Try again later."
-    );
-  }
-
-  const files = Object.values(data.files ?? {}).filter(
-    (f): f is StreamableFile & { url: string } => f.url !== undefined
-  );
-
-  const mp4s = files.filter((f) => /mp4/iu.test(f.url));
-
-  const assets = byQuality(preferMp4(mp4s, files)).map((f) => ({
-    label: renditionLabel(f),
-    platform: "streamable" as const,
-    shortcode: code,
-    sourceUrl,
-    thumbnail: data.thumbnail_url,
-    title: data.title,
-    // Streamable serves the url with a doubled scheme ("https:https://..."); collapse it.
-    videoUrl: f.url.replace(/^https?:https:\/\//u, "https://"),
-  }));
-
-  if (!assets.length) {
-    throw new Error("No video found. Only video posts are downloadable.");
-  }
-
-  return assets;
 };
 
 const matchVimeo = (
@@ -758,67 +724,24 @@ const matchTikTok = (sourceUrl: string): { id: string } | undefined => {
   return id ? { id } : undefined;
 };
 
-interface TikTokVideo {
-  cover?: string;
-  downloadAddr?: string;
-  playAddr?: string;
-}
-
-// Broken rehydration JSON falls through to og:video below, so a bad parse is
-// undefined here rather than an error.
-const parseTikTokVideo = (html: string): TikTokVideo | undefined => {
-  const rehydration = html.match(
-    /<script[^>]*id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(?<json>.*?)<\/script>/su
-  )?.groups?.json;
-
-  if (!rehydration) {
-    return undefined;
-  }
-
-  try {
-    const data = JSON.parse(rehydration);
-
-    return data?.__DEFAULT_SCOPE__?.["webapp.video-detail"]?.itemInfo
-      ?.itemStruct?.video;
-  } catch {
-    return undefined;
-  }
-};
-
-const resolveTikTok = async (
+// The TikTok page scrape runs as an Effect program (FetchDeps Layer) and is
+// bridged back to promises here, so resolve() keeps its thrown-Error contract.
+const resolveTikTok = (
   sourceUrl: string,
   id: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res } = await fetchPublic(ctx, sourceUrl, PAGE_HEADERS);
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
+  });
 
-  assertOk(res, "TikTok");
-
-  const html = await readCapped(res, MAX_PAGE_BYTES);
-
-  const video = parseTikTokVideo(html);
-
-  let videoUrl = video?.playAddr ?? video?.downloadAddr;
-  let thumbnail = video?.cover;
-
-  videoUrl ??= extractOgVideo(html);
-  thumbnail ??= extractThumbnail(html);
-
-  if (!videoUrl) {
-    throw new Error(
-      "No video found. Only public videos are downloadable, and TikTok limits anonymous access."
-    );
-  }
-
-  return [
-    {
-      platform: "tiktok",
-      shortcode: id,
-      sourceUrl,
-      thumbnail,
-      videoUrl,
-    },
-  ];
+  return Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveTikTokProgram({ id, sourceUrl }), layer),
+      toTikTokThrownError
+    )
+  );
 };
 
 const matchThreads = (sourceUrl: string): { id: string } | undefined => {

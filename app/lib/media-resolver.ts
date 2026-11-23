@@ -8,11 +8,15 @@ import { Effect, Layer } from "effect";
 
 import { readCappedUtf8 } from "./capped-body";
 import { containerOf } from "./container";
+import {
+  resolveFacebookProgram,
+  toThrownError as toFacebookThrownError,
+} from "./facebook-effect";
 import { FetchDeps } from "./fetch-deps";
 import { fetchGuarded, FETCH_TIMEOUT_MS, PAGE_HEADERS } from "./guarded-fetch";
 import { resolveInstagramProgram, toThrownError } from "./instagram-effect";
 import { EMPTY_LINK } from "./messages";
-import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
+import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { hostMatches, isPlatformHost } from "./platforms";
 import { defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
@@ -70,9 +74,6 @@ const tweetId = (url: string): string | undefined => {
 };
 
 const NOT_FOUND = "Post not found. Check the URL.";
-
-const LOGIN_REQUIRED =
-  "Private or login-required post. Only public posts are supported.";
 
 // probing for a file, not a page: accept whatever the host serves
 const FILE_HEADERS = { ...PAGE_HEADERS, Accept: "*/*" };
@@ -267,70 +268,28 @@ const matchFacebookId = (
   return undefined;
 };
 
-const extractFbFile = (html: string, key: string): string | undefined => {
-  const v = html.match(new RegExp(`"${key}"\\s*:\\s*"(?<value>[^"]+)"`, "u"))
-    ?.groups?.value;
-
-  return v ? normalizeUrl(v) : undefined;
-};
-
-const resolveFacebook = async (
+// The Facebook page scrape runs as an Effect program (FetchDeps Layer) and is
+// bridged back to promises here, so resolve() keeps its thrown-Error contract.
+const resolveFacebook = (
   sourceUrl: string,
   id: string,
   fetchUrl: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res, url } = await fetchPublic(ctx, fetchUrl, PAGE_HEADERS);
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
+  });
 
-  // a login redirect is the only reliable private signal: public pages carry
-  // login links in their chrome, so page text must never decide this
-  if (
-    (res.redirected && res.url.includes("facebook.com/login")) ||
-    url.includes("facebook.com/login")
-  ) {
-    throw new Error(LOGIN_REQUIRED);
-  }
-
-  assertOk(res, "Facebook");
-
-  const html = await readCapped(res, MAX_PAGE_BYTES);
-
-  // Facebook names two rungs of the same video; og:video is the sd-grade last
-  // resort when neither stream url is in the page
-  const hd =
-    extractFbFile(html, "browser_native_hd_url") ??
-    extractFbFile(html, "hd_src");
-
-  const sd =
-    extractFbFile(html, "browser_native_sd_url") ??
-    extractFbFile(html, "sd_src") ??
-    extractOgVideo(html);
-
-  const renditions: Rendition[] = [];
-
-  if (hd) {
-    renditions.push({ label: "HD", url: hd });
-  }
-
-  // the page usually repeats the same url for both rungs — one option then
-  if (sd && sd !== hd) {
-    renditions.push({ label: hd ? "SD" : undefined, url: sd });
-  }
-
-  if (!renditions.length) {
-    throw new Error(
-      "No downloadable video found. Only public video/reel posts work, and Facebook limits anonymous access to some of them."
-    );
-  }
-
-  return renditions.map((r) => ({
-    label: r.label,
-    platform: "facebook" as const,
-    shortcode: id,
-    sourceUrl,
-    thumbnail: extractThumbnail(html),
-    videoUrl: r.url,
-  }));
+  return Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(
+        resolveFacebookProgram({ fetchUrl, id, sourceUrl }),
+        layer
+      ),
+      toFacebookThrownError
+    )
+  );
 };
 
 // Catch-all for any other link: a video or gif content-type resolves the link

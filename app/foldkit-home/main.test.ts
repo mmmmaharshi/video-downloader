@@ -28,7 +28,7 @@ const gifAsset: Asset = {
   videoUrl: "https://x/1.mp4",
 };
 
-const asset = {
+const asset: Asset = {
   downloadHref: "/api/download?url=x",
   label: "720p",
   platform: "youtube",

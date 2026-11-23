@@ -168,23 +168,44 @@ export const GUARD_BLOCKED_MESSAGE = "Only public links are supported.";
 export const GUARD_UNRESOLVED_MESSAGE =
   "Could not resolve this link. Check the URL.";
 
+// One guard decision, expressed as data so both the throwing seam and the
+// Effect programs read the same policy instead of keeping a copy each.
+export type GuardOutcome =
+  | { readonly addresses: string[]; readonly ok: true }
+  | { readonly ok: false; readonly reason: "blocked" | "unresolved" };
+
+export const checkAddresses = async (
+  url: string,
+  lookup: HostLookup
+): Promise<GuardOutcome> => {
+  let addresses: string[];
+
+  try {
+    addresses = await lookup(new URL(url).hostname);
+  } catch {
+    return { ok: false, reason: "unresolved" };
+  }
+
+  return addresses.length > 0 && !addresses.some(isBlockedAddress)
+    ? { addresses, ok: true }
+    : { ok: false, reason: "blocked" };
+};
+
 // Resolve and validate in one step so the caller can pin the connection to the
 // very addresses the guard approved. Discarding them reintroduces DNS rebinding.
 export const resolvePublicAddresses = async (
   url: string,
   lookup: HostLookup
 ): Promise<string[]> => {
-  let addresses: string[];
+  const outcome = await checkAddresses(url, lookup);
 
-  try {
-    addresses = await lookup(new URL(url).hostname);
-  } catch {
-    throw new Error(GUARD_UNRESOLVED_MESSAGE);
+  if (outcome.ok) {
+    return outcome.addresses;
   }
 
-  if (!addresses.length || addresses.some(isBlockedAddress)) {
-    throw new Error(GUARD_BLOCKED_MESSAGE);
-  }
-
-  return addresses;
+  throw new Error(
+    outcome.reason === "blocked"
+      ? GUARD_BLOCKED_MESSAGE
+      : GUARD_UNRESOLVED_MESSAGE
+  );
 };

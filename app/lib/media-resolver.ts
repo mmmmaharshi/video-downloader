@@ -4,7 +4,7 @@
 // exposes at most one, so IG resolves to a one-element list.
 // Seam: fetch (live in prod, in-memory fixtures in tests — two adapters = real seam)
 
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 
 import { containerOf } from "./container";
 import {
@@ -15,7 +15,8 @@ import {
   resolveFacebookProgram,
   toThrownError as toFacebookThrownError,
 } from "./facebook-effect";
-import { FetchDeps } from "./fetch-deps";
+import { fetchDepsLayer } from "./fetch-deps";
+import type { FetchDeps } from "./fetch-deps";
 import {
   resolveGenericProgram,
   toThrownError as toGenericThrownError,
@@ -28,7 +29,6 @@ import {
 import { EMPTY_LINK } from "./messages";
 import { extractThumbnail } from "./og-meta";
 import { hostMatches, isPlatformHost } from "./platforms";
-import { defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
 import {
   resolveRedditProgram,
@@ -196,9 +196,7 @@ const matchFacebookId = (
 
 // Reddit posts with video: the .json endpoint exposes media.reddit_video.fallback_url
 // (the direct mp4) plus a thumbnail. Crossposts carry the media on crosspost_parent_list.
-const matchReddit = (
-  sourceUrl: string
-): { fetchUrl: string; id: string } | undefined => {
+const matchReddit = (sourceUrl: string): { id: string } | undefined => {
   let url: URL;
 
   try {
@@ -217,14 +215,14 @@ const matchReddit = (
   if (host === "redd.it") {
     const [id] = url.pathname.slice(1).split("/");
 
-    return id ? { fetchUrl: sourceUrl, id } : undefined;
+    return id ? { id } : undefined;
   }
 
   const comments = url.pathname.match(/\/comments\/(?<id>[a-z0-9]+)/iu)?.groups
     ?.id;
 
   if (comments) {
-    return { fetchUrl: sourceUrl, id: comments };
+    return { id: comments };
   }
 
   const rComments = url.pathname.match(
@@ -232,7 +230,7 @@ const matchReddit = (
   )?.groups?.id;
 
   if (rComments) {
-    return { fetchUrl: sourceUrl, id: rComments };
+    return { id: rComments };
   }
 
   return undefined;
@@ -672,10 +670,7 @@ const resolveRaw = async (
     throw new Error(EMPTY_LINK);
   }
 
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: deps.fetch ?? fetch,
-    lookup: deps.lookup ?? defaultLookup,
-  });
+  const layer = fetchDepsLayer(deps.fetch, deps.lookup);
 
   // the injectable formats seam keeps its promise shape, but it must inherit
   // this call's transport and DNS lookup: otherwise the YouTube HEAD probe

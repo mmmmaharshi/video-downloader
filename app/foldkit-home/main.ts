@@ -19,19 +19,13 @@ import {
 } from "../lib/gif-convert";
 import type { ClipboardReps } from "../lib/gif-convert";
 import { EMPTY_LINK } from "../lib/messages";
-import { resolveResultSchema } from "../lib/resolve-query";
+import { resolveResultSchema, videoAssetFields } from "../lib/resolve-query";
+import { stemOf } from "../lib/stem";
 
 // eslint-disable-next-line no-redeclare -- Foldkit documents the Schema value and its Type alias under one name
 export const Asset = Schema.Struct({
+  ...videoAssetFields,
   downloadHref: Schema.String,
-  gif: Schema.optional(Schema.Literals(["file", "video"])),
-  label: Schema.optional(Schema.String),
-  platform: Schema.String,
-  shortcode: Schema.String,
-  sourceUrl: Schema.String,
-  thumbnail: Schema.optional(Schema.String),
-  title: Schema.optional(Schema.String),
-  videoUrl: Schema.String,
 });
 
 export type Asset = typeof Asset.Type;
@@ -213,29 +207,36 @@ export const CopyGif = Command.define("CopyGif", {
     videoUrl: Schema.String,
   },
   execute: ({ blob, downloadHref, kind, videoUrl }) =>
-    Effect.tryPromise({
-      catch: () => new Error("copy failed"),
-      try: async () => {
-        try {
-          if (kind === "video") {
-            if (!blob) {
-              throw new Error("no converted gif yet");
-            }
+    Effect.gen(function* copy() {
+      // a video gif needs the converted bytes; without them this is a defect,
+      // not a clipboard limitation, so it must not masquerade as a link copy
+      if (kind === "video" && blob === undefined) {
+        return Message.FailedCopyGif({ videoUrl });
+      }
 
-            await writeClipboard(await convertedReps(blob, videoUrl));
+      const reps = yield* Effect.tryPromise({
+        catch: () => new Error("clipboard refused"),
+        try: () =>
+          kind === "video" && blob !== undefined
+            ? convertedReps(blob, videoUrl)
+            : gifFileReps(videoUrl, downloadHref),
+      });
 
-            return Message.SucceededCopyGif({ mode: "gif", videoUrl });
-          }
+      const wrote = yield* Effect.tryPromise({
+        catch: () => new Error("clipboard refused"),
+        try: () => writeClipboard(reps).then(() => true),
+      }).pipe(Effect.orElseSucceed(() => false));
 
-          await writeClipboard(await gifFileReps(videoUrl, downloadHref));
+      if (wrote) {
+        return Message.SucceededCopyGif({ mode: "gif", videoUrl });
+      }
 
-          return Message.SucceededCopyGif({ mode: "gif", videoUrl });
-        } catch {
-          await navigator.clipboard.writeText(videoUrl);
+      // the clipboard took neither form: the link still works everywhere
+      yield* Effect.promise(() => navigator.clipboard.writeText(videoUrl)).pipe(
+        Effect.ignore
+      );
 
-          return Message.SucceededCopyGif({ mode: "link", videoUrl });
-        }
-      },
+      return Message.SucceededCopyGif({ mode: "link", videoUrl });
     }).pipe(Effect.orElseSucceed(() => Message.FailedCopyGif({ videoUrl }))),
   messages: [Message.SucceededCopyGif, Message.FailedCopyGif],
 });
@@ -265,24 +266,15 @@ const withUrl = (urls: readonly string[], url: string): string[] =>
 export const conversionOf = (model: Model, videoUrl: string) =>
   model.conversions[videoUrl];
 
-// The download name mirrors download-link's stem so the saved gif matches
-// the mp4's name exactly, with the gif container.
+// The saved gif carries the mp4's name, with the gif container.
 const gifFilename = (model: Model, videoUrl: string): string => {
   const index = model.assets.findIndex((asset) => asset.videoUrl === videoUrl);
-  const asset = model.assets[index];
 
-  if (!asset) {
+  if (index === -1) {
     return "video.gif";
   }
 
-  const tag = asset.label ?? String(index + 1);
-
-  const stem =
-    model.assets.length > 1
-      ? `${asset.platform}-${asset.shortcode}-${tag}`
-      : `${asset.platform}-${asset.shortcode}`;
-
-  return `${stem}.gif`;
+  return `${stemOf(model.assets, index)}.gif`;
 };
 
 // One place answers a resolved list, whether it came from the network or the

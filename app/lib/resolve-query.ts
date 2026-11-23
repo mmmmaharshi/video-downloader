@@ -5,7 +5,9 @@ import { Schema } from "effect";
 
 import { PLATFORMS } from "./platforms";
 
-const videoAssetFields = {
+// The asset fields, exported so the client's Schema derives from the same
+// declaration instead of restating it.
+export const videoAssetFields = {
   gif: Schema.optional(Schema.Literals(["file", "video"])),
   label: Schema.optional(Schema.String),
   platform: Schema.Literals([...PLATFORMS]),

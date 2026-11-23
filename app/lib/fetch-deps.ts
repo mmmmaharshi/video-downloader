@@ -5,7 +5,7 @@ import {
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import {
-  areAddressesPublic,
+  checkAddresses,
   defaultLookup,
   GUARD_BLOCKED_MESSAGE,
   GUARD_UNRESOLVED_MESSAGE,
@@ -23,10 +23,10 @@ export class FetchDeps extends Context.Service<
   }
 >()("FetchDeps") {}
 
-export const FetchDepsLive = Layer.succeed(FetchDeps)({
-  doFetch: fetch,
-  lookup: defaultLookup,
-});
+export const fetchDepsLayer = (
+  doFetch: typeof fetch = fetch,
+  lookup: HostLookup = defaultLookup
+): Layer.Layer<FetchDeps> => Layer.succeed(FetchDeps)({ doFetch, lookup });
 
 // One guard decision for every Effect program that dials a user-supplied url:
 // resolve the host, refuse private ranges, and hand back the approved
@@ -36,29 +36,17 @@ export const guardAddresses = <E>(
   url: string,
   lookup: HostLookup,
   errors: { readonly blocked: E; readonly unresolved: E }
-): Effect.Effect<string[], E, FetchDeps> =>
+): Effect.Effect<string[], E> =>
   Effect.gen(function* guard() {
-    let hostname: string;
+    const outcome = yield* Effect.promise(() => checkAddresses(url, lookup));
 
-    // callers pass matcher-validated or constructed URLs: an unparseable
-    // hostname here is a programmer error, reported closed
-    try {
-      ({ hostname } = new URL(url));
-    } catch {
-      return yield* Effect.fail(errors.unresolved);
+    if (!outcome.ok) {
+      return yield* Effect.fail(
+        outcome.reason === "blocked" ? errors.blocked : errors.unresolved
+      );
     }
 
-    const addresses = yield* Effect.tryPromise({
-      catch: () => errors.unresolved,
-      // Promise.resolve wraps sync doubles too: a sync lookup throw must reject, not escape
-      try: () => Promise.resolve(lookup(hostname)),
-    });
-
-    if (!areAddressesPublic(addresses)) {
-      yield* Effect.fail(errors.blocked);
-    }
-
-    return addresses;
+    return outcome.addresses;
   });
 
 // A guarded fetch throws the guard's plain Errors on a blocked hop, its own

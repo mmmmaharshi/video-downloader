@@ -6,10 +6,9 @@
 // The flow runs as an Effect program (FetchDeps Layer) and is bridged back to
 // promises here, so the route keeps its thrown-Response contract (ADR-0001).
 
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 
-import { FetchDeps } from "./fetch-deps";
-import { defaultLookup } from "./public-host";
+import { fetchDepsLayer } from "./fetch-deps";
 import type { HostLookup } from "./public-host";
 import { toThrownResponse, transferProgram } from "./transfer-effect";
 
@@ -28,10 +27,7 @@ export const proxy = (
   stem: string,
   deps: TransferDeps = {}
 ): Promise<Response> => {
-  const layer = Layer.succeed(FetchDeps)({
-    doFetch: deps.fetch ?? fetch,
-    lookup: deps.lookup ?? defaultLookup,
-  });
+  const layer = fetchDepsLayer(deps.fetch, deps.lookup);
 
   return Effect.runPromise(
     Effect.mapError(

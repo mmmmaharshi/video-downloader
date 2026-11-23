@@ -10,9 +10,11 @@
 
 import { Effect, Layer, Schema } from "effect";
 
-import { FetchDeps } from "./fetch-deps";
-import type { HostLookup } from "./public-host";
+import { fetchDepsLayer } from "./fetch-deps";
+import { fetchGuarded, FETCH_TIMEOUT_MS } from "./guarded-fetch";
+import type { GuardedFetch } from "./guarded-fetch";
 import { defaultLookup } from "./public-host";
+import type { HostLookup } from "./public-host";
 import {
   getYouTubeFormatsProgram,
   toThrownError,
@@ -113,10 +115,17 @@ const toFormat =
           },
         ];
 
-const liveGetInfo = async (id: string, name: ClientName): Promise<TubeInfo> => {
+// The InnerTube POST goes through the same guarded seam as every other read:
+// an injected fetch and lookup must cover this call too, not only the probe.
+const liveGetInfo = async (
+  id: string,
+  name: ClientName,
+  http: GuardedFetch
+): Promise<TubeInfo> => {
   const { client, key, userAgent } = CLIENTS[name];
 
-  const res = await fetch(
+  const { res } = await fetchGuarded(
+    http,
     `https://www.youtube.com/youtubei/v1/player?key=${key}&prettyPrint=false`,
     {
       body: JSON.stringify({ context: { client }, videoId: id }),
@@ -127,7 +136,7 @@ const liveGetInfo = async (id: string, name: ClientName): Promise<TubeInfo> => {
         "X-Youtube-Client-Version": String(client.clientVersion),
       },
       method: "POST",
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     }
   );
 
@@ -158,11 +167,16 @@ export const getYouTubeFormats = async (
   deps: YouTubeDeps = {}
 ): Promise<TubeAsset[]> => {
   const layer = Layer.merge(
-    Layer.succeed(FetchDeps)({
-      doFetch: deps.fetch ?? fetch,
-      lookup: deps.lookup ?? defaultLookup,
-    }),
-    Layer.succeed(YouTubeInfo)({ getInfo: deps.getInfo ?? liveGetInfo })
+    fetchDepsLayer(deps.fetch, deps.lookup),
+    Layer.succeed(YouTubeInfo)({
+      getInfo:
+        deps.getInfo ??
+        ((videoId, client) =>
+          liveGetInfo(videoId, client, {
+            doFetch: deps.fetch ?? fetch,
+            lookup: deps.lookup ?? defaultLookup,
+          })),
+    })
   );
 
   return await Effect.runPromise(

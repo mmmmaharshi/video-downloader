@@ -21,6 +21,7 @@ const SERVER_ONLY_MODULES = [
   "public-host",
   "rumble-effect",
   "transfer",
+  "transfer-effect",
   "youtube",
   "youtube-effect",
 ];

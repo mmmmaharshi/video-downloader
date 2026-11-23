@@ -2,11 +2,10 @@ import { Effect } from "effect";
 import { z } from "zod";
 
 import { readCappedUtf8 } from "./capped-body";
-import { FetchDeps } from "./fetch-deps";
+import { FetchDeps, guardAddresses } from "./fetch-deps";
 import { fetchGuarded, PAGE_HEADERS } from "./guarded-fetch";
 import type { GuardedFetch } from "./guarded-fetch";
 import { pinnedFetch } from "./pinned-fetch";
-import { areAddressesPublic } from "./public-host";
 import type { HostLookup } from "./public-host";
 
 // Module: RumbleEffect — the Rumble fetch flow as an Effect program. Rumble
@@ -117,34 +116,13 @@ const readText = async (res: Response): Promise<string> => {
   return text;
 };
 
-const guardAddresses = (
+const rumbleGuard = (
   url: string,
   lookup: HostLookup
-): Effect.Effect<string[], RumbleError> =>
-  Effect.gen(function* guard() {
-    let hostname: string;
-
-    // the watch URL was matcher-validated and the endpoint is constructed:
-    // an unparseable hostname here is a programmer error, reported closed
-    try {
-      ({ hostname } = new URL(url));
-    } catch {
-      return yield* Effect.fail({
-        _tag: "RumbleUnresolved" as const,
-      });
-    }
-
-    const addresses = yield* Effect.tryPromise({
-      catch: () => ({ _tag: "RumbleUnresolved" as const }),
-      // Promise.resolve wraps sync doubles too: a sync lookup throw must reject, not escape
-      try: () => Promise.resolve(lookup(hostname)),
-    });
-
-    if (!areAddressesPublic(addresses)) {
-      yield* Effect.fail({ _tag: "RumbleGuardBlocked" as const });
-    }
-
-    return addresses;
+): Effect.Effect<string[], RumbleError, FetchDeps> =>
+  guardAddresses(url, lookup, {
+    blocked: { _tag: "RumbleGuardBlocked" as const },
+    unresolved: { _tag: "RumbleUnresolved" as const },
   });
 
 interface WatchHop {
@@ -160,7 +138,7 @@ const fetchWatchHop = (
   Effect.gen(function* hop() {
     const { doFetch, lookup } = yield* FetchDeps;
 
-    const addresses = yield* guardAddresses(url, lookup);
+    const addresses = yield* rumbleGuard(url, lookup);
 
     const headers = new Headers(PAGE_HEADERS);
 
@@ -286,7 +264,7 @@ const fetchEmbedMp4s = (
 
     const endpoint = `https://rumble.com/embedJS/u3/${embedId}?request=video&ver=2&v=${embedId}`;
 
-    yield* guardAddresses(endpoint, lookup);
+    yield* rumbleGuard(endpoint, lookup);
 
     const headers = new Headers({
       ...PAGE_HEADERS,

@@ -9,6 +9,10 @@ import { Effect, Layer } from "effect";
 import { readCappedUtf8 } from "./capped-body";
 import { containerOf } from "./container";
 import {
+  resolveDailymotionProgram,
+  toThrownError as toDailymotionThrownError,
+} from "./dailymotion-effect";
+import {
   resolveFacebookProgram,
   toThrownError as toFacebookThrownError,
 } from "./facebook-effect";
@@ -24,6 +28,10 @@ import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { hostMatches, isPlatformHost } from "./platforms";
 import { defaultLookup } from "./public-host";
 import type { HostLookup } from "./public-host";
+import {
+  resolveRedditProgram,
+  toThrownError as toRedditThrownError,
+} from "./reddit-effect";
 import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -468,73 +476,27 @@ const matchReddit = (
   return undefined;
 };
 
-interface RedditMedia {
-  reddit_video?: { fallback_url?: string; hls_url?: string };
-}
-
-interface RedditPost {
-  data?: {
-    crosspost_parent_list?: RedditPost["data"][];
-    id?: string;
-    media?: RedditMedia;
-    thumbnail?: string;
-    title?: string;
-  };
-}
-
-interface RedditListing {
-  data?: { children?: { data?: RedditPost["data"] }[] };
-}
-
-// eslint-disable-next-line complexity -- dispatch over reddit post shapes (crosspost, media, embeds); splitting would scatter the same data flow
-const resolveReddit = async (
+// The Reddit listing fetch runs as an Effect program (FetchDeps Layer) and is
+// bridged back to promises here, so resolve() keeps its thrown-Error contract.
+const resolveReddit = (
   sourceUrl: string,
   id: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const jsonUrl = `${sourceUrl.split("?")[0].replace(/\/+$/u, "")}.json`;
-
-  const { res } = await fetchPublic(ctx, jsonUrl, {
-    Accept: "application/json",
-    "User-Agent": CHROME_UA,
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
   });
 
-  assertOk(res, "Reddit");
-
-  let listing: RedditListing[];
-
-  try {
-    listing = await readCappedJson(res);
-  } catch {
-    throw new Error("Reddit returned an unexpected response. Try again later.");
-  }
-
-  const post = listing?.[0]?.data?.children?.[0]?.data;
-  const data = post?.crosspost_parent_list?.[0] ?? post;
-
-  const videoUrl =
-    data?.media?.reddit_video?.fallback_url ??
-    data?.media?.reddit_video?.hls_url;
-
-  if (!videoUrl) {
-    throw new Error("No video found. Only video posts are downloadable.");
-  }
-
-  const thumbnail =
-    data?.thumbnail && data.thumbnail.startsWith("http")
-      ? data.thumbnail
-      : undefined;
-
-  return [
-    {
-      platform: "reddit",
-      shortcode: id,
-      sourceUrl,
-      thumbnail,
-      title: data?.title,
-      videoUrl,
-    },
-  ];
+  return Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(
+        resolveRedditProgram({ fetchUrl: sourceUrl, id, sourceUrl }),
+        layer
+      ),
+      toRedditThrownError
+    )
+  );
 };
 
 const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
@@ -825,76 +787,25 @@ const matchDailymotion = (sourceUrl: string): { id: string } | undefined => {
   return id ? { id } : undefined;
 };
 
-interface DailymotionQuality {
-  type?: string;
-  url?: string;
-}
-
-interface DailymotionMetadata {
-  poster_url?: string;
-  qualities?: Record<string, DailymotionQuality[]>;
-  thumbnail_url?: string;
-  title?: string;
-}
-
-const resolveDailymotion = async (
+// The Dailymotion metadata fetch runs as an Effect program (FetchDeps Layer)
+// and is bridged back to promises here, so resolve() keeps its thrown-Error
+// contract.
+const resolveDailymotion = (
   sourceUrl: string,
   id: string,
   ctx: FetchContext
 ): Promise<VideoAsset[]> => {
-  const { res } = await fetchPublic(
-    ctx,
-    `https://www.dailymotion.com/player/metadata/video/${id}`,
-    { Accept: "application/json", "User-Agent": CHROME_UA }
+  const layer = Layer.succeed(FetchDeps)({
+    doFetch: ctx.doFetch,
+    lookup: ctx.lookup,
+  });
+
+  return Effect.runPromise(
+    Effect.mapError(
+      Effect.provide(resolveDailymotionProgram({ id, sourceUrl }), layer),
+      toDailymotionThrownError
+    )
   );
-
-  assertOk(res, "Dailymotion");
-
-  let data: DailymotionMetadata;
-
-  try {
-    data = await readCappedJson(res);
-  } catch {
-    throw new Error(
-      "Dailymotion returned an unexpected response. Try again later."
-    );
-  }
-
-  const qualities = data.qualities ?? {};
-
-  const renditions: Rendition[] = Object.entries(qualities).flatMap(
-    ([key, entries]): Rendition[] => {
-      const mp4 = entries?.find(
-        (e) => e.url && /mp4/iu.test(e.type ?? e.url ?? "")
-      );
-
-      const url = mp4?.url ?? entries?.find((e) => e.url)?.url;
-
-      if (!url) {
-        return [];
-      }
-
-      const height = Number(key);
-
-      return Number.isNaN(height) ? [{ label: key, url }] : [{ height, url }];
-    }
-  );
-
-  const assets = byQuality(renditions).map((r) => ({
-    label: renditionLabel(r),
-    platform: "dailymotion" as const,
-    shortcode: id,
-    sourceUrl,
-    thumbnail: data.poster_url ?? data.thumbnail_url,
-    title: data.title,
-    videoUrl: r.url,
-  }));
-
-  if (!assets.length) {
-    throw new Error("No video found. Only public videos are downloadable.");
-  }
-
-  return assets;
 };
 
 const matchRumble = (

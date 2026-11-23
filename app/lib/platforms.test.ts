@@ -13,6 +13,7 @@ const APP_DIR = fileURLToPath(new URL("..", import.meta.url));
 // youtubei.js. A value import drags them into the client graph, which kills
 // hydration in dev while typecheck and the prod build stay green.
 const SERVER_ONLY_MODULES = [
+  "dailymotion-effect",
   "download-link",
   "facebook-effect",
   "fetch-deps",
@@ -22,6 +23,7 @@ const SERVER_ONLY_MODULES = [
   "media-resolver",
   "pinned-fetch",
   "public-host",
+  "reddit-effect",
   "rumble-effect",
   "streamable-effect",
   "threads-effect",

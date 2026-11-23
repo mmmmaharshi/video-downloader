@@ -465,6 +465,9 @@ export const update = (
               error: "Conversion failed.",
             }),
           }),
+          // clearing copying too: a failed conversion must not leave the
+          // Copy button stuck on "Copying…" forever
+          copying: (urls) => without(urls, videoUrl),
           pendingCopies: (urls) => without(urls, videoUrl),
         }),
       };

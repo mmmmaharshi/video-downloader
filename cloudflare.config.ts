@@ -19,6 +19,10 @@ export default defineConfig({
     entrypoint: "./server/worker.ts",
     env: {
       DOWNLOAD_SECRET: bindings.secret(),
+      RATE_LIMITER: bindings.rateLimit({
+        namespace: "1001",
+        simple: { limit: 30, period: 60 },
+      }),
     },
     name: "video-downloader",
     observability: {

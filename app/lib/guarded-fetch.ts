@@ -34,16 +34,55 @@ export interface GuardedFetch {
   lookup: HostLookup;
 }
 
+// DoH costs two round trips per host, and one resolve walks up to four hops.
+// A short memo per lookup function saves the repeats without hiding a DNS
+// change for long.
+const LOOKUP_TTL_MS = 5000;
+
+const lookupCache = new WeakMap<
+  HostLookup,
+  Map<string, { addresses: string[]; at: number }>
+>();
+
+const memoLookup = (lookup: HostLookup): HostLookup => {
+  let cache = lookupCache.get(lookup);
+
+  if (cache === undefined) {
+    cache = new Map();
+    lookupCache.set(lookup, cache);
+  }
+
+  return async (hostname: string) => {
+    const now = Date.now();
+    const hit = cache.get(hostname);
+
+    if (hit !== undefined && now - hit.at < LOOKUP_TTL_MS) {
+      return hit.addresses;
+    }
+
+    const addresses = await lookup(hostname);
+
+    if (cache.size > 64) {
+      cache.clear();
+    }
+
+    cache.set(hostname, { addresses, at: now });
+
+    return addresses;
+  };
+};
+
 export const fetchGuarded = async (
   http: GuardedFetch,
   url: string,
   init: BunFetchRequestInit
 ): Promise<{ res: Response; url: string }> => {
   let current = url;
+  const lookup = memoLookup(http.lookup);
 
   for (let hop = 0; hop < MAX_REDIRECTS; hop += 1) {
     // eslint-disable-next-line no-await-in-loop -- each hop feeds the next check
-    const addresses = await resolvePublicAddresses(current, http.lookup);
+    const addresses = await resolvePublicAddresses(current, lookup);
 
     // eslint-disable-next-line no-await-in-loop -- the response decides whether another hop is needed
     const res = await pinnedFetch(http.doFetch, current, addresses, {

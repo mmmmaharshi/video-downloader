@@ -309,6 +309,28 @@ describe("foldkit-home", () => {
     );
   });
 
+  test("a failed conversion releases the copy button", () => {
+    story(
+      update,
+      given({
+        ...init().model,
+        assets: [gifAsset],
+        capabilities: { clipboard: true, worker: true },
+        conversions: {},
+        copying: ["https://x/1.mp4"],
+        pendingCopies: ["https://x/1.mp4"],
+        status: "ready",
+      }),
+      message(Message.FailedConvertGif({ videoUrl: "https://x/1.mp4" })),
+      Command.expectNone(),
+      model((m) => {
+        expect(m.copying).toEqual([]);
+        expect(m.pendingCopies).toEqual([]);
+        expect(m.conversions["https://x/1.mp4"]?._tag).toBe("Failure");
+      })
+    );
+  });
+
   test("a finished copy reports what the clipboard took", () => {
     story(
       update,

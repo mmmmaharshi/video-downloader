@@ -37,6 +37,10 @@ interface TubeFormat {
   mime_type: string;
   width?: number;
   height?: number;
+  // true for a progressive stream: video and audio in one file. Adaptive
+  // streams carry one track, so offering one as the only option downloads
+  // a silent video.
+  muxed?: boolean;
 }
 
 export interface TubeInfo {
@@ -113,6 +117,21 @@ const InnertubePlayer = Schema.Struct({
   ),
 });
 
+const toFormat =
+  (muxed: boolean) =>
+  (f: typeof InnertubeFormat.Type): TubeFormat[] =>
+    f.url === undefined || f.mimeType === undefined
+      ? []
+      : [
+          {
+            height: f.height,
+            mime_type: f.mimeType,
+            muxed,
+            url: f.url,
+            width: f.width,
+          },
+        ];
+
 const liveGetInfo = async (id: string, name: ClientName): Promise<TubeInfo> => {
   const { client, key, userAgent } = CLIENTS[name];
 
@@ -139,19 +158,11 @@ const liveGetInfo = async (id: string, name: ClientName): Promise<TubeInfo> => {
   const sd = payload.streamingData;
 
   return {
-    formats: [...(sd?.formats ?? []), ...(sd?.adaptiveFormats ?? [])].flatMap(
-      (f) =>
-        f.url === undefined || f.mimeType === undefined
-          ? []
-          : [
-              {
-                height: f.height,
-                mime_type: f.mimeType,
-                url: f.url,
-                width: f.width,
-              },
-            ]
-    ),
+    // progressive first: those are the only streams with sound
+    formats: [
+      ...(sd?.formats ?? []).flatMap(toFormat(true)),
+      ...(sd?.adaptiveFormats ?? []).flatMap(toFormat(false)),
+    ],
     playability: payload.playabilityStatus?.status ?? "UNKNOWN",
     reason: payload.playabilityStatus?.reason,
     title: payload.videoDetails?.title,

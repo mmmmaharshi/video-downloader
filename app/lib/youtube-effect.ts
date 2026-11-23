@@ -72,21 +72,35 @@ const CLIENTS: ClientName[] = ["IOS", "ANDROID"];
 interface TubeFormat {
   readonly height?: number;
   readonly mime_type: string;
+  readonly muxed?: boolean;
   readonly url?: string;
   readonly width?: number;
 }
 
-// sort runs on the mapped copy, so nothing shared is mutated (toSorted
-// needs ES2023 lib, which this project does not target)
-const bestMp4s = (info: TubeInfo): TubeAsset[] =>
-  info.formats
-    .filter(
-      (f): f is TubeFormat & { url: string } =>
-        f.mime_type.startsWith("video/mp4") && f.url !== undefined
-    )
-    .map((f) => ({ height: f.height ?? 0, videoUrl: f.url }))
-    // eslint-disable-next-line unicorn/no-array-sort -- fresh mapped copy, and toSorted needs ES2023 lib
-    .sort((a, b) => b.height - a.height);
+interface RungChoice {
+  assets: TubeAsset[];
+  muxed: boolean;
+}
+
+// Only muxed streams carry audio: a video-only rung downloads silent, so it is
+// offered only when no client publishes a muxed rung at all.
+const bestMp4s = (info: TubeInfo): RungChoice => {
+  const mp4s = info.formats.filter(
+    (f): f is TubeFormat & { url: string } =>
+      f.mime_type.startsWith("video/mp4") && f.url !== undefined
+  );
+
+  const withAudio = mp4s.filter((f) => f.muxed === true);
+  const chosen = withAudio.length > 0 ? withAudio : mp4s;
+
+  return {
+    assets: chosen
+      .map((f) => ({ height: f.height ?? 0, videoUrl: f.url }))
+      // eslint-disable-next-line unicorn/no-array-sort -- fresh mapped copy, and toSorted needs ES2023 lib
+      .sort((a, b) => b.height - a.height),
+    muxed: withAudio.length > 0,
+  };
+};
 
 // An InnerTube format url is upstream-supplied; the guarded loop checks every
 // hop so a redirect cannot carry the probe onto a private host. A failed probe
@@ -115,6 +129,7 @@ export const getYouTubeFormatsProgram = (
       let answered = false;
       let failure: unknown;
       let reason: string | undefined;
+      let silentFallback: TubeAsset[] | undefined;
 
       for (const client of CLIENTS) {
         // a per-client failure is data (fall through to the next client), not a
@@ -143,22 +158,36 @@ export const getYouTubeFormatsProgram = (
           continue;
         }
 
-        const mp4s = bestMp4s(info);
+        const { assets, muxed } = bestMp4s(info);
+
+        if (!assets.length) {
+          continue;
+        }
 
         // the best rung usually decides, but a throttled head rung must not
         // condemn the rest of the ladder: probe down it until one plays
         let playable = false;
 
-        for (const candidate of mp4s) {
+        for (const candidate of assets) {
           if (yield* probeHead(candidate.videoUrl)) {
             playable = true;
             break;
           }
         }
 
-        if (playable) {
-          return mp4s.map((m) => ({ ...m, title: info.title }));
+        if (!playable) {
+          continue;
         }
+
+        const titled = assets.map((m) => ({ ...m, title: info.title }));
+
+        // a muxed answer wins outright; a video-only one is kept only in case
+        // no client offers sound for this video
+        if (muxed) {
+          return titled;
+        }
+
+        silentFallback ??= titled;
       }
 
       if (!answered) {
@@ -166,6 +195,10 @@ export const getYouTubeFormatsProgram = (
           _tag: "YouTubeUnreachable" as const,
           cause: failure,
         });
+      }
+
+      if (silentFallback !== undefined) {
+        return silentFallback;
       }
 
       if (reason !== undefined) {

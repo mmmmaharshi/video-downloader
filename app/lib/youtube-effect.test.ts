@@ -20,9 +20,10 @@ const info = (
   reason,
 });
 
-const mp4 = (url: string, height: number) => ({
+const mp4 = (url: string, height: number, muxed?: boolean) => ({
   height,
   mime_type: "video/mp4",
+  muxed,
   url,
   width: 0,
 });
@@ -116,7 +117,9 @@ describe("youtube-effect", () => {
     );
 
     expect(formats.map((f) => f.videoUrl)).toEqual([gated, open]);
-    expect(calls).toEqual(["IOS"]);
+    // both clients are asked: neither offered a muxed rung, so the video-only
+    // fallback is only used after the search for sound came up empty
+    expect(calls).toEqual(["IOS", "ANDROID"]);
   });
 
   test("runs one more sweep when the first answers nothing playable", async () => {
@@ -132,7 +135,30 @@ describe("youtube-effect", () => {
     );
 
     expect(formats.map((f) => f.videoUrl)).toEqual(["https://x/720.mp4"]);
-    expect(calls).toBe(3);
+    // sweep one asks both clients (2 calls), sweep two asks both again (4):
+    // a rung with no audio never ends the search early
+    expect(calls).toBe(4);
+  });
+
+  test("prefers a muxed stream so the download has sound", async () => {
+    // the real payload for a video like this: IOS lists only adaptive (video
+    // only) rungs, ANDROID lists a progressive one
+    const silent = "https://x/adaptive-1080.mp4";
+    const sound = "https://x/progressive-360.mp4";
+
+    const formats = await runFormats(
+      "dQw4w9WgXcQ",
+      layers((_id, client) =>
+        client === "IOS"
+          ? info([mp4(silent, 1080, false)])
+          : info([
+              mp4(sound, 360, true),
+              mp4("https://x/adaptive-720.mp4", 720, false),
+            ])
+      )
+    );
+
+    expect(formats.map((f) => f.videoUrl)).toEqual([sound]);
   });
 
   test("reports an unplayable video with its reason", async () => {

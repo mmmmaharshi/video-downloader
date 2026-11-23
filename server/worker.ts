@@ -7,15 +7,32 @@
 import { dohLookup } from "../app/lib/public-host";
 import type { HostLookup } from "../app/lib/public-host";
 import { handleDownload, handleResolve } from "./api";
+import { overLimit } from "./rate-limit";
+import type { RateLimiterBinding } from "./rate-limit";
 
 export interface WorkerEnv {
   DOWNLOAD_SECRET?: string;
+  RATE_LIMITER?: RateLimiterBinding;
 }
 
 export interface WorkerDeps {
   fetch?: typeof fetch;
   lookup?: HostLookup;
 }
+
+// Resolve costs an outbound fetch per call, so an open loop turns this Worker
+// into a free proxy. The counter lives in rate-limit.ts (Cache API on Workers,
+// module memory elsewhere).
+const MAX_FORM_BYTES = 8 * 1024;
+
+const tooManyRequests = (): Response =>
+  Response.json(
+    { error: "Too many requests. Try again in a minute." },
+    { status: 429 }
+  );
+
+const tooLarge = (): Response =>
+  Response.json({ error: "Request body too large." }, { status: 413 });
 
 export const handleWorkerRequest = (
   request: Request,
@@ -33,7 +50,20 @@ export const handleWorkerRequest = (
   const secret = env.DOWNLOAD_SECRET;
 
   if (url.pathname === "/api/resolve" && request.method === "POST") {
-    return handleResolve(request, { fetch: doFetch, lookup, secret });
+    if (Number(request.headers.get("content-length") ?? 0) > MAX_FORM_BYTES) {
+      return tooLarge();
+    }
+
+    const client =
+      request.headers.get("cf-connecting-ip") ??
+      request.headers.get("x-forwarded-for") ??
+      "unknown";
+
+    return overLimit(client, env.RATE_LIMITER).then((limited) =>
+      limited
+        ? tooManyRequests()
+        : handleResolve(request, { fetch: doFetch, lookup, secret })
+    );
   }
 
   if (url.pathname === "/api/download") {

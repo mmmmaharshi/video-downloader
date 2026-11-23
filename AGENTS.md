@@ -25,7 +25,7 @@
 - Don't run the dev server. Verify with `bun run verify`.
 - Make each change fully verifiable: prefer the real service and a real browser click-through over mocks and fixtures. If no check can fail, say so instead of faking verification.
 - Run long-running processes in the foreground so they end with the session. Detach one only when the user asks for a process that outlives the session.
-- Production deploys from the CI `deploy` job, after `verify` passes — not from the push. `vercel.json` turns Vercel's own git deploy off for every branch, so a red run ships nothing. Cloudflare plus Alchemy is the declared deploy target (ADR-0003); until the Alchemy stack lands, declare no infrastructure by hand.
+- Production is the Cloudflare Worker `video-downloader`, declared in `cloudflare.config.ts` and shipped with `bun run deploy` (which calls `npx cf deploy`). Do not add Alchemy or Vercel infrastructure; `vercel.json` only keeps Vercel's own git deploy off.
 - The Cloudflare deploy runs through the `cf` CLI (`npx cf deploy --secrets-file .dev.vars`), configured by `cloudflare.config.ts`. `cf` needs Node, never Bun. The `cf-cli`, `wrangler`, `frameworks-on-cloudflare`, `workers-best-practices`, and `workers-development` skills are installed — consult them before touching deploy config.
 - Don't push without the user's permission. Commit locally; the user pushes.
 

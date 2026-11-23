@@ -677,11 +677,15 @@ const resolveRaw = async (
     lookup: deps.lookup ?? defaultLookup,
   });
 
+  // the injectable formats seam keeps its promise shape, but it must inherit
+  // this call's transport and DNS lookup: otherwise the YouTube HEAD probe
+  // silently uses a different (Node-only) resolver than every other platform
+  const getFormats: YoutubeGetter =
+    deps.youtube ??
+    ((id) => getYouTubeFormats(id, { fetch: deps.fetch, lookup: deps.lookup }));
+
   return Effect.runPromise(
-    Effect.provide(
-      resolveDispatchProgram(trimmed, deps.youtube ?? getYouTubeFormats),
-      layer
-    )
+    Effect.provide(resolveDispatchProgram(trimmed, getFormats), layer)
   );
 };
 

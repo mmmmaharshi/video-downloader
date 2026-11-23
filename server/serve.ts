@@ -6,7 +6,7 @@ import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { handleDownload, handleResolve } from "./api";
+import { handleWorkerRequest } from "./worker";
 
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 
@@ -60,18 +60,13 @@ Bun.serve({
   fetch: async (request) => {
     const url = new URL(request.url);
 
-    if (url.pathname === "/api/resolve" && request.method === "POST") {
+    if (url.pathname.startsWith("/api/")) {
       const started = performance.now();
-      const res = await handleResolve(request);
 
-      logApi(request, res, started);
-
-      return res;
-    }
-
-    if (url.pathname === "/api/download") {
-      const started = performance.now();
-      const res = await handleDownload(request);
+      // one router for both runtimes: the Worker decides what /api/* means
+      const res = await handleWorkerRequest(request, {
+        DOWNLOAD_SECRET: process.env.DOWNLOAD_SECRET,
+      });
 
       logApi(request, res, started);
 

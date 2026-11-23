@@ -11,6 +11,7 @@ import {
 import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
+import { unhandledError } from "./unhandled-error";
 
 // Module: LoomEffect — the Loom page scrape as an Effect program. The post
 // page carries og:video; a page without one is not a video post. Dependencies
@@ -18,48 +19,15 @@ import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 // the legacy user-facing strings at the bridge in media-resolver, which keeps
 // resolve()'s thrown-Error contract.
 
-export interface LoomNotFound {
-  readonly _tag: "LoomNotFound";
-}
-
-export interface LoomUpstream {
-  readonly _tag: "LoomUpstream";
-  readonly status: number;
-}
-
-export interface LoomNoVideo {
-  readonly _tag: "LoomNoVideo";
-}
-
-export interface LoomUnreachable {
-  readonly _tag: "LoomUnreachable";
-}
-
-export interface LoomGuardBlocked {
-  readonly _tag: "LoomGuardBlocked";
-}
-
-export interface LoomUnresolved {
-  readonly _tag: "LoomUnresolved";
-}
-
-export interface LoomBadRedirect {
-  readonly _tag: "LoomBadRedirect";
-}
-
-export interface LoomTooManyRedirects {
-  readonly _tag: "LoomTooManyRedirects";
-}
-
 export type LoomError =
-  | LoomBadRedirect
-  | LoomGuardBlocked
-  | LoomNoVideo
-  | LoomNotFound
-  | LoomTooManyRedirects
-  | LoomUnreachable
-  | LoomUnresolved
-  | LoomUpstream;
+  | { readonly _tag: "LoomBadRedirect" }
+  | { readonly _tag: "LoomGuardBlocked" }
+  | { readonly _tag: "LoomNoVideo" }
+  | { readonly _tag: "LoomNotFound" }
+  | { readonly _tag: "LoomTooManyRedirects" }
+  | { readonly _tag: "LoomUnreachable" }
+  | { readonly _tag: "LoomUnresolved" }
+  | { readonly _tag: "LoomUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -98,9 +66,7 @@ export const loomErrorMessage = (error: LoomError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled LoomError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("Loom", error);
     }
   }
 };

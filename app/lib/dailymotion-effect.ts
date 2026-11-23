@@ -12,6 +12,7 @@ import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
+import { unhandledError } from "./unhandled-error";
 import { CHROME_UA } from "./user-agent";
 
 // Module: DailymotionEffect — the Dailymotion metadata fetch as an Effect
@@ -21,59 +22,17 @@ import { CHROME_UA } from "./user-agent";
 // strings at the bridge in media-resolver, which keeps resolve()'s thrown-Error
 // contract.
 
-export interface DailymotionNotFound {
-  readonly _tag: "DailymotionNotFound";
-}
-
-export interface DailymotionUpstream {
-  readonly _tag: "DailymotionUpstream";
-  readonly status: number;
-}
-
-export interface DailymotionUnexpectedResponse {
-  readonly _tag: "DailymotionUnexpectedResponse";
-}
-
-export interface DailymotionNoVideo {
-  readonly _tag: "DailymotionNoVideo";
-}
-
-export interface DailymotionUnreachable {
-  readonly _tag: "DailymotionUnreachable";
-}
-
-export interface DailymotionGuardBlocked {
-  readonly _tag: "DailymotionGuardBlocked";
-}
-
-export interface DailymotionBadRedirect {
-  readonly _tag: "DailymotionBadRedirect";
-}
-
-export interface DailymotionTooManyRedirects {
-  readonly _tag: "DailymotionTooManyRedirects";
-}
-
-export interface DailymotionUnresolved {
-  readonly _tag: "DailymotionUnresolved";
-}
-
-export interface DailymotionUnavailable {
-  readonly _tag: "DailymotionUnavailable";
-  readonly reason: string;
-}
-
 export type DailymotionError =
-  | DailymotionBadRedirect
-  | DailymotionGuardBlocked
-  | DailymotionNoVideo
-  | DailymotionNotFound
-  | DailymotionTooManyRedirects
-  | DailymotionUnavailable
-  | DailymotionUnexpectedResponse
-  | DailymotionUnreachable
-  | DailymotionUnresolved
-  | DailymotionUpstream;
+  | { readonly _tag: "DailymotionBadRedirect" }
+  | { readonly _tag: "DailymotionGuardBlocked" }
+  | { readonly _tag: "DailymotionNoVideo" }
+  | { readonly _tag: "DailymotionNotFound" }
+  | { readonly _tag: "DailymotionTooManyRedirects" }
+  | { readonly _tag: "DailymotionUnavailable"; readonly reason: string }
+  | { readonly _tag: "DailymotionUnexpectedResponse" }
+  | { readonly _tag: "DailymotionUnreachable" }
+  | { readonly _tag: "DailymotionUnresolved" }
+  | { readonly _tag: "DailymotionUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -121,11 +80,7 @@ export const dailymotionErrorMessage = (error: DailymotionError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(
-        `Unhandled DailymotionError: ${JSON.stringify(exhaustive)}`
-      );
+      return unhandledError("Dailymotion", error);
     }
   }
 };

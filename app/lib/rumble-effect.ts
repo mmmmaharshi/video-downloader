@@ -17,6 +17,7 @@ import { readPageText } from "./page-body";
 import { pinnedFetch } from "./pinned-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { HostLookup } from "./public-host";
+import { unhandledError } from "./unhandled-error";
 
 // Module: RumbleEffect — the Rumble fetch flow as an Effect program. Rumble
 // answers the first anonymous visit with a 307 to itself plus an RNSC cookie;
@@ -27,48 +28,15 @@ import type { HostLookup } from "./public-host";
 // contract. Plain interfaces (not error classes): the repo allows one class
 // per file, and these tags only cross one bridge.
 
-export interface RumbleNotFound {
-  readonly _tag: "RumbleNotFound";
-}
-
-export interface RumbleNoVideo {
-  readonly _tag: "RumbleNoVideo";
-}
-
-export interface RumbleUpstream {
-  readonly _tag: "RumbleUpstream";
-  readonly status: number;
-}
-
-export interface RumbleUnexpectedResponse {
-  readonly _tag: "RumbleUnexpectedResponse";
-}
-
-export interface RumbleGuardBlocked {
-  readonly _tag: "RumbleGuardBlocked";
-}
-
-export interface RumbleUnresolved {
-  readonly _tag: "RumbleUnresolved";
-}
-
-export interface RumbleTooManyRedirects {
-  readonly _tag: "RumbleTooManyRedirects";
-}
-
-export interface RumbleBadRedirect {
-  readonly _tag: "RumbleBadRedirect";
-}
-
 export type RumbleError =
-  | RumbleBadRedirect
-  | RumbleGuardBlocked
-  | RumbleNoVideo
-  | RumbleNotFound
-  | RumbleTooManyRedirects
-  | RumbleUnexpectedResponse
-  | RumbleUnresolved
-  | RumbleUpstream;
+  | { readonly _tag: "RumbleBadRedirect" }
+  | { readonly _tag: "RumbleGuardBlocked" }
+  | { readonly _tag: "RumbleNoVideo" }
+  | { readonly _tag: "RumbleNotFound" }
+  | { readonly _tag: "RumbleTooManyRedirects" }
+  | { readonly _tag: "RumbleUnexpectedResponse" }
+  | { readonly _tag: "RumbleUnresolved" }
+  | { readonly _tag: "RumbleUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -107,9 +75,7 @@ export const rumbleErrorMessage = (error: RumbleError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled RumbleError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("Rumble", error);
     }
   }
 };

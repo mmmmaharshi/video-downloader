@@ -6,7 +6,7 @@ import { readCappedUtf8 } from "./capped-body";
 
 // Head-read budget: one place decides how much of an upstream body is worth
 // reading, so every resolver changes together if it ever needs to.
-export const PAGE_READ_BYTES = 512 * 1024;
+const PAGE_READ_BYTES = 512 * 1024;
 
 export const readPageText = async (res: Response): Promise<string> => {
   const { text } = await readCappedUtf8(res.body, PAGE_READ_BYTES);

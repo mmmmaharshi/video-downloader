@@ -11,6 +11,7 @@ import { readPageJson } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4 } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
+import { unhandledError } from "./unhandled-error";
 import { CHROME_UA } from "./user-agent";
 
 // Module: TwitterEffect — the X syndication flow as an Effect program. The
@@ -21,53 +22,16 @@ import { CHROME_UA } from "./user-agent";
 // at the bridge in media-resolver, which keeps resolve()'s thrown-Error
 // contract.
 
-export interface TwitterNotFound {
-  readonly _tag: "TwitterNotFound";
-}
-
-export interface TwitterUpstream {
-  readonly _tag: "TwitterUpstream";
-  readonly status: number;
-}
-
-export interface TwitterUnexpectedResponse {
-  readonly _tag: "TwitterUnexpectedResponse";
-}
-
-export interface TwitterNoVideo {
-  readonly _tag: "TwitterNoVideo";
-}
-
-export interface TwitterUnreachable {
-  readonly _tag: "TwitterUnreachable";
-}
-
-export interface TwitterGuardBlocked {
-  readonly _tag: "TwitterGuardBlocked";
-}
-
-export interface TwitterBadRedirect {
-  readonly _tag: "TwitterBadRedirect";
-}
-
-export interface TwitterTooManyRedirects {
-  readonly _tag: "TwitterTooManyRedirects";
-}
-
-export interface TwitterUnresolved {
-  readonly _tag: "TwitterUnresolved";
-}
-
 export type TwitterError =
-  | TwitterBadRedirect
-  | TwitterGuardBlocked
-  | TwitterNoVideo
-  | TwitterNotFound
-  | TwitterTooManyRedirects
-  | TwitterUnexpectedResponse
-  | TwitterUnreachable
-  | TwitterUnresolved
-  | TwitterUpstream;
+  | { readonly _tag: "TwitterBadRedirect" }
+  | { readonly _tag: "TwitterGuardBlocked" }
+  | { readonly _tag: "TwitterNoVideo" }
+  | { readonly _tag: "TwitterNotFound" }
+  | { readonly _tag: "TwitterTooManyRedirects" }
+  | { readonly _tag: "TwitterUnexpectedResponse" }
+  | { readonly _tag: "TwitterUnreachable" }
+  | { readonly _tag: "TwitterUnresolved" }
+  | { readonly _tag: "TwitterUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -110,9 +74,7 @@ export const twitterErrorMessage = (error: TwitterError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled TwitterError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("Twitter", error);
     }
   }
 };

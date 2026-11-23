@@ -11,6 +11,7 @@ import { readPageJson } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { preferMp4, byQuality, renditionLabel } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
+import { unhandledError } from "./unhandled-error";
 import { CHROME_UA } from "./user-agent";
 
 // Module: StreamableEffect — the Streamable API fetch as an Effect program.
@@ -20,53 +21,16 @@ import { CHROME_UA } from "./user-agent";
 // user-facing strings at the bridge in media-resolver, which keeps resolve()'s
 // thrown-Error contract.
 
-export interface StreamableNotFound {
-  readonly _tag: "StreamableNotFound";
-}
-
-export interface StreamableUpstream {
-  readonly _tag: "StreamableUpstream";
-  readonly status: number;
-}
-
-export interface StreamableUnexpectedResponse {
-  readonly _tag: "StreamableUnexpectedResponse";
-}
-
-export interface StreamableNoVideo {
-  readonly _tag: "StreamableNoVideo";
-}
-
-export interface StreamableUnreachable {
-  readonly _tag: "StreamableUnreachable";
-}
-
-export interface StreamableGuardBlocked {
-  readonly _tag: "StreamableGuardBlocked";
-}
-
-export interface StreamableBadRedirect {
-  readonly _tag: "StreamableBadRedirect";
-}
-
-export interface StreamableTooManyRedirects {
-  readonly _tag: "StreamableTooManyRedirects";
-}
-
-export interface StreamableUnresolved {
-  readonly _tag: "StreamableUnresolved";
-}
-
 export type StreamableError =
-  | StreamableBadRedirect
-  | StreamableGuardBlocked
-  | StreamableNoVideo
-  | StreamableNotFound
-  | StreamableTooManyRedirects
-  | StreamableUnexpectedResponse
-  | StreamableUnreachable
-  | StreamableUnresolved
-  | StreamableUpstream;
+  | { readonly _tag: "StreamableBadRedirect" }
+  | { readonly _tag: "StreamableGuardBlocked" }
+  | { readonly _tag: "StreamableNoVideo" }
+  | { readonly _tag: "StreamableNotFound" }
+  | { readonly _tag: "StreamableTooManyRedirects" }
+  | { readonly _tag: "StreamableUnexpectedResponse" }
+  | { readonly _tag: "StreamableUnreachable" }
+  | { readonly _tag: "StreamableUnresolved" }
+  | { readonly _tag: "StreamableUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -109,11 +73,7 @@ export const streamableErrorMessage = (error: StreamableError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(
-        `Unhandled StreamableError: ${JSON.stringify(exhaustive)}`
-      );
+      return unhandledError("Streamable", error);
     }
   }
 };

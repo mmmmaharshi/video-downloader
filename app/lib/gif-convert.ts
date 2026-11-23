@@ -126,7 +126,7 @@ const MAX_WIDTH = 480;
 const LOAD_TIMEOUT_MS = 15_000;
 const SEEK_TIMEOUT_MS = 10_000;
 
-export const withTimeout = <T>(
+const withTimeout = <T>(
   promise: Promise<T>,
   ms: number,
   what: string

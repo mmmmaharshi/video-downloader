@@ -8,6 +8,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { FRESH_MS } from "./freshness";
 import type { VideoAsset } from "./resolve-query";
+import { stemOf } from "./stem";
 
 export interface DownloadRequest {
   videoUrl: string;
@@ -53,12 +54,7 @@ export const toDownloadHref = (
     throw new Error("No video at this position");
   }
 
-  const tag = asset.label ?? String(index + 1);
-
-  const stem =
-    assets.length > 1
-      ? `${asset.platform}-${asset.shortcode}-${tag}`
-      : `${asset.platform}-${asset.shortcode}`;
+  const stem = stemOf(assets, index);
 
   const exp = (deps.now ?? Date.now()) + FRESH_MS;
   const signature = sign(payloadOf(asset.videoUrl, stem, exp), deps);

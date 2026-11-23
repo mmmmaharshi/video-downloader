@@ -11,6 +11,7 @@ import {
 import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
 import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
+import { unhandledError } from "./unhandled-error";
 import { UA } from "./user-agent";
 
 // Module: InstagramEffect — the Instagram page-plus-embed flow as an Effect
@@ -20,58 +21,17 @@ import { UA } from "./user-agent";
 // at the bridge in media-resolver, which keeps resolve()'s thrown-Error
 // contract.
 
-export interface InstagramNotFound {
-  readonly _tag: "InstagramNotFound";
-}
-
-export interface InstagramUpstream {
-  readonly _tag: "InstagramUpstream";
-  readonly status: number;
-}
-
-export interface InstagramLoginRedirect {
-  readonly _tag: "InstagramLoginRedirect";
-}
-
-export interface InstagramLoginWall {
-  readonly _tag: "InstagramLoginWall";
-}
-
-export interface InstagramNoVideo {
-  readonly _tag: "InstagramNoVideo";
-}
-
-export interface InstagramUnreachable {
-  readonly _tag: "InstagramUnreachable";
-}
-
-export interface InstagramGuardBlocked {
-  readonly _tag: "InstagramGuardBlocked";
-}
-
-export interface InstagramBadRedirect {
-  readonly _tag: "InstagramBadRedirect";
-}
-
-export interface InstagramTooManyRedirects {
-  readonly _tag: "InstagramTooManyRedirects";
-}
-
-export interface InstagramUnresolved {
-  readonly _tag: "InstagramUnresolved";
-}
-
 export type InstagramError =
-  | InstagramBadRedirect
-  | InstagramGuardBlocked
-  | InstagramLoginRedirect
-  | InstagramLoginWall
-  | InstagramNotFound
-  | InstagramNoVideo
-  | InstagramTooManyRedirects
-  | InstagramUnreachable
-  | InstagramUnresolved
-  | InstagramUpstream;
+  | { readonly _tag: "InstagramBadRedirect" }
+  | { readonly _tag: "InstagramGuardBlocked" }
+  | { readonly _tag: "InstagramLoginRedirect" }
+  | { readonly _tag: "InstagramLoginWall" }
+  | { readonly _tag: "InstagramNoVideo" }
+  | { readonly _tag: "InstagramNotFound" }
+  | { readonly _tag: "InstagramTooManyRedirects" }
+  | { readonly _tag: "InstagramUnreachable" }
+  | { readonly _tag: "InstagramUnresolved" }
+  | { readonly _tag: "InstagramUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -118,11 +78,7 @@ export const instagramErrorMessage = (error: InstagramError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(
-        `Unhandled InstagramError: ${JSON.stringify(exhaustive)}`
-      );
+      return unhandledError("Instagram", error);
     }
   }
 };

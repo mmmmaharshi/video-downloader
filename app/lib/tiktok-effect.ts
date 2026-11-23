@@ -12,6 +12,7 @@ import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
+import { unhandledError } from "./unhandled-error";
 
 // Module: TikTokEffect — the TikTok page scrape as an Effect program. The
 // rehydration JSON carries playAddr/downloadAddr plus cover; og:video and
@@ -21,48 +22,15 @@ import type { VideoAsset } from "./resolve-query";
 // legacy user-facing strings at the bridge in media-resolver, which keeps
 // resolve()'s thrown-Error contract.
 
-export interface TikTokNotFound {
-  readonly _tag: "TikTokNotFound";
-}
-
-export interface TikTokUpstream {
-  readonly _tag: "TikTokUpstream";
-  readonly status: number;
-}
-
-export interface TikTokNoVideo {
-  readonly _tag: "TikTokNoVideo";
-}
-
-export interface TikTokUnreachable {
-  readonly _tag: "TikTokUnreachable";
-}
-
-export interface TikTokGuardBlocked {
-  readonly _tag: "TikTokGuardBlocked";
-}
-
-export interface TikTokBadRedirect {
-  readonly _tag: "TikTokBadRedirect";
-}
-
-export interface TikTokTooManyRedirects {
-  readonly _tag: "TikTokTooManyRedirects";
-}
-
-export interface TikTokUnresolved {
-  readonly _tag: "TikTokUnresolved";
-}
-
 export type TikTokError =
-  | TikTokBadRedirect
-  | TikTokGuardBlocked
-  | TikTokNoVideo
-  | TikTokNotFound
-  | TikTokTooManyRedirects
-  | TikTokUnreachable
-  | TikTokUnresolved
-  | TikTokUpstream;
+  | { readonly _tag: "TikTokBadRedirect" }
+  | { readonly _tag: "TikTokGuardBlocked" }
+  | { readonly _tag: "TikTokNoVideo" }
+  | { readonly _tag: "TikTokNotFound" }
+  | { readonly _tag: "TikTokTooManyRedirects" }
+  | { readonly _tag: "TikTokUnreachable" }
+  | { readonly _tag: "TikTokUnresolved" }
+  | { readonly _tag: "TikTokUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -101,9 +69,7 @@ export const tiktokErrorMessage = (error: TikTokError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled TikTokError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("TikTok", error);
     }
   }
 };

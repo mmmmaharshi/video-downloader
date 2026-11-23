@@ -13,6 +13,7 @@ import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
+import { unhandledError } from "./unhandled-error";
 
 // Module: GenericEffect — the catch-all fetch as an Effect program. A video
 // or gif content-type resolves the link itself (the body is never read, only
@@ -22,48 +23,15 @@ import type { VideoAsset } from "./resolve-query";
 // strings at the bridge in media-resolver, which keeps resolve()'s thrown-Error
 // contract.
 
-export interface GenericNotFound {
-  readonly _tag: "GenericNotFound";
-}
-
-export interface GenericUpstream {
-  readonly _tag: "GenericUpstream";
-  readonly status: number;
-}
-
-export interface GenericNoVideo {
-  readonly _tag: "GenericNoVideo";
-}
-
-export interface GenericUnreachable {
-  readonly _tag: "GenericUnreachable";
-}
-
-export interface GenericGuardBlocked {
-  readonly _tag: "GenericGuardBlocked";
-}
-
-export interface GenericBadRedirect {
-  readonly _tag: "GenericBadRedirect";
-}
-
-export interface GenericTooManyRedirects {
-  readonly _tag: "GenericTooManyRedirects";
-}
-
-export interface GenericUnresolved {
-  readonly _tag: "GenericUnresolved";
-}
-
 export type GenericError =
-  | GenericBadRedirect
-  | GenericGuardBlocked
-  | GenericNoVideo
-  | GenericNotFound
-  | GenericTooManyRedirects
-  | GenericUnreachable
-  | GenericUnresolved
-  | GenericUpstream;
+  | { readonly _tag: "GenericBadRedirect" }
+  | { readonly _tag: "GenericGuardBlocked" }
+  | { readonly _tag: "GenericNoVideo" }
+  | { readonly _tag: "GenericNotFound" }
+  | { readonly _tag: "GenericTooManyRedirects" }
+  | { readonly _tag: "GenericUnreachable" }
+  | { readonly _tag: "GenericUnresolved" }
+  | { readonly _tag: "GenericUpstream"; readonly status: number };
 
 const NO_VIDEO_FOUND =
   "No video found at this link. Only pages, video files, and GIFs are downloadable.";
@@ -105,9 +73,7 @@ export const genericErrorMessage = (error: GenericError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled GenericError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("This link", error);
     }
   }
 };

@@ -1,7 +1,7 @@
 // Module: PinnedFetch — dial a validated address while the request still names
 // the original origin. Server-only; the address approval lives in PublicHost.
 
-import { ipVersion } from "./public-host";
+import { GUARD_BLOCKED_MESSAGE, ipVersion } from "./public-host";
 import { runsOnWorkers } from "./runtime";
 
 type PinHost = (
@@ -25,7 +25,7 @@ export const pinnedFetch: PinHost = async (doFetch, url, addresses, init) => {
 
   // fail closed: an empty approval set must never turn into a hostname fetch
   if (!address) {
-    throw new Error("Only public links are supported.");
+    throw new Error(GUARD_BLOCKED_MESSAGE);
   }
 
   if (runsOnWorkers()) {

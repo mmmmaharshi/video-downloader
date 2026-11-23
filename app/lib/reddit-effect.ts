@@ -10,6 +10,7 @@ import {
 import { readPageJson } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
+import { unhandledError } from "./unhandled-error";
 import { CHROME_UA } from "./user-agent";
 
 // Module: RedditEffect — the Reddit listing fetch as an Effect program. The
@@ -19,53 +20,16 @@ import { CHROME_UA } from "./user-agent";
 // user-facing strings at the bridge in media-resolver, which keeps resolve()'s
 // thrown-Error contract.
 
-export interface RedditNotFound {
-  readonly _tag: "RedditNotFound";
-}
-
-export interface RedditUpstream {
-  readonly _tag: "RedditUpstream";
-  readonly status: number;
-}
-
-export interface RedditUnexpectedResponse {
-  readonly _tag: "RedditUnexpectedResponse";
-}
-
-export interface RedditNoVideo {
-  readonly _tag: "RedditNoVideo";
-}
-
-export interface RedditUnreachable {
-  readonly _tag: "RedditUnreachable";
-}
-
-export interface RedditGuardBlocked {
-  readonly _tag: "RedditGuardBlocked";
-}
-
-export interface RedditBadRedirect {
-  readonly _tag: "RedditBadRedirect";
-}
-
-export interface RedditTooManyRedirects {
-  readonly _tag: "RedditTooManyRedirects";
-}
-
-export interface RedditUnresolved {
-  readonly _tag: "RedditUnresolved";
-}
-
 export type RedditError =
-  | RedditBadRedirect
-  | RedditGuardBlocked
-  | RedditNoVideo
-  | RedditNotFound
-  | RedditTooManyRedirects
-  | RedditUnexpectedResponse
-  | RedditUnreachable
-  | RedditUnresolved
-  | RedditUpstream;
+  | { readonly _tag: "RedditBadRedirect" }
+  | { readonly _tag: "RedditGuardBlocked" }
+  | { readonly _tag: "RedditNoVideo" }
+  | { readonly _tag: "RedditNotFound" }
+  | { readonly _tag: "RedditTooManyRedirects" }
+  | { readonly _tag: "RedditUnexpectedResponse" }
+  | { readonly _tag: "RedditUnreachable" }
+  | { readonly _tag: "RedditUnresolved" }
+  | { readonly _tag: "RedditUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -108,9 +72,7 @@ export const redditErrorMessage = (error: RedditError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled RedditError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("Reddit", error);
     }
   }
 };

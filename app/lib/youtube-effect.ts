@@ -2,6 +2,7 @@ import { Context, Effect } from "effect";
 
 import { FetchDeps } from "./fetch-deps";
 import { fetchGuarded } from "./guarded-fetch";
+import { unhandledError } from "./unhandled-error";
 import type { ClientName, TubeAsset, TubeInfo } from "./youtube";
 
 // Module: YouTubeEffect — the anonymous MP4 extraction as an Effect program.
@@ -50,9 +51,7 @@ export const youtubeErrorMessage = (error: YouTubeError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled YouTubeError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("YouTube", error);
     }
   }
 };

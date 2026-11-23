@@ -13,6 +13,7 @@ import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
+import { unhandledError } from "./unhandled-error";
 
 // Module: FacebookEffect — the Facebook page scrape as an Effect program.
 // Facebook ships the video file only on the full (browser-header) page
@@ -24,53 +25,16 @@ import type { VideoAsset } from "./resolve-query";
 // at the bridge in media-resolver, which keeps resolve()'s thrown-Error
 // contract.
 
-export interface FacebookNotFound {
-  readonly _tag: "FacebookNotFound";
-}
-
-export interface FacebookUpstream {
-  readonly _tag: "FacebookUpstream";
-  readonly status: number;
-}
-
-export interface FacebookLoginRedirect {
-  readonly _tag: "FacebookLoginRedirect";
-}
-
-export interface FacebookNoVideo {
-  readonly _tag: "FacebookNoVideo";
-}
-
-export interface FacebookUnreachable {
-  readonly _tag: "FacebookUnreachable";
-}
-
-export interface FacebookGuardBlocked {
-  readonly _tag: "FacebookGuardBlocked";
-}
-
-export interface FacebookBadRedirect {
-  readonly _tag: "FacebookBadRedirect";
-}
-
-export interface FacebookTooManyRedirects {
-  readonly _tag: "FacebookTooManyRedirects";
-}
-
-export interface FacebookUnresolved {
-  readonly _tag: "FacebookUnresolved";
-}
-
 export type FacebookError =
-  | FacebookBadRedirect
-  | FacebookGuardBlocked
-  | FacebookLoginRedirect
-  | FacebookNoVideo
-  | FacebookNotFound
-  | FacebookTooManyRedirects
-  | FacebookUnreachable
-  | FacebookUnresolved
-  | FacebookUpstream;
+  | { readonly _tag: "FacebookBadRedirect" }
+  | { readonly _tag: "FacebookGuardBlocked" }
+  | { readonly _tag: "FacebookLoginRedirect" }
+  | { readonly _tag: "FacebookNoVideo" }
+  | { readonly _tag: "FacebookNotFound" }
+  | { readonly _tag: "FacebookTooManyRedirects" }
+  | { readonly _tag: "FacebookUnreachable" }
+  | { readonly _tag: "FacebookUnresolved" }
+  | { readonly _tag: "FacebookUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -113,9 +77,7 @@ export const facebookErrorMessage = (error: FacebookError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled FacebookError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("Facebook", error);
     }
   }
 };

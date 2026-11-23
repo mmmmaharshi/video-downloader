@@ -12,6 +12,7 @@ import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
+import { unhandledError } from "./unhandled-error";
 import { CHROME_UA } from "./user-agent";
 
 // Module: VimeoEffect — the Vimeo player-config fetch as an Effect program.
@@ -21,53 +22,16 @@ import { CHROME_UA } from "./user-agent";
 // mapped to the legacy user-facing strings at the bridge in media-resolver,
 // which keeps resolve()'s thrown-Error contract.
 
-export interface VimeoNotFound {
-  readonly _tag: "VimeoNotFound";
-}
-
-export interface VimeoUpstream {
-  readonly _tag: "VimeoUpstream";
-  readonly status: number;
-}
-
-export interface VimeoUnexpectedResponse {
-  readonly _tag: "VimeoUnexpectedResponse";
-}
-
-export interface VimeoNoVideo {
-  readonly _tag: "VimeoNoVideo";
-}
-
-export interface VimeoUnreachable {
-  readonly _tag: "VimeoUnreachable";
-}
-
-export interface VimeoGuardBlocked {
-  readonly _tag: "VimeoGuardBlocked";
-}
-
-export interface VimeoBadRedirect {
-  readonly _tag: "VimeoBadRedirect";
-}
-
-export interface VimeoTooManyRedirects {
-  readonly _tag: "VimeoTooManyRedirects";
-}
-
-export interface VimeoUnresolved {
-  readonly _tag: "VimeoUnresolved";
-}
-
 export type VimeoError =
-  | VimeoBadRedirect
-  | VimeoGuardBlocked
-  | VimeoNoVideo
-  | VimeoNotFound
-  | VimeoTooManyRedirects
-  | VimeoUnexpectedResponse
-  | VimeoUnreachable
-  | VimeoUnresolved
-  | VimeoUpstream;
+  | { readonly _tag: "VimeoBadRedirect" }
+  | { readonly _tag: "VimeoGuardBlocked" }
+  | { readonly _tag: "VimeoNoVideo" }
+  | { readonly _tag: "VimeoNotFound" }
+  | { readonly _tag: "VimeoTooManyRedirects" }
+  | { readonly _tag: "VimeoUnexpectedResponse" }
+  | { readonly _tag: "VimeoUnreachable" }
+  | { readonly _tag: "VimeoUnresolved" }
+  | { readonly _tag: "VimeoUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -110,9 +74,7 @@ export const vimeoErrorMessage = (error: VimeoError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled VimeoError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("Vimeo", error);
     }
   }
 };

@@ -11,6 +11,7 @@ import {
 import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { readPageText } from "./page-body";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
+import { unhandledError } from "./unhandled-error";
 
 // Module: ThreadsEffect — the Threads page scrape as an Effect program. The
 // post page carries og:video; a page without one is not a video post.
@@ -18,48 +19,15 @@ import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 // mapped to the legacy user-facing strings at the bridge in media-resolver,
 // which keeps resolve()'s thrown-Error contract.
 
-export interface ThreadsNotFound {
-  readonly _tag: "ThreadsNotFound";
-}
-
-export interface ThreadsUpstream {
-  readonly _tag: "ThreadsUpstream";
-  readonly status: number;
-}
-
-export interface ThreadsNoVideo {
-  readonly _tag: "ThreadsNoVideo";
-}
-
-export interface ThreadsUnreachable {
-  readonly _tag: "ThreadsUnreachable";
-}
-
-export interface ThreadsGuardBlocked {
-  readonly _tag: "ThreadsGuardBlocked";
-}
-
-export interface ThreadsUnresolved {
-  readonly _tag: "ThreadsUnresolved";
-}
-
-export interface ThreadsBadRedirect {
-  readonly _tag: "ThreadsBadRedirect";
-}
-
-export interface ThreadsTooManyRedirects {
-  readonly _tag: "ThreadsTooManyRedirects";
-}
-
 export type ThreadsError =
-  | ThreadsBadRedirect
-  | ThreadsGuardBlocked
-  | ThreadsNoVideo
-  | ThreadsNotFound
-  | ThreadsTooManyRedirects
-  | ThreadsUnreachable
-  | ThreadsUnresolved
-  | ThreadsUpstream;
+  | { readonly _tag: "ThreadsBadRedirect" }
+  | { readonly _tag: "ThreadsGuardBlocked" }
+  | { readonly _tag: "ThreadsNoVideo" }
+  | { readonly _tag: "ThreadsNotFound" }
+  | { readonly _tag: "ThreadsTooManyRedirects" }
+  | { readonly _tag: "ThreadsUnreachable" }
+  | { readonly _tag: "ThreadsUnresolved" }
+  | { readonly _tag: "ThreadsUpstream"; readonly status: number };
 
 // Legacy strings, pinned by test: the bridge keeps resolve()'s contract while
 // the program reasons in tags.
@@ -98,9 +66,7 @@ export const threadsErrorMessage = (error: ThreadsError): string => {
     }
 
     default: {
-      const exhaustive: never = error;
-
-      throw new Error(`Unhandled ThreadsError: ${JSON.stringify(exhaustive)}`);
+      return unhandledError("Threads", error);
     }
   }
 };

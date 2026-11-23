@@ -248,17 +248,12 @@ const matchStreamable = (sourceUrl: string): { code: string } | undefined => {
     return undefined;
   }
 
-  const code = url.pathname.match(
-    /^\/(?:o|s|e)?\/?(?<code>[A-Za-z0-9]+)(?:\/|$)/u
-  )?.groups?.code;
+  // the short link is /<code>; the /o/, /s/, /e/ and /embed/ prefixes are path
+  // segments, never letters of the code
+  const [, first = "", second = ""] = url.pathname.split("/");
+  const code = ["o", "s", "e", "embed"].includes(first) ? second : first;
 
-  if (!code) {
-    const [first] = url.pathname.slice(1).split("/");
-
-    return first ? { code: first } : undefined;
-  }
-
-  return { code };
+  return /^[A-Za-z0-9]+$/u.test(code) ? { code } : undefined;
 };
 
 const matchVimeo = (

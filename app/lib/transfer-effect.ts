@@ -15,8 +15,6 @@ import { UA } from "./user-agent";
 // passthrough, and manifest absolutization move with the flow so the two
 // never disagree.
 
-// the header-stall bound is the one every server fetch shares
-
 // stays inside the function's own wall clock; the platform still cuts a stream that overruns it
 const UPSTREAM_MAX_MS = 4 * 60_000;
 

@@ -36,11 +36,11 @@ const tooManyRequests = (): Response =>
 const tooLarge = (): Response =>
   Response.json({ error: "Request body too large." }, { status: 413 });
 
-export const handleWorkerRequest = (
+export const handleWorkerRequest = async (
   request: Request,
   env: WorkerEnv,
   deps: WorkerDeps = {}
-): Response | Promise<Response> => {
+): Promise<Response> => {
   const url = new URL(request.url);
   const doFetch = deps.fetch ?? fetch;
 
@@ -57,27 +57,25 @@ export const handleWorkerRequest = (
       request.headers.get("x-forwarded-for") ??
       "unknown";
 
-    return (async (): Promise<Response> => {
-      if (await overLimit(client, env.RATE_LIMITER)) {
-        return tooManyRequests();
-      }
+    if (await overLimit(client, env.RATE_LIMITER)) {
+      return tooManyRequests();
+    }
 
-      // the cap is enforced while reading, so a chunked body cannot slip past
-      const body = await readBounded(request, MAX_FORM_BYTES);
+    // the cap is enforced while reading, so a chunked body cannot slip past
+    const body = await readBounded(request, MAX_FORM_BYTES);
 
-      if (!body.ok) {
-        return tooLarge();
-      }
+    if (!body.ok) {
+      return tooLarge();
+    }
 
-      return handleResolve(
-        new Request(request.url, {
-          body: body.body,
-          headers: request.headers,
-          method: "POST",
-        }),
-        { fetch: doFetch, lookup, secret }
-      );
-    })();
+    return handleResolve(
+      new Request(request.url, {
+        body: body.body,
+        headers: request.headers,
+        method: "POST",
+      }),
+      { fetch: doFetch, lookup, secret }
+    );
   }
 
   if (url.pathname === API_DOWNLOAD) {
@@ -88,6 +86,6 @@ export const handleWorkerRequest = (
 };
 
 export default {
-  fetch: (request: Request, env: WorkerEnv): Response | Promise<Response> =>
+  fetch: (request: Request, env: WorkerEnv): Promise<Response> =>
     handleWorkerRequest(request, env),
 };

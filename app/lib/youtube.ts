@@ -191,9 +191,4 @@ export const getYouTubeFormats = async (
   );
 };
 
-export type {
-  ClientName,
-  TubeAsset,
-  TubeFormat,
-  TubeInfo,
-} from "./youtube-types";
+export type { TubeAsset, TubeInfo } from "./youtube-types";

@@ -87,7 +87,7 @@ describe("client boundary", () => {
 });
 
 describe("styling surface", () => {
-  // Every visual rule lives in a Tailwind utility or a HeroUI token, so new CSS
+  // Every visual rule lives in a Tailwind utility, so new CSS
   // means a decision someone should make on purpose.
   test("app.css is the only stylesheet under app/", async () => {
     const entries = await readdir(APP_DIR, { recursive: true });

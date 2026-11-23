@@ -15,8 +15,6 @@
   "dependencies": {
     "@alchemy.run/cloudflare": "2.0.0-beta.87",
     "@cloudflare/workers-types": "5.20261114.1",
-    "@effect/platform-node": "4.1.4",
-    "@effect/vitest": "4.1.4",
     "@foldkit/ui": "0.170.0",
     "@foldkit/vite-plugin": "0.29.0",
     "@fontsource-variable/geist-pixel": "^5.3.1",

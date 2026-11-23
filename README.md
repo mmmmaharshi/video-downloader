@@ -9,10 +9,6 @@ Live: https://download.maharshi.work
     bun install
     DOWNLOAD_SECRET="$(openssl rand -base64 32)" bun run dev
 
-`DOWNLOAD_SECRET` signs the download links (`/api/download?…&s=…`) and must be the same value on every instance — set it once in the deploy environment. Without it the resolve action cannot build a download link.
+`DOWNLOAD_SECRET` signs the download links (`/api/download?…&s=…`) and must be the same value on every instance — set it once in the deploy environment. Without it, resolving fails closed instead of minting links.
 
-In Vercel, scope `DOWNLOAD_SECRET` to Production only. Contributors can open pull requests, so Preview deployments must not read this value. `vercel.json` disables git auto-deploys. The `verify` workflow's deploy hook on `master` is the only path to production.
-
-Verify with `bun run verify` (typecheck, tests, lint + format, production build).
-
-The HeroUI MCP server in `opencode.json` is pinned to `@heroui/react-mcp@1.1.4`. Without `-y`, `npx` prompts before install.
+`bun run dev` serves the client with the API in-process. `bun run build` emits `dist/`; `bun server/serve.ts` serves it (`PORT` defaults to 3000). `vercel.json` keeps git-push deploys off: production deploys from the CI `deploy` job after `verify` passes. Verify with `bun run verify` (typecheck, tests, lint + format, production build).

@@ -27,8 +27,6 @@ const resolvedAssetSchema = Schema.Struct({
 // domain type, so a new field cannot be added to one side only.
 export type VideoAsset = typeof videoAssetSchema.Type;
 
-export type ResolvedAsset = typeof resolvedAssetSchema.Type;
-
 export const resolveResultSchema = Schema.Union([
   Schema.Struct({ assets: Schema.Array(resolvedAssetSchema) }),
   Schema.Struct({ error: Schema.String }),

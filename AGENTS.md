@@ -26,7 +26,7 @@
 - Make each change fully verifiable: prefer the real service and a real browser click-through over mocks and fixtures. If no check can fail, say so instead of faking verification.
 - Run long-running processes in the foreground so they end with the session. Detach one only when the user asks for a process that outlives the session.
 - Production deploys from the CI `deploy` job, after `verify` passes — not from the push. `vercel.json` turns Vercel's own git deploy off for every branch, so a red run ships nothing. Cloudflare plus Alchemy is the declared deploy target (ADR-0003); until the Alchemy stack lands, declare no infrastructure by hand.
-- The Cloudflare deploy needs `CLOUDFLARE_API_TOKEN` plus the account ID from the user. The `cf-cli`, `wrangler`, `frameworks-on-cloudflare`, `workers-best-practices`, and `workers-development` skills are installed — consult them before touching deploy config.
+- The Cloudflare deploy runs through the `cf` CLI (`npx cf deploy --secrets-file .dev.vars`), configured by `cloudflare.config.ts`. `cf` needs Node, never Bun. The `cf-cli`, `wrangler`, `frameworks-on-cloudflare`, `workers-best-practices`, and `workers-development` skills are installed — consult them before touching deploy config.
 - Don't push without the user's permission. Commit locally; the user pushes.
 
 ## Agent skills

@@ -1,7 +1,7 @@
 // Module: PinnedFetch — dial a validated address while the request still names
 // the original origin. Server-only; the address approval lives in PublicHost.
 
-import { isIP } from "node:net";
+import { ipVersion } from "./public-host";
 
 type PinHost = (
   doFetch: typeof fetch,
@@ -50,7 +50,7 @@ export const pinnedFetch: PinHost = async (doFetch, url, addresses, init) => {
   const dial = new URL(url);
 
   // the URL parser only accepts a bare address for IPv4; IPv6 needs brackets
-  dial.hostname = isIP(address) === 6 ? `[${address}]` : address;
+  dial.hostname = ipVersion(address) === 6 ? `[${address}]` : address;
 
   const headers = new Headers(init.headers);
 

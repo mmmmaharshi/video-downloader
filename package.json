@@ -9,6 +9,7 @@
     "typecheck": "tsc",
     "test": "VITE_CONFIG_NATIVE_IGNORE_WARNING=true vitest run",
     "check": "ultracite check",
+    "deploy": "npx cf deploy --secrets-file .dev.vars",
     "fix": "ultracite fix",
     "verify": "bun run typecheck && bun run test && bun run check && bun run build"
   },
@@ -22,15 +23,16 @@
     "effect": "4.1.4",
     "foldkit": "0.170.0",
     "gifenc": "^1.0.3",
-    "vitest": "5.1.0",
-    "youtubei.js": "^18.1.0"
+    "vitest": "5.1.0"
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "^2.0.0-rc.0",
     "@gdp-ts/core": "^0.1.0",
     "@shadcn/lint": "^0.2.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/bun": "^1.4.3",
     "@types/node": "^22",
+    "cf": "^1.0.0-rc.4",
     "oxfmt": "^0.71.0",
     "oxlint": "1.88.0",
     "tailwindcss": "^4.2.2",

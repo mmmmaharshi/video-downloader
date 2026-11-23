@@ -4,16 +4,26 @@
 // so a page cannot hand us an internal address to fetch. Server-only.
 // PinnedFetch owns dialing the addresses this module approves.
 
-import { lookup as dnsLookup } from "node:dns/promises";
-import { isIP } from "node:net";
-
 import { Schema } from "effect";
+
+// IPv4 vs IPv6 without node:net, so the same module loads on Workers.
+// Returns 4, 6, or 0 for "neither".
+export const ipVersion = (address: string): 0 | 4 | 6 => {
+  if (/^\d{1,3}(?:\.\d{1,3}){3}$/u.test(address)) {
+    return 4;
+  }
+
+  return address.includes(":") ? 6 : 0;
+};
 
 // DNS seam: production resolves for real, tests inject addresses.
 // Both sync and async doubles work — every use site awaits.
 export type HostLookup = (hostname: string) => Promise<string[]> | string[];
 
 export const defaultLookup: HostLookup = async (hostname) => {
+  // dynamic so the Workers bundle never pulls node:dns: on Workers the caller
+  // passes dohLookup instead of using this default
+  const { lookup: dnsLookup } = await import("node:dns/promises");
   const records = await dnsLookup(hostname, { all: true });
 
   return records.map((r) => r.address);
@@ -43,9 +53,14 @@ const dohQuery = async (
   }
 
   try {
+    // DoH mixes CNAME targets into Answer as hostnames ("x.cloudfront.net.")
+    // beside the A/AAAA records; only real addresses may reach the guard,
+    // which blocks anything it cannot parse.
     return (
       Schema.decodeUnknownSync(DohResponse)(await res.json()).Answer ?? []
-    ).map((record) => record.data);
+    )
+      .map((record) => record.data)
+      .filter((data) => ipVersion(data) !== 0);
   } catch {
     return [];
   }
@@ -130,11 +145,11 @@ const isBlockedIPV6 = (addr: string): boolean => {
 };
 
 const isBlockedAddress = (addr: string): boolean => {
-  if (isIP(addr) === 4) {
+  if (ipVersion(addr) === 4) {
     return isBlockedIPV4(addr);
   }
 
-  if (isIP(addr) === 6) {
+  if (ipVersion(addr) === 6) {
     return isBlockedIPV6(addr);
   }
 

@@ -16,6 +16,15 @@ const ipv6Loopback: DohFetch = (url) =>
 const dohDown: DohFetch = () =>
   Promise.resolve(new Response("down", { status: 500 }));
 
+const cdnAnswer: DohFetch = (url) =>
+  Promise.resolve(
+    dohResponse(
+      url.toString().includes("type=AAAA")
+        ? []
+        : ["d2siujj6mte9cd.cloudfront.net.", "54.240.162.66"]
+    )
+  );
+
 describe("dohLookup", () => {
   test("merges A and AAAA answers", async () => {
     const seen: string[] = [];
@@ -35,6 +44,14 @@ describe("dohLookup", () => {
     expect(addresses).toEqual(["1.1.1.1", "2606:4700:4700::1111"]);
     expect(seen.some((u) => u.includes("type=A"))).toBe(true);
     expect(seen.some((u) => u.includes("type=AAAA"))).toBe(true);
+  });
+
+  test("drops CNAME targets a CDN answer mixes in", async () => {
+    // DoH answers carry the CNAME chain beside the addresses; a hostname is
+    // not an address, and treating it as one blocked every CDN-backed site
+    expect(await dohLookup("www.dailymotion.com", cdnAnswer)).toEqual([
+      "54.240.162.66",
+    ]);
   });
 
   test("refuses a private answer before the caller dials it", async () => {

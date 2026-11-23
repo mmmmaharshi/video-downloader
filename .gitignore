@@ -2,8 +2,12 @@
 .env
 /node_modules/
 
-# Build output (Vite client bundle served by server/serve.ts)
+# Build output (Vite client bundle; the Cloudflare plugin writes its own)
 /dist/
+/.cloudflare/
+
+# Local dev secret for the Worker (`cf deploy --secrets-file .dev.vars`)
+/.dev.vars
 
 # React Router (retired with the shell cutover; entries kept until history says otherwise)
 /.react-router/
@@ -17,3 +21,6 @@
 /.claude/
 /.opencode/
 /skills-lock.json
+
+# Local Worker runtime state (cf dev / miniflare)
+/.wrangler/

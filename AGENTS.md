@@ -7,10 +7,10 @@
 
 ## Styling
 
-- HeroUI v3 is frozen: fix bugs in the current UI, but build no new HeroUI components and extend no HeroUI theme tokens.
-- New UI work targets Foldkit with the `$scandinavian-design` system: near-black canvas, neutral alpha ink, restraint, no decorative color. One primary action per view. Left-align text.
-- Until the Foldkit rebuild lands, keep the dark theme (`<html class="dark" data-theme="dark">` in `app/root.tsx`) and the Geist Pixel Variable typeface (`--font-sans` in `app/app.css`).
-- Layout with standard Tailwind utilities only. No custom CSS beyond the two imports and the font token.
+- HeroUI is retired from routes: no HeroUI import remains (styles import removed with the old home). Do not reintroduce it.
+- Home UI is Foldkit with the `$scandinavian-design` system: near-black canvas, neutral alpha ink, restraint, no decorative color. One primary action per view. Left-align text. It lives in `app/foldkit-home/` (Model, Messages, update, view, Commands) and is embedded in `app/routes/home.tsx` via `Runtime.embed`.
+- Keep the dark theme (`<html class="dark" data-theme="dark">` in `app/root.tsx`) and the Geist Pixel Variable typeface (`--font-sans` in `app/app.css`).
+- Layout with standard Tailwind utilities only. No custom CSS beyond the tailwind import and the font token.
 
 ## Effect
 

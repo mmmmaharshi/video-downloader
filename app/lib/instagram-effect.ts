@@ -1,9 +1,7 @@
 import { Effect } from "effect";
 
-import { FetchDeps, classifyTransportError } from "./fetch-deps";
+import type { FetchDeps } from "./fetch-deps";
 import {
-  fetchGuarded,
-  FETCH_TIMEOUT_MS,
   INVALID_REDIRECT_MESSAGE,
   PAGE_HEADERS,
   TOO_MANY_REDIRECTS_MESSAGE,
@@ -14,6 +12,7 @@ import {
   extractThumbnail,
 } from "./og-meta";
 import { readPageText } from "./page-body";
+import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { unhandledError } from "./unhandled-error";
 import { UA } from "./user-agent";
@@ -90,35 +89,6 @@ export const instagramErrorMessage = (error: InstagramError): string => {
 export const toThrownError = (error: InstagramError): Error =>
   new Error(instagramErrorMessage(error));
 
-interface InstagramPage {
-  readonly res: Response;
-  readonly url: string;
-}
-
-const fetchPage = (
-  url: string,
-  headers: Record<string, string>
-): Effect.Effect<InstagramPage, InstagramError, FetchDeps> =>
-  Effect.gen(function* page() {
-    const { doFetch, lookup } = yield* FetchDeps;
-
-    return yield* Effect.tryPromise({
-      catch: (cause) =>
-        classifyTransportError(cause, {
-          badRedirect: { _tag: "InstagramBadRedirect" as const },
-          blocked: { _tag: "InstagramGuardBlocked" as const },
-          tooManyRedirects: { _tag: "InstagramTooManyRedirects" as const },
-          unreachable: { _tag: "InstagramUnreachable" as const },
-          unresolved: { _tag: "InstagramUnresolved" as const },
-        }),
-      try: () =>
-        fetchGuarded({ doFetch, lookup }, url, {
-          headers,
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        }),
-    });
-  });
-
 export interface InstagramInput {
   readonly shortcode: string;
   readonly sourceUrl: string;
@@ -134,9 +104,18 @@ export const resolveInstagramProgram = (
 ): Effect.Effect<InstagramStreams, InstagramError, FetchDeps> =>
   Effect.gen(function* program() {
     const { shortcode, sourceUrl } = input;
-    const { doFetch, lookup } = yield* FetchDeps;
 
-    const { res, url } = yield* fetchPage(sourceUrl, { ...PAGE_HEADERS });
+    const { res, url } = yield* fetchPage(
+      sourceUrl,
+      { ...PAGE_HEADERS },
+      {
+        badRedirect: { _tag: "InstagramBadRedirect" as const },
+        blocked: { _tag: "InstagramGuardBlocked" as const },
+        tooManyRedirects: { _tag: "InstagramTooManyRedirects" as const },
+        unreachable: { _tag: "InstagramUnreachable" as const },
+        unresolved: { _tag: "InstagramUnresolved" as const },
+      }
+    );
 
     // more specific than the status itself: a login redirect is a private post, not a bad link
     if (
@@ -181,21 +160,25 @@ export const resolveInstagramProgram = (
 
       const endpoint = `https://www.instagram.com/${embedKind}/${shortcode}/embed/captioned/`;
 
-      const embedded = yield* Effect.promise(() =>
-        fetchGuarded({ doFetch, lookup }, endpoint, {
-          headers: { "User-Agent": UA },
-        }).then(
-          async ({ res: er }) => {
-            if (!er.ok) {
-              return null;
-            }
-
-            const ehtml = await readPageText(er);
-
-            return extractEscapedVideo(ehtml) ?? null;
-          },
-          () => null
-        )
+      // the embed page is a second scrape; a failure there means "no embed",
+      // not a failed resolve, so the tag list is never reached
+      const embedded = yield* fetchPage(
+        endpoint,
+        { "User-Agent": UA },
+        {
+          badRedirect: { _tag: "InstagramBadRedirect" as const },
+          blocked: { _tag: "InstagramGuardBlocked" as const },
+          tooManyRedirects: { _tag: "InstagramTooManyRedirects" as const },
+          unreachable: { _tag: "InstagramUnreachable" as const },
+          unresolved: { _tag: "InstagramUnresolved" as const },
+        }
+      ).pipe(
+        Effect.flatMap(({ res: er }) =>
+          Effect.promise(async () =>
+            er.ok ? (extractEscapedVideo(await readPageText(er)) ?? null) : null
+          )
+        ),
+        Effect.orElseSucceed(() => null)
       );
 
       videoUrl = embedded ?? videoUrl;

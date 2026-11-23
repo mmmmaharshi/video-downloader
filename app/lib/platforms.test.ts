@@ -23,6 +23,7 @@ const SERVER_ONLY_MODULES = [
   "instagram-effect",
   "loom-effect",
   "media-resolver",
+  "page-fetch",
   "pinned-fetch",
   "public-host",
   "reddit-effect",

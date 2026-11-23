@@ -1,15 +1,14 @@
 import { Effect } from "effect";
 
-import { FetchDeps, classifyTransportError } from "./fetch-deps";
+import type { FetchDeps } from "./fetch-deps";
 import {
-  fetchGuarded,
-  FETCH_TIMEOUT_MS,
   INVALID_REDIRECT_MESSAGE,
   PAGE_HEADERS,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail, normalizeUrl } from "./og-meta";
 import { readPageText } from "./page-body";
+import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
@@ -103,23 +102,18 @@ export const resolveFacebookProgram = (
 ): Effect.Effect<VideoAsset[], FacebookError, FetchDeps> =>
   Effect.gen(function* program() {
     const { fetchUrl, id, sourceUrl } = input;
-    const { doFetch, lookup } = yield* FetchDeps;
 
-    const { res, url } = yield* Effect.tryPromise({
-      catch: (cause) =>
-        classifyTransportError(cause, {
-          badRedirect: { _tag: "FacebookBadRedirect" as const },
-          blocked: { _tag: "FacebookGuardBlocked" as const },
-          tooManyRedirects: { _tag: "FacebookTooManyRedirects" as const },
-          unreachable: { _tag: "FacebookUnreachable" as const },
-          unresolved: { _tag: "FacebookUnresolved" as const },
-        }),
-      try: () =>
-        fetchGuarded({ doFetch, lookup }, fetchUrl, {
-          headers: { ...PAGE_HEADERS },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        }),
-    });
+    const { res, url } = yield* fetchPage(
+      fetchUrl,
+      { ...PAGE_HEADERS },
+      {
+        badRedirect: { _tag: "FacebookBadRedirect" as const },
+        blocked: { _tag: "FacebookGuardBlocked" as const },
+        tooManyRedirects: { _tag: "FacebookTooManyRedirects" as const },
+        unreachable: { _tag: "FacebookUnreachable" as const },
+        unresolved: { _tag: "FacebookUnresolved" as const },
+      }
+    );
 
     // a login redirect is the only reliable private signal: public pages carry
     // login links in their chrome, so page text never decides this

@@ -1,15 +1,14 @@
 import { Effect, Schema } from "effect";
 
-import { FetchDeps, classifyTransportError } from "./fetch-deps";
+import type { FetchDeps } from "./fetch-deps";
 import {
-  fetchGuarded,
-  FETCH_TIMEOUT_MS,
   INVALID_REDIRECT_MESSAGE,
   PAGE_HEADERS,
   TOO_MANY_REDIRECTS_MESSAGE,
 } from "./guarded-fetch";
 import { extractOgVideo, extractThumbnail } from "./og-meta";
 import { readPageText } from "./page-body";
+import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
 import { unhandledError } from "./unhandled-error";
@@ -142,23 +141,18 @@ export const resolveTikTokProgram = (
 ): Effect.Effect<VideoAsset[], TikTokError, FetchDeps> =>
   Effect.gen(function* program() {
     const { id, sourceUrl } = input;
-    const { doFetch, lookup } = yield* FetchDeps;
 
-    const { res } = yield* Effect.tryPromise({
-      catch: (cause) =>
-        classifyTransportError(cause, {
-          badRedirect: { _tag: "TikTokBadRedirect" as const },
-          blocked: { _tag: "TikTokGuardBlocked" as const },
-          tooManyRedirects: { _tag: "TikTokTooManyRedirects" as const },
-          unreachable: { _tag: "TikTokUnreachable" as const },
-          unresolved: { _tag: "TikTokUnresolved" as const },
-        }),
-      try: () =>
-        fetchGuarded({ doFetch, lookup }, sourceUrl, {
-          headers: { ...PAGE_HEADERS },
-          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-        }),
-    });
+    const { res } = yield* fetchPage(
+      sourceUrl,
+      { ...PAGE_HEADERS },
+      {
+        badRedirect: { _tag: "TikTokBadRedirect" as const },
+        blocked: { _tag: "TikTokGuardBlocked" as const },
+        tooManyRedirects: { _tag: "TikTokTooManyRedirects" as const },
+        unreachable: { _tag: "TikTokUnreachable" as const },
+        unresolved: { _tag: "TikTokUnresolved" as const },
+      }
+    );
 
     if (res.status === 404) {
       return yield* Effect.fail({ _tag: "TikTokNotFound" as const });

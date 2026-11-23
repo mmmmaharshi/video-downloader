@@ -371,17 +371,13 @@ const matchDailymotion = (sourceUrl: string): { id: string } | undefined => {
 const matchRumble = (
   sourceUrl: string
 ): { direct: boolean; id: string } | undefined => {
-  let url: URL;
+  const parsed = parseTarget(sourceUrl);
 
-  try {
-    url = new URL(sourceUrl);
-  } catch {
+  if (parsed === undefined || !hostMatches("rumble", parsed.host)) {
     return undefined;
   }
 
-  if (!hostMatches("rumble", url.hostname.toLowerCase())) {
-    return undefined;
-  }
+  const { url } = parsed;
 
   // Rumble ids carry their leading v (v1a2b3c); the embed page uses the same form
   const embed = url.pathname.match(/^\/embed\/(?<id>v[A-Za-z0-9]+)\/?$/u)

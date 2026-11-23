@@ -110,8 +110,11 @@ const boundedBody = (
   );
 };
 
-// A manifest is buffered to rewrite its refs, so it needs a read cap of its own.
-// Overflow is a 413 here; MediaResolver truncates with the same shared read.
+// A manifest is buffered to rewrite its refs, so it needs a small cap of its
+// own: a playlist is text, and downloading the video's 1 GiB budget into memory
+// would be a mistake.
+const MANIFEST_MAX_BYTES = 8 * 1024 * 1024;
+
 const readCappedText = async (
   body: ReadableStream<Uint8Array> | null,
   limit: number
@@ -283,8 +286,13 @@ export const transferProgram = (
 
     if (isManifestContainer(ext)) {
       const text = yield* Effect.tryPromise({
-        catch: () => ({ _tag: "TransferTooLarge" as const }),
-        try: () => readCappedText(body, limit),
+        // overflow answers 413; anything else that breaks mid-body is the
+        // upstream failing, which must not claim the file was too large
+        catch: (cause) =>
+          cause instanceof Response
+            ? { _tag: "TransferTooLarge" as const }
+            : { _tag: "TransferBadUpstream" as const, status: 0 },
+        try: () => readCappedText(body, Math.min(MANIFEST_MAX_BYTES, limit)),
       });
 
       return new Response(absolutizeManifest(text, videoUrl, ext), {

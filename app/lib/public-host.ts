@@ -58,9 +58,7 @@ const dohQuery = async (
     // which blocks anything it cannot parse.
     return (
       Schema.decodeUnknownSync(DohResponse)(await res.json()).Answer ?? []
-    )
-      .map((record) => record.data)
-      .filter((data) => ipVersion(data) !== 0);
+    ).flatMap((record) => (ipVersion(record.data) === 0 ? [] : [record.data]));
   } catch {
     return [];
   }
@@ -84,23 +82,22 @@ export const dohLookup = async (
 };
 
 // Explicit range checks — Bun's net.BlockList mishandles IPv6.
-const isBlockedIPV4 = (addr: string): boolean => {
-  const [a, b, c] = addr.split(".").map(Number);
+const BLOCKED_V4_RANGES: ((a: number, b: number, c: number) => boolean)[] = [
+  (a) => a === 0 || a === 10 || a === 127 || a >= 224,
+  // CGNAT
+  (a, b) => a === 100 && b >= 64 && b <= 127,
+  (a, b) => a === 169 && b === 254,
+  (a, b) => a === 172 && b >= 16 && b <= 31,
+  // IETF-assigned, private
+  (a, b, c) => a === 192 && ((b === 0 && c === 0) || b === 168),
+  // benchmarking
+  (a, b) => a === 198 && (b === 18 || b === 19),
+];
 
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    a >= 224 ||
-    // CGNAT
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    // IETF-assigned, private
-    (a === 192 && ((b === 0 && c === 0) || b === 168)) ||
-    // benchmarking
-    (a === 198 && (b === 18 || b === 19))
-  );
+const isBlockedIPV4 = (addr: string): boolean => {
+  const [a = 0, b = 0, c = 0] = addr.split(".").map(Number);
+
+  return BLOCKED_V4_RANGES.some((range) => range(a, b, c));
 };
 
 // An IPv4-mapped address is the same host in another notation, and resolvers
@@ -122,6 +119,16 @@ const mappedIPv4 = (addr: string): string | undefined => {
     ?.v4;
 };
 
+// fe80::/10 is first hextet fe80–febf, i.e. second hex digit 8–b
+const BLOCKED_V6_CHECKS: ((address: string, first: string) => boolean)[] = [
+  (address) => address === "::",
+  (address) => address === "::1",
+  (address) => /^0(?::0){6,7}(?::1)?$/u.test(address),
+  (_address, first) =>
+    first.startsWith("fc") || first.startsWith("fd") || first.startsWith("ff"),
+  (_address, first) => /^fe[89ab]/u.test(first),
+];
+
 const isBlockedIPV6 = (addr: string): boolean => {
   const n = addr.toLowerCase();
   const mapped = mappedIPv4(n);
@@ -130,18 +137,9 @@ const isBlockedIPV6 = (addr: string): boolean => {
     return isBlockedIPV4(mapped);
   }
 
-  const [first] = n.split(":");
+  const [first = ""] = n.split(":");
 
-  // fe80::/10 is first hextet fe80–febf, i.e. second hex digit 8–b
-  return (
-    n === "::" ||
-    n === "::1" ||
-    /^0(?::0){6,7}(?::1)?$/u.test(n) ||
-    first.startsWith("fc") ||
-    first.startsWith("fd") ||
-    first.startsWith("ff") ||
-    /^fe[89ab]/u.test(first)
-  );
+  return BLOCKED_V6_CHECKS.some((check) => check(n, first));
 };
 
 const isBlockedAddress = (addr: string): boolean => {

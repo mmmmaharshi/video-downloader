@@ -76,7 +76,11 @@ export const fromDownloadRequest = (
   const exp = Number(params.get("e") ?? 0);
   const signature = params.get("s");
 
-  if (!videoUrl || !stem || !signature || !(exp > (deps.now ?? Date.now()))) {
+  if (!videoUrl || !stem || !signature) {
+    return reject();
+  }
+
+  if (exp <= (deps.now ?? Date.now())) {
     return reject();
   }
 

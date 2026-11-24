@@ -35,6 +35,13 @@ const thrown = (act: () => void): Response => {
   throw new Error("expected a Response, got none");
 };
 
+const nameOf =
+  (assets: Parameters<typeof toDownloadHref>[0]) => (index: number) =>
+    new URL(
+      toDownloadHref(assets, index, devDeps),
+      "https://app.example"
+    ).searchParams.get("name");
+
 describe("toDownloadHref", () => {
   test("names an X download after the tweet id", () => {
     const href = toDownloadHref(
@@ -80,11 +87,7 @@ describe("toDownloadHref", () => {
       asset("twitter", "99", "https://video.twimg.com/second.mp4"),
     ];
 
-    const name = (index: number) =>
-      new URL(
-        toDownloadHref(assets, index, devDeps),
-        "https://app.example"
-      ).searchParams.get("name");
+    const name = nameOf(assets);
 
     expect(name(0)).toBe("twitter-99-1");
     expect(name(1)).toBe("twitter-99-2");
@@ -96,11 +99,7 @@ describe("toDownloadHref", () => {
       asset("youtube", "dQw4w9WgXcQ", "https://x/720.mp4", "720p"),
     ];
 
-    const name = (index: number) =>
-      new URL(
-        toDownloadHref(assets, index, devDeps),
-        "https://app.example"
-      ).searchParams.get("name");
+    const name = nameOf(assets);
 
     expect(name(0)).toBe("youtube-dQw4w9WgXcQ-1080p");
     expect(name(1)).toBe("youtube-dQw4w9WgXcQ-720p");

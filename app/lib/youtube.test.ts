@@ -128,7 +128,7 @@ describe("getYouTubeFormats", () => {
     }).catch((error) => error);
 
     if (!(err instanceof Error)) {
-      throw new Error(`expected an Error, got ${String(err)}`);
+      throw new TypeError(`expected an Error, got ${String(err)}`);
     }
 
     expect(err.message).toMatch("YouTube is unreachable");

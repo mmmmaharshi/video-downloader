@@ -20,29 +20,31 @@ export const readCappedUtf8 = async (
   let text = "";
   let read = 0;
   let exceeded = false;
+  let finished = false;
 
-  while (!exceeded) {
+  while (!(finished || exceeded)) {
     // eslint-disable-next-line no-await-in-loop -- the cap is checked between reads
-    const { done, value } = await reader.read();
+    const chunk = await reader.read();
 
-    if (done) {
-      break;
-    }
+    finished = chunk.done;
 
-    // one more read after the cap proves whether the body had more bytes
-    if (read >= cap) {
-      exceeded = true;
-      break;
-    }
+    if (!chunk.done) {
+      if (read >= cap) {
+        // one more read after the cap proves whether the body had more bytes
+        exceeded = true;
+      } else {
+        const remaining = cap - read;
 
-    const remaining = cap - read;
+        read += chunk.value.byteLength;
+        // a single chunk can be larger than the budget — keep only what fits
+        text += decoder.decode(chunk.value.subarray(0, remaining), {
+          stream: true,
+        });
 
-    read += value.byteLength;
-    // a single chunk can be larger than the budget — keep only what fits
-    text += decoder.decode(value.subarray(0, remaining), { stream: true });
-
-    if (read > cap) {
-      exceeded = true;
+        if (read > cap) {
+          exceeded = true;
+        }
+      }
     }
   }
 

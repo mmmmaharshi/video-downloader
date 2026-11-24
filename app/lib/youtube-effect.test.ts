@@ -20,7 +20,7 @@ const info = (
   reason,
 });
 
-const mp4 = (url: string, height: number, muxed?: boolean) => ({
+const mp4 = (url: string, height: number, muxed = false) => ({
   height,
   mime_type: "video/mp4",
   muxed,

@@ -27,23 +27,23 @@ export const readBounded = async (
   let size = 0;
 
   let exceeded = false;
+  let finished = false;
 
-  for (;;) {
+  while (!(finished || exceeded)) {
     // eslint-disable-next-line no-await-in-loop -- bytes must be counted in order before the next read
-    const { done, value } = await reader.read();
+    const chunk = await reader.read();
 
-    if (done) {
-      break;
+    finished = chunk.done;
+
+    if (!chunk.done) {
+      size += chunk.value.byteLength;
+
+      if (size > max) {
+        exceeded = true;
+      } else {
+        chunks.push(chunk.value);
+      }
     }
-
-    size += value.byteLength;
-
-    if (size > max) {
-      exceeded = true;
-      break;
-    }
-
-    chunks.push(value);
   }
 
   if (exceeded) {

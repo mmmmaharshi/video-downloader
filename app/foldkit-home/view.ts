@@ -72,6 +72,8 @@ const downloadControl = (
   asset: Asset
 ): Html => {
   if (asset.gif !== "video") {
+    const suffix = asset.label === undefined ? "" : ` ${asset.label}`;
+
     return h.a(
       [
         h.Href(asset.downloadHref),
@@ -79,7 +81,7 @@ const downloadControl = (
           "text-left text-sm text-white/85 underline decoration-white/30 underline-offset-4"
         ),
       ],
-      [`Download${asset.label === undefined ? "" : ` ${asset.label}`}`]
+      [`Download${suffix}`]
     );
   }
 

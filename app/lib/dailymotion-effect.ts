@@ -11,6 +11,7 @@ import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import { byQuality, renditionLabel } from "./renditions";
 import type { Rendition } from "./renditions";
 import type { VideoAsset } from "./resolve-query";
+import { stripTrailing } from "./trailing";
 import { unhandledError } from "./unhandled-error";
 import { JSON_HEADERS } from "./user-agent";
 
@@ -55,7 +56,7 @@ export const dailymotionErrorMessage = (error: DailymotionError): string => {
 
     case "DailymotionUnavailable": {
       // the provider's title usually ends with its own period
-      return `This video is unavailable: ${error.reason.replace(/\.+$/u, "")}.`;
+      return `This video is unavailable: ${stripTrailing(error.reason, ".")}.`;
     }
 
     case "DailymotionUnreachable": {

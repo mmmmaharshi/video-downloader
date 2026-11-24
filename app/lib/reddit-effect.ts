@@ -9,6 +9,7 @@ import { readPageText } from "./page-body";
 import { fetchPage } from "./page-fetch";
 import { GUARD_BLOCKED_MESSAGE, GUARD_UNRESOLVED_MESSAGE } from "./public-host";
 import type { VideoAsset } from "./resolve-query";
+import { stripTrailing } from "./trailing";
 import { unhandledError } from "./unhandled-error";
 import { JSON_HEADERS } from "./user-agent";
 
@@ -216,7 +217,7 @@ export const resolveRedditProgram = (
   Effect.gen(function* program() {
     const { fetchUrl, id, sourceUrl } = input;
 
-    const jsonUrl = fetchUrl.split("?")[0].replace(/\/+$/u, "");
+    const jsonUrl = stripTrailing(fetchUrl.split("?")[0] ?? "", "/");
     const withJson = `${jsonUrl}.json`;
 
     const payload = yield* fetchRedditJson(withJson);

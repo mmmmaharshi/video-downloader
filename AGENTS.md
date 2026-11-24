@@ -47,9 +47,15 @@ Single-context: the domain doc is `CONTEXT.md` at the root — glossary and seam
 # Ultracite (oxlint + oxfmt)
 
 - `bun run check` verifies lint + format; `bun run fix` repairs.
-- Don't disable rules to make check pass. When a rule conflicts with real semantics, the exception is an inline disable with a stated reason: `// eslint-disable-next-line <rule> -- why`.
-- The vendored anti-slop preset (`ultracite/oxlint/anti-slop`, 18 rules at error) is on: every `as` assertion needs a `SAFETY:` comment stating the checked invariant.
-- The `shadcn` preset (Tailwind design-system class rules) and the `gdp` preset (no type assertions anywhere outside `proofs/`, `as const` excepted — parse at boundaries instead) are also on.
+- Don't disable rules to make check pass. When a rule conflicts with real semantics, the exception is an inline disable with a stated reason: `// eslint-disable-next-line <rule> -- why`, or a config entry carrying the same reason.
+- Every opt-in preset is on: `js-plugins` (github, sonarjs, react-doctor, TSDoc and JSDoc), `anti-slop`, `shadcn`, `gdp`, and `landmines`.
+- Four config-level exceptions, each because the rule contradicts a documented repo rule:
+  - `landmines-style/no-comments` — this repo comments the why the code cannot show.
+  - `landmines-types/no-explicit-return-types` — Effect programs state their failure union at the call site.
+  - `sonarjs/shorthand-property-grouping` — `sort-keys` orders keys alphabetically, so grouping the shorthand ones cannot also pass.
+  - `sonarjs/no-undefined-assignment` — the wire contract marks absent fields `undefined` via `Schema.optional`; `null` is not in the type.
+- Test files turn off `sonarjs/no-hardcoded-ip`, `landmines-testing/no-test-doubles`, and `landmines-testing/no-flake-masking`: fixtures address hosts by literal IP, and tests inject `FetchDeps` layers by design.
+- `app/foldkit-home/main.ts` turns off `sonarjs/function-name`: Foldkit message tags are PascalCase.
 - Keep oxlint's `--type-aware` off; doctor expects the stock setup otherwise.
 
 ## Editing these rules

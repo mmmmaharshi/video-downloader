@@ -187,7 +187,7 @@ const extractFrames = async (src: string): Promise<GifFrame[]> => {
 
   const duration = Math.min(video.duration || 0, MAX_SECONDS);
 
-  if (!(duration > 0)) {
+  if (duration <= 0) {
     throw new Error("video has no playable duration");
   }
 
@@ -208,7 +208,7 @@ const extractFrames = async (src: string): Promise<GifFrame[]> => {
   const frames: GifFrame[] = [];
 
   for (let at = 0; at < duration; at += 1 / FPS) {
-    // eslint-disable-next-line no-await-in-loop -- frames must come out in time order
+    // eslint-disable-next-line no-await-in-loop, react-doctor/async-await-in-loop -- frames must come out in time order
     const image = await withTimeout(
       grabFrame(video, ctx, at),
       SEEK_TIMEOUT_MS,

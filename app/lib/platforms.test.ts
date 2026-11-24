@@ -39,8 +39,12 @@ const SERVER_ONLY_MODULES = [
   "youtube-effect",
 ];
 
+const SERVER_ONLY_PATTERN = SERVER_ONLY_MODULES.map(
+  (name) => `${name}\\.`
+).join("|");
+
 const SERVER_ONLY_FILE = new RegExp(
-  `(?<lead>^|/)(?<name>api\\.|${SERVER_ONLY_MODULES.map((name) => `${name}\\.`).join("|")})`,
+  `(?<lead>^|/)(?<name>api\\.|${SERVER_ONLY_PATTERN})`,
   "u"
 );
 

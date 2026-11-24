@@ -105,12 +105,137 @@ const probeHead = (url: string): Effect.Effect<boolean, never, FetchDeps> =>
   Effect.gen(function* probe() {
     const { doFetch, lookup } = yield* FetchDeps;
 
-    return yield* Effect.promise(() =>
-      fetchGuarded({ doFetch, lookup }, url, { method: "HEAD" }).then(
-        ({ res }) => res.ok,
-        () => false
-      )
-    );
+    return yield* Effect.promise(async () => {
+      try {
+        const { res } = await fetchGuarded({ doFetch, lookup }, url, {
+          method: "HEAD",
+        });
+
+        return res.ok;
+      } catch {
+        return false;
+      }
+    });
+  });
+
+// One client's answer, reduced to the four things the sweep acts on.
+type ClientOutcome =
+  | { readonly cause: unknown; readonly tag: "failed" }
+  | { readonly reason: string | undefined; readonly tag: "unplayable" }
+  | { readonly tag: "none" }
+  | {
+      readonly assets: TubeAsset[];
+      readonly muxed: boolean;
+      readonly tag: "playable";
+    };
+
+// the best rung usually decides, but a throttled head rung must not condemn the
+// rest of the ladder: probe down it until one plays
+const anyPlayable = (
+  assets: TubeAsset[]
+): Effect.Effect<boolean, never, FetchDeps> =>
+  Effect.gen(function* probe() {
+    for (const candidate of assets) {
+      if (yield* probeHead(candidate.videoUrl)) {
+        return true;
+      }
+    }
+
+    return false;
+  });
+
+const attemptClient = (
+  id: string,
+  client: ClientName,
+  getInfo: (id: string, client: ClientName) => TubeInfo | Promise<TubeInfo>
+): Effect.Effect<ClientOutcome, never, FetchDeps> =>
+  Effect.gen(function* attempt() {
+    // a per-client failure is data (fall through to the next client), not a
+    // program failure: the attempt reports ok/cause and never rejects
+    const answer = yield* Effect.promise(async () => {
+      try {
+        return { info: await getInfo(id, client), tag: "info" as const };
+        // eslint-disable-next-line anti-slop/no-unknown-parameters -- the injected getInfo double can throw any value; the sentinel carries it opaquely as the unreachable cause without inspecting it
+      } catch (error: unknown) {
+        return { cause: error, tag: "failed" as const };
+      }
+    });
+
+    if (answer.tag === "failed") {
+      return { cause: answer.cause, tag: "failed" as const };
+    }
+
+    const { info } = answer;
+
+    if (info.playability !== "OK") {
+      return { reason: info.reason, tag: "unplayable" as const };
+    }
+
+    const { assets, muxed } = bestMp4s(info);
+
+    if (assets.length === 0 || !(yield* anyPlayable(assets))) {
+      return { tag: "none" as const };
+    }
+
+    return {
+      assets: assets.map((m) => ({ ...m, title: info.title })),
+      muxed,
+      tag: "playable" as const,
+    };
+  });
+
+// What one sweep over the clients concluded.
+type SweepResult =
+  | { readonly assets: TubeAsset[]; readonly tag: "muxed" | "silent" }
+  | { readonly cause: unknown; readonly tag: "unreachable" }
+  | { readonly reason: string; readonly tag: "unavailable" }
+  | { readonly tag: "retry" };
+
+const runSweep = (
+  id: string,
+  getInfo: (id: string, client: ClientName) => TubeInfo | Promise<TubeInfo>
+): Effect.Effect<SweepResult, never, FetchDeps> =>
+  Effect.gen(function* sweep() {
+    let answered = false;
+    let failure: unknown;
+    let reason: string | undefined;
+    let silentFallback: TubeAsset[] | undefined;
+
+    for (const client of CLIENTS) {
+      const outcome = yield* attemptClient(id, client, getInfo);
+
+      if (outcome.tag === "failed") {
+        failure = outcome.cause;
+      } else {
+        answered = true;
+
+        if (outcome.tag === "unplayable") {
+          reason ??= outcome.reason;
+        } else if (outcome.tag === "playable") {
+          // a muxed answer wins outright; a video-only one is kept only in
+          // case no client offers sound for this video
+          if (outcome.muxed) {
+            return { assets: outcome.assets, tag: "muxed" as const };
+          }
+
+          silentFallback ??= outcome.assets;
+        }
+      }
+    }
+
+    if (!answered) {
+      return { cause: failure, tag: "unreachable" as const };
+    }
+
+    if (silentFallback !== undefined) {
+      return { assets: silentFallback, tag: "silent" as const };
+    }
+
+    if (reason !== undefined) {
+      return { reason, tag: "unavailable" as const };
+    }
+
+    return { tag: "retry" as const };
   });
 
 export const getYouTubeFormatsProgram = (
@@ -122,85 +247,23 @@ export const getYouTubeFormatsProgram = (
     // at most two sweeps: the second answers a throttled first, and a video
     // with truly no mp4 answer costs one extra second, not an endless probe
     for (let sweep = 0; sweep < 2; sweep += 1) {
-      let answered = false;
-      let failure: unknown;
-      let reason: string | undefined;
-      let silentFallback: TubeAsset[] | undefined;
+      const result = yield* runSweep(id, getInfo);
 
-      for (const client of CLIENTS) {
-        // a per-client failure is data (fall through to the next client), not a
-        // program failure: the inner promise never rejects, it reports ok/cause
-        const attempt = yield* Effect.promise(() =>
-          Promise.resolve()
-            .then(() => getInfo(id, client))
-            .then(
-              (info) => ({ info, ok: true as const }),
-              // eslint-disable-next-line anti-slop/no-unknown-parameters -- the injected getInfo double can throw any value; the sentinel carries it opaquely as the unreachable cause without inspecting it
-              (error: unknown) => ({ cause: error, ok: false as const })
-            )
-        );
-
-        if (!attempt.ok) {
-          failure = attempt.cause;
-          continue;
-        }
-
-        answered = true;
-
-        const { info } = attempt;
-
-        if (info.playability !== "OK") {
-          reason ??= info.reason;
-          continue;
-        }
-
-        const { assets, muxed } = bestMp4s(info);
-
-        if (!assets.length) {
-          continue;
-        }
-
-        // the best rung usually decides, but a throttled head rung must not
-        // condemn the rest of the ladder: probe down it until one plays
-        let playable = false;
-
-        for (const candidate of assets) {
-          if (yield* probeHead(candidate.videoUrl)) {
-            playable = true;
-            break;
-          }
-        }
-
-        if (!playable) {
-          continue;
-        }
-
-        const titled = assets.map((m) => ({ ...m, title: info.title }));
-
-        // a muxed answer wins outright; a video-only one is kept only in case
-        // no client offers sound for this video
-        if (muxed) {
-          return titled;
-        }
-
-        silentFallback ??= titled;
+      if (result.tag === "muxed" || result.tag === "silent") {
+        return result.assets;
       }
 
-      if (!answered) {
+      if (result.tag === "unreachable") {
         return yield* Effect.fail({
           _tag: "YouTubeUnreachable" as const,
-          cause: failure,
+          cause: result.cause,
         });
       }
 
-      if (silentFallback !== undefined) {
-        return silentFallback;
-      }
-
-      if (reason !== undefined) {
+      if (result.tag === "unavailable") {
         return yield* Effect.fail({
           _tag: "YouTubeUnavailable" as const,
-          reason,
+          reason: result.reason,
         });
       }
 

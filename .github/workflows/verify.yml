@@ -13,13 +13,6 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun run verify
 
-  # Production deploys hang off a green `verify`, so a red run cannot ship.
-  # Vercel's own git auto-deploy is off (vercel.json → git.deploymentEnabled);
-  # this project-scoped deploy hook is the only trigger left.
-  deploy:
-    needs: verify
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to production
-        run: curl -fsS -X POST "${{ secrets.VERCEL_DEPLOY_HOOK }}"
+  # Production deploys run from a workstation through `bun run deploy` (cf CLI,
+  # ADR-0003). A CI deploy step would need Cloudflare credentials in this repo,
+  # so CI answers one question only: is the tree green.

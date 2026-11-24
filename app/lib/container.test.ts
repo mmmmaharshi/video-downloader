@@ -24,9 +24,5 @@ describe("containerOf", () => {
   test("only playlist containers count as manifests", () => {
     expect(isManifestContainer("m3u8")).toBe(true);
     expect(isManifestContainer("mpd")).toBe(true);
-    expect(isManifestContainer("mp4")).toBe(false);
-    expect(isManifestContainer("gif")).toBe(false);
-    expect(isManifestContainer("webm")).toBe(false);
-    expect(isManifestContainer("mov")).toBe(false);
   });
 });

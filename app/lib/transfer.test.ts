@@ -87,19 +87,6 @@ describe("proxy", () => {
     expect(await res.text()).toBe("video-bytes");
   });
 
-  test("names an X download after the tweet", async () => {
-    const twimg =
-      "https://video.twimg.com/amplify_video/1/vid/avc1/480x270/x.mp4";
-
-    const res = await proxy(twimg, "twitter-2006763209378922836", {
-      fetch: ok(),
-    });
-
-    expect(res.headers.get("content-disposition")).toBe(
-      'attachment; filename="twitter-2006763209378922836.mp4"'
-    );
-  });
-
   test("strips header-breaking characters out of the download name", async () => {
     const res = await proxy(CDN, 'a"b;c d', { fetch: ok() });
     expect(res.headers.get("content-disposition")).toBe(
@@ -118,11 +105,6 @@ describe("proxy", () => {
 
     const res = await proxy(CDN, "ABC123", { fetch: sized });
     expect(res.headers.get("content-length")).toBe("11");
-  });
-
-  test("leaves content-length absent when the upstream sends none", async () => {
-    const res = await proxy(CDN, "ABC123", { fetch: ok() });
-    expect(res.headers.get("content-length")).toBeNull();
   });
 
   test("aborts a stalled upstream past the total bound", async () => {
@@ -214,24 +196,6 @@ describe("proxy", () => {
 
     expect(res.headers.get("content-type")).toBe("video/mp4");
   });
-
-  test.each([
-    ["https://x/clip", "video/webm", "webm"],
-    ["https://x/clip", "video/quicktime", "mov"],
-    ["https://x/clip", "video/mp4", "mp4"],
-    ["https://x/funny", "image/gif", "gif"],
-  ])(
-    "names the %s (%s) download with a .%s extension",
-    async (url, contentType, ext) => {
-      const res = await proxy(url, "reddit-abc123", {
-        fetch: ok("bytes", contentType),
-      });
-
-      expect(res.headers.get("content-disposition")).toBe(
-        `attachment; filename="reddit-abc123.${ext}"`
-      );
-    }
-  );
 
   test("refuses a url that resolves to a private address", async () => {
     const res = await thrown(

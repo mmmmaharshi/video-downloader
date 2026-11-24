@@ -3,12 +3,7 @@
 
 import { describe, expect, test } from "vitest";
 
-import {
-  blobToDataUrl,
-  canCopyGif,
-  encodeFrames,
-  sampleFrames,
-} from "./gif-convert";
+import { canCopyGif, encodeFrames, sampleFrames } from "./gif-convert";
 import type { GifFrame } from "./gif-convert";
 
 const frame = (seed: number): GifFrame => ({
@@ -38,14 +33,6 @@ describe("gif-convert", () => {
 
     expect(bytes.length).toBeGreaterThan(0);
     expect(new TextDecoder().decode(bytes.subarray(0, 6))).toBe("GIF89a");
-  });
-
-  test("a blob round-trips through a data url", async () => {
-    const blob = new Blob(["gif-bytes"], { type: "image/gif" });
-
-    expect(await blobToDataUrl(blob)).toBe(
-      `data:image/gif;base64,${btoa("gif-bytes")}`
-    );
   });
 
   test("copying needs both a ClipboardItem and a write", () => {

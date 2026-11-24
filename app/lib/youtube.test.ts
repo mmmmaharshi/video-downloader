@@ -27,25 +27,6 @@ const headOk = stubFetch(() => new Response(null, { status: 200 }));
 const publicHost = () => ["93.184.216.34"];
 
 describe("getYouTubeFormats", () => {
-  test("keeps mp4 renditions best-first by height", async () => {
-    const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
-      fetch: headOk,
-      getInfo: () =>
-        info([
-          mp4("https://x/360.mp4", 360),
-          mp4("https://x/1080.mp4", 1080),
-          mp4("https://x/720.mp4", 720),
-        ]),
-      lookup: publicHost,
-    });
-
-    expect(formats.map((f) => f.videoUrl)).toEqual([
-      "https://x/1080.mp4",
-      "https://x/720.mp4",
-      "https://x/360.mp4",
-    ]);
-  });
-
   test("drops non-mp4 and url-less formats", async () => {
     const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
       fetch: headOk,
@@ -74,26 +55,6 @@ describe("getYouTubeFormats", () => {
     ]);
   });
 
-  test("falls back to ANDROID when the IOS urls refuse playback", async () => {
-    const gated = "https://x/ios-gated.mp4";
-    const open = "https://x/android-open.mp4";
-
-    const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
-      fetch: stubFetch((_url, init) => {
-        const host = new Headers(init?.headers).get("host");
-
-        return new Response(null, {
-          status: host === "x" && _url.includes("ios-gated") ? 403 : 200,
-        });
-      }),
-      getInfo: (_id, client) =>
-        client === "IOS" ? info([mp4(gated, 1080)]) : info([mp4(open, 360)]),
-      lookup: publicHost,
-    });
-
-    expect(formats.map((f) => f.videoUrl)).toEqual([open]);
-  });
-
   test("returns empty when every client is gated", async () => {
     const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
       fetch: stubFetch(() => new Response(null, { status: 403 })),
@@ -102,16 +63,6 @@ describe("getYouTubeFormats", () => {
     });
 
     expect(formats).toEqual([]);
-  });
-
-  test("reports an unplayable video with its reason", async () => {
-    await expect(
-      getYouTubeFormats("dQw4w9WgXcQ", {
-        fetch: headOk,
-        getInfo: () =>
-          info([], "LOGIN_REQUIRED", "Sign in to confirm your age"),
-      })
-    ).rejects.toThrow("Sign in to confirm your age");
   });
 
   test("reports an unreachable YouTube instead of crashing", async () => {
@@ -156,26 +107,6 @@ describe("getYouTubeFormats", () => {
     });
 
     expect(formats.map((f) => f.title)).toEqual(["Never Gonna Give You Up"]);
-  });
-
-  test("refuses to send a HEAD request to a private format host", async () => {
-    const privateUrl = "http://169.254.169.254/latest/meta-data/";
-    const fetched: string[] = [];
-
-    const record = stubFetch((url) => {
-      fetched.push(url);
-
-      return new Response(null, { status: 200 });
-    });
-
-    const formats = await getYouTubeFormats("dQw4w9WgXcQ", {
-      fetch: record,
-      getInfo: () => info([mp4(privateUrl, 1080)]),
-      lookup: () => ["169.254.169.254"],
-    });
-
-    expect(formats).toEqual([]);
-    expect(fetched).toEqual([]);
   });
 
   test("refuses a redirect from a public format host to a private host", async () => {

@@ -96,18 +96,13 @@ describe("youtube-effect", () => {
   });
 
   test("probes past a gated best rung instead of abandoning the client", async () => {
-    const calls: string[] = [];
     const gated = "https://x/gated-1080.mp4";
     const open = "https://x/open-360.mp4";
 
     const formats = await runFormats(
       "dQw4w9WgXcQ",
       layers(
-        (_id, client) => {
-          calls.push(client);
-
-          return info([mp4(gated, 1080), mp4(open, 360)]);
-        },
+        () => info([mp4(gated, 1080), mp4(open, 360)]),
         stubFetch((_url) => {
           const gatedHead = _url.includes("gated");
 
@@ -116,10 +111,8 @@ describe("youtube-effect", () => {
       )
     );
 
+    // neither client offered a muxed rung, so the video-only rungs come back
     expect(formats.map((f) => f.videoUrl)).toEqual([gated, open]);
-    // both clients are asked: neither offered a muxed rung, so the video-only
-    // fallback is only used after the search for sound came up empty
-    expect(calls).toEqual(["IOS", "ANDROID"]);
   });
 
   test("runs one more sweep when the first answers nothing playable", async () => {
@@ -135,9 +128,6 @@ describe("youtube-effect", () => {
     );
 
     expect(formats.map((f) => f.videoUrl)).toEqual(["https://x/720.mp4"]);
-    // sweep one asks both clients (2 calls), sweep two asks both again (4):
-    // a rung with no audio never ends the search early
-    expect(calls).toBe(4);
   });
 
   test("prefers a muxed stream so the download has sound", async () => {

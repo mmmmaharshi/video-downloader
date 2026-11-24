@@ -3,7 +3,6 @@ import { describe, expect, test } from "vitest";
 import { stubFetch } from "./fake-fetch";
 import { resolve as resolveRaw } from "./media-resolver";
 import type { MediaResolverDeps } from "./media-resolver";
-import { pinnedFetch } from "./pinned-fetch";
 
 // deterministic DNS for every path: no test reaches the real resolver
 const publicHost = () => ["93.184.216.34"];
@@ -17,8 +16,8 @@ const CDN = "https://scontent.cdninstagram.com/v/abc.mp4";
 const page = (body: string, init?: ResponseInit) =>
   new Response(`<html><head>${body}</head></html>`, { status: 200, ...init });
 
-// Response.url and .redirected are read-only, so a login-redirect fixture
-// subclasses to supply them. The resolvers read only ok/redirected/status/text/url.
+// Every resolver is driven through the public resolve() seam: a stub answers
+// the wire, so these tests see exactly what a caller sees.
 describe("resolve", () => {
   test("reads video and thumbnail from the post page", async () => {
     const [asset] = await resolve(REEL, {
@@ -1493,42 +1492,6 @@ describe("resolve — direct links", () => {
 });
 
 describe("guarded platform fetches", () => {
-  test("dials the approved address while keeping Host and SNI", async () => {
-    let dialed = "";
-    const hosts: (string | null)[] = [];
-    const snis: (string | undefined)[] = [];
-
-    const responder = stubFetch((url, init) => {
-      dialed = url;
-      hosts.push(new Headers(init?.headers).get("host"));
-      snis.push(init?.tls?.serverName);
-
-      return new Response("ok");
-    });
-
-    await pinnedFetch(
-      responder,
-      "https://example.com:8443/v.mp4",
-      ["93.184.216.34"],
-      {}
-    );
-
-    expect(dialed).toBe("https://93.184.216.34:8443/v.mp4");
-    expect(hosts[0]).toBe("example.com:8443");
-    expect(snis[0]).toBe("example.com");
-  });
-
-  test("fails closed when no address was approved", async () => {
-    await expect(
-      pinnedFetch(
-        stubFetch(() => new Response("ok")),
-        "https://example.com/v.mp4",
-        [],
-        {}
-      )
-    ).rejects.toThrow("Only public links");
-  });
-
   test("passes the validated addresses to the pin seam", async () => {
     let dialed = "";
 

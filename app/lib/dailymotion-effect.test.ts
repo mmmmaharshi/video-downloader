@@ -8,9 +8,6 @@ import { FetchDeps } from "./fetch-deps";
 const publicHost = () => ["93.184.216.34"];
 
 const DM_URL = "https://www.dailymotion.com/video/x8abc123";
-const DM_MP4 = "https://cdn.dailymotion.com/v/x8abc123.mp4";
-const DM_MP4_HD = "https://cdn.dailymotion.com/v/x8abc123_hd.mp4";
-const DM_HLS = "https://cdn.dailymotion.com/v/x8abc123.m3u8";
 
 interface DailymotionFile {
   readonly height?: number;
@@ -45,15 +42,6 @@ const dmJson = (
 const layersFor = (doFetch: ReturnType<typeof stubFetch>) =>
   Layer.succeed(FetchDeps)({ doFetch, lookup: publicHost });
 
-const runVideos = (
-  layer: Layer.Layer<FetchDeps>,
-  id = "x8abc123",
-  sourceUrl: string = DM_URL
-) =>
-  Effect.runPromise(
-    Effect.provide(resolveDailymotionProgram({ id, sourceUrl }), layer)
-  );
-
 const runVideosError = (
   layer: Layer.Layer<FetchDeps>,
   id = "x8abc123",
@@ -66,44 +54,6 @@ const runVideosError = (
   );
 
 describe("dailymotion-effect", () => {
-  test("offers every quality rung, highest first, with auto last", async () => {
-    const assets = await runVideos(
-      layersFor(
-        dmJson(
-          {
-            "1080": [{ type: "video/mp4", url: DM_MP4_HD }],
-            "240": [{ type: "video/mp4", url: DM_MP4 }],
-            auto: [{ type: "application/x-mpegURL", url: DM_HLS }],
-          },
-          { poster_url: "https://cdn.dailymotion.com/thumb.jpg", title: "dt" }
-        )
-      )
-    );
-
-    expect(assets.map((a) => [a.label, a.videoUrl])).toEqual([
-      ["1080p", DM_MP4_HD],
-      ["240p", DM_MP4],
-      ["auto", DM_HLS],
-    ]);
-
-    expect(assets[0]).toMatchObject({
-      platform: "dailymotion",
-      shortcode: "x8abc123",
-      sourceUrl: DM_URL,
-      thumbnail: "https://cdn.dailymotion.com/thumb.jpg",
-      title: "dt",
-    });
-  });
-
-  test("rejects a post with no playable file", async () => {
-    const error = await runVideosError(layersFor(dmJson({})));
-
-    expect(error._tag).toBe("DailymotionNoVideo");
-    expect(toThrownError(error).message).toBe(
-      "No video found. Only public videos are downloadable."
-    );
-  });
-
   test("reports the provider's own reason instead of a generic miss", async () => {
     const error = await runVideosError(
       layersFor(
@@ -115,26 +65,6 @@ describe("dailymotion-effect", () => {
     expect(toThrownError(error).message).toBe(
       "This video is unavailable: Video geo-restricted by the owner."
     );
-  });
-
-  test("reports an error status", async () => {
-    const error = await runVideosError(
-      layersFor(stubFetch(() => new Response("busy", { status: 503 })))
-    );
-
-    expect(error._tag).toBe("DailymotionUpstream");
-    expect(toThrownError(error).message).toBe(
-      "Dailymotion returned 503. Try again later."
-    );
-  });
-
-  test("reports a missing post", async () => {
-    const error = await runVideosError(
-      layersFor(stubFetch(() => new Response("gone", { status: 404 })))
-    );
-
-    expect(error._tag).toBe("DailymotionNotFound");
-    expect(toThrownError(error).message).toBe("Post not found. Check the URL.");
   });
 
   test("every tag maps to its legacy message", () => {

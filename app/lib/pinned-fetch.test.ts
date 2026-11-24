@@ -5,13 +5,14 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import { pinnedFetch } from "./pinned-fetch";
 
+// Bun's init carries tls, which RequestInit does not declare.
 const recorded = () => {
-  const calls: { init?: RequestInit; url: string }[] = [];
+  const calls: { init?: BunFetchRequestInit; url: string }[] = [];
 
-  // a function taking the wider input union is assignable to fetch; the
-  // preconnect hook is a Bun addition the tests never call
+  // a function taking the wider init is assignable to fetch; the preconnect
+  // hook is a Bun addition the tests never call
   const doFetch: typeof fetch = Object.assign(
-    (input: URL | RequestInfo, init?: RequestInit) => {
+    (input: URL | RequestInfo, init?: BunFetchRequestInit) => {
       calls.push({ init, url: String(input) });
 
       return Promise.resolve(new Response("ok"));
@@ -75,14 +76,15 @@ describe("pinnedFetch", () => {
 
     await pinnedFetch(
       doFetch,
-      "https://example.com/v.mp4",
+      "https://example.com:8443/v.mp4",
       ["93.184.216.34"],
       {}
     );
 
-    expect(calls[0]?.url).toBe("https://93.184.216.34/v.mp4");
+    expect(calls[0]?.url).toBe("https://93.184.216.34:8443/v.mp4");
     expect(new Headers(calls[0]?.init?.headers).get("host")).toBe(
-      "example.com"
+      "example.com:8443"
     );
+    expect(calls[0]?.init?.tls?.serverName).toBe("example.com");
   });
 });

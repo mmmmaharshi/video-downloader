@@ -22,7 +22,10 @@ export interface DownloadLinkDeps {
 }
 
 const secretOf = (deps: DownloadLinkDeps): string => {
-  const secret = deps.secret ?? process.env.DOWNLOAD_SECRET;
+  // The caller supplies the secret: a binding on Workers, process.env on the
+  // Bun server. Reading process.env here would let a Worker without the
+  // binding sign with an ambient value instead of failing closed.
+  const { secret } = deps;
 
   if (!secret) {
     throw new Error("DOWNLOAD_SECRET is not set");
